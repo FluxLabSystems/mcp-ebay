@@ -1,0 +1,21 @@
+{
+  "name": "@browser-bridge/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Typed environment/config parsing (SDD v0.5 section 25)",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@browser-bridge/protocol": "workspace:*",
+    "zod": "^4.4.3"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@browser-bridge/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP tool schemas, agent wire schemas, error catalog (SDD v0.5 Appendix A/B, sections 12, 14, 15, 17, 18)",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}
