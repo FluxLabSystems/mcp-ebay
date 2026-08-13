@@ -1,0 +1,54 @@
+# Browser-bridge Compose stack — SDD v0.5 §23. Reuses the pre-existing
+# external network fluxology-edge; NEVER creates, stops, restarts, or
+# reconfigures the existing fluxology-caddy container. Only the gateway
+# joins fluxology-edge; PostgreSQL stays on the internal backend network.
+# No service publishes a host port (NFR-09).
+services:
+  mcp-gateway:
+    build:
+      context: ..
+      dockerfile: apps/gateway/Dockerfile
+    restart: unless-stopped
+    expose:
+      - "3000"
+    env_file: .env
+    networks:
+      fluxology-edge:
+        aliases:
+          - browser-mcp-gateway
+      backend: {}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "apps/gateway/dist/healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - artifact-data:/var/lib/browser-bridge/artifacts
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  fluxology-edge:
+    external: true
+    name: fluxology-edge
+  backend:
+    internal: true
+
+volumes:
+  postgres-data: {}
+  artifact-data: {}

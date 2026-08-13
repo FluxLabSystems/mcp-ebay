@@ -8,6 +8,12 @@ import { BRIDGE_ERROR_CODES } from './errors.js';
 
 export const WIRE_PROTOCOL_VERSION = '1.0';
 
+/**
+ * browserSessionHandle placeholder used on session_open command envelopes:
+ * the agent generates the real handle when the context is available (§14).
+ */
+export const PENDING_SESSION_HANDLE = 'bs_pending_0000000000000000';
+
 export const PolicyClassSchema = z.enum(['read', 'reversible', 'control']);
 
 /** Appendix B command.schema.json. */

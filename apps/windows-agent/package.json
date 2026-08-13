@@ -1,0 +1,35 @@
+{
+  "name": "@browser-bridge/windows-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Windows Local Browser Agent: outbound WSS client, Playwright owner, local policy engine host (SDD v0.5 sections 11-13, 19)",
+  "bin": {
+    "browser-bridge-agent": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/cli.js run"
+  },
+  "dependencies": {
+    "@browser-bridge/browser-core": "workspace:*",
+    "@browser-bridge/config": "workspace:*",
+    "@browser-bridge/policy": "workspace:*",
+    "@browser-bridge/protocol": "workspace:*",
+    "@browser-bridge/site-ebay": "workspace:*",
+    "pino": "^10.3.1",
+    "playwright": "1.56.1",
+    "ws": "^8.21.3",
+    "linkedom": "^0.18.13"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
+  }
+}

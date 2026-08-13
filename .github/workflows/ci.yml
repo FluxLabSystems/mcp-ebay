@@ -1,0 +1,96 @@
+# CI — SDD v0.5 §28. Runs every non-live layer from a clean checkout;
+# never needs the production VPS or an eBay account.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: bridge
+          POSTGRES_PASSWORD: bridge
+          POSTGRES_DB: browser_bridge_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bridge -d browser_bridge_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://bridge:bridge@localhost:5432/browser_bridge_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # §28 job 1: reproducible install from the committed lockfile.
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build workspace
+        run: pnpm build
+
+      # §28 job 2
+      - run: pnpm lint
+
+      # §28 job 3
+      - run: pnpm typecheck
+
+      # §28 job 4
+      - run: pnpm test:unit
+
+      # §28 job 5
+      - run: pnpm test:contract
+
+      # §28 job 6
+      - run: pnpm test:security
+
+      # §28 job 7: local test browser fixtures (bundled chromium).
+      - name: Install Playwright test browser
+        run: pnpm exec playwright install chromium --with-deps
+
+      - run: pnpm test:integration
+
+      # §28 job 10: migration apply/rollback smoke against ephemeral PostgreSQL.
+      - name: Migration apply/rollback smoke
+        run: |
+          node apps/gateway/dist/cli.js migrate up
+          node apps/gateway/dist/cli.js migrate status
+          node apps/gateway/dist/cli.js migrate down --steps 1
+          node apps/gateway/dist/cli.js migrate up
+
+      # §28 job 11: dependency audit — report always, fail on critical.
+      - name: Dependency audit
+        run: |
+          pnpm audit --prod || true
+          pnpm audit --prod --audit-level critical
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # §28 job 8: gateway container image builds.
+      - name: Build gateway image
+        run: docker build -f apps/gateway/Dockerfile -t browser-mcp-gateway:ci .
+
+      # §28 job 9: compose file validates (external edge network stubbed,
+      # since fluxology-edge exists only on the production VPS).
+      - name: Validate compose config
+        run: |
+          docker network create fluxology-edge
+          cp deploy/env.example deploy/.env
+          docker compose -f deploy/compose.yaml config >/dev/null
+          echo "compose config OK"
