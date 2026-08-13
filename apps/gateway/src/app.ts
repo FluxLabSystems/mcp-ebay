@@ -2,7 +2,7 @@
  * Gateway HTTP surface — SDD v0.5 §9 (MCP), §10 (OAuth resource server,
  * RFC 9728 discovery), §11 (pairing), §16 (artifacts), §26 (health).
  */
-import { Hono } from 'hono';
+import type { Hono } from 'hono';
 import { createMcpHonoApp } from '@modelcontextprotocol/hono';
 import {
   createMcpHandler,

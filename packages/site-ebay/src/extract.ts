@@ -336,8 +336,13 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
           select.closest('.x-msku__box, .vim')?.querySelector('label')?.textContent?.trim() ??
           select.getAttribute('name') ??
           'variant';
+        // Live DOM reflects user choice via selectedIndex; statically
+        // parsed HTML (fixture/unit path) only carries the attribute.
         const selectedIndex = select.selectedIndex;
-        const selectedOption = selectedIndex >= 0 ? select.options[selectedIndex] : undefined;
+        const selectedOption =
+          (selectedIndex >= 0 ? select.options[selectedIndex] : undefined) ??
+          (select.querySelector('option[selected]') as HTMLOptionElement | null) ??
+          undefined;
         const selectedText = selectedOption?.textContent?.trim() ?? null;
         return {
           label,

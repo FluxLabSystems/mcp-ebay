@@ -271,7 +271,21 @@ export async function navigate(
   await session.policy.assertUrlAllowed(url, 'navigation');
   tab.lastBlock = null;
   try {
-    const response = await tab.page.goto(url, { waitUntil, timeout: timeoutMs });
+    let response;
+    try {
+      response = await tab.page.goto(url, { waitUntil, timeout: timeoutMs });
+    } catch (err) {
+      // §18: navigate MAY retry one network-level failure when no document
+      // committed — covers the chrome-error page race after an aborted
+      // (policy-blocked) prior navigation.
+      const message = err instanceof Error ? err.message : String(err);
+      if (readLastBlock(tab) === null && message.includes('interrupted by another navigation')) {
+        await tab.page.waitForTimeout(200);
+        response = await tab.page.goto(url, { waitUntil, timeout: timeoutMs });
+      } else {
+        throw err;
+      }
+    }
     const finalUrl = tab.page.url();
     let origin = '';
     try {

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<!-- Browser-integration fixture: semantic targets, secret fields,
+     protected transaction controls, navigation links. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Interaction Fixture</title></head>
+<body>
+  <h1>Interaction fixture</h1>
+
+  <a id="nav-link" href="/pages/second.html">Go to second page</a>
+
+  <button id="counter-btn" onclick="document.getElementById('count').textContent = String(1 + Number(document.getElementById('count').textContent))">Increment counter</button>
+  <span id="count">0</span>
+
+  <form id="search-form" action="/pages/search" method="get">
+    <label for="query">Search query</label>
+    <input id="query" name="q" type="text" placeholder="Search query">
+    <select id="sort" name="sort" aria-label="Sort order">
+      <option value="best">Best match</option>
+      <option value="price_low">Price low to high</option>
+    </select>
+  </form>
+
+  <form id="login-form" action="/account/signin" method="post" class="signin-form">
+    <label for="user">Username</label>
+    <input id="user" name="username" type="text" autocomplete="username">
+    <label for="pass">Password</label>
+    <input id="pass" name="password" type="password" autocomplete="current-password" value="hunter2-secret">
+    <label for="otp">One-time code</label>
+    <input id="otp" name="otp" type="text" autocomplete="one-time-code">
+  </form>
+
+  <form id="pay-form" action="/checkout/payment" method="post">
+    <label for="cc">Card number</label>
+    <input id="cc" name="ccnum" type="text" autocomplete="cc-number">
+  </form>
+
+  <div class="actions">
+    <button id="buy-now">Buy It Now</button>
+    <button id="place-bid">Place bid</button>
+    <button id="make-offer">Make offer</button>
+    <a id="checkout-link" href="/checkout/start" role="button">Proceed to checkout</a>
+  </div>
+
+  <div style="height: 3000px">tall spacer for scrolling</div>
+  <p id="bottom-marker">bottom of page</p>
+</body>
+</html>

@@ -13,7 +13,7 @@
     "build": "pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
     "lint": "eslint .",
-    "test": "pnpm run build && pnpm run test:unit && pnpm run test:contract && pnpm run test:security && pnpm run test:integration",
+    "test": "pnpm run build && pnpm run test:unit && pnpm run test:contract && pnpm run test:security && pnpm run test:integration && pnpm run test:e2e",
     "test:unit": "vitest run --project unit",
     "test:contract": "vitest run --project contract",
     "test:security": "vitest run --project security",
@@ -27,6 +27,7 @@
     "eslint": "^9.39.5",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.67.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@eslint/js": "^9.39.5"
   }
 }

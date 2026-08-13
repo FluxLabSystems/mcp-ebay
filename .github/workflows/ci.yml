@@ -63,6 +63,8 @@ jobs:
 
       - run: pnpm test:integration
 
+      - run: pnpm test:e2e
+
       # §28 job 10: migration apply/rollback smoke against ephemeral PostgreSQL.
       - name: Migration apply/rollback smoke
         run: |

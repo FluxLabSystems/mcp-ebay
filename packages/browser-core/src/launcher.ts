@@ -45,12 +45,14 @@ export function buildChromeLaunchPlan(userDataDir: string): BrowserLaunchPlan {
 
 /**
  * TEST-ONLY plan for integration tests running against a local test
- * browser build. Not reachable from agent configuration.
+ * browser build (bundled Chromium or an explicit executable). Not
+ * reachable from agent configuration; production always uses
+ * buildChromeLaunchPlan (channel "chrome").
  */
 export function buildTestLaunchPlan(userDataDir: string, executablePath?: string): BrowserLaunchPlan {
   return {
     userDataDir,
-    channel: executablePath === undefined ? 'chrome' : undefined,
+    channel: undefined,
     headless: true,
     acceptDownloads: true,
     viewport: null,
@@ -73,6 +75,8 @@ export const defaultLauncher: PersistentContextLauncher = (userDataDir, options)
 /** Error text fragments that identify a missing/broken branded Chrome install. */
 const CHROME_MISSING_MARKERS = [
   'chrome distribution',
+  "distribution 'chrome'",
+  'distribution "chrome"',
   "channel 'chrome'",
   'channel "chrome"',
   'executable doesn’t exist',
@@ -182,8 +186,10 @@ export function acquireProfileLock(profileDir: string): ProfileLock {
         try {
           process.kill(existing.pid, 0);
           stale = false;
-        } catch {
-          stale = true; // owner is gone
+        } catch (killErr) {
+          // ESRCH: owner is gone. EPERM: owner exists but is another
+          // user's process — treat as live (PROFILE_IN_USE).
+          stale = (killErr as NodeJS.ErrnoException).code === 'ESRCH';
         }
       }
     } catch {

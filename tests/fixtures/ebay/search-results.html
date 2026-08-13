@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<!-- Synthetic ebay.ca search results page (FR-15 traversal fixture). -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>bulk lego | eBay Search</title>
+</head>
+<body>
+  <ul class="srp-results">
+    <li class="s-item">
+      <a class="s-item__link" href="https://www.ebay.ca/itm/123456789012?hash=abc">
+        <h3 class="s-item__title">LEGO Friends Bulk Lot 5 lbs Bricks Minifigures</h3>
+      </a>
+      <span class="s-item__price">C $35.00</span>
+    </li>
+    <li class="s-item">
+      <a class="s-item__link" href="https://www.ebay.ca/itm/222333444555">
+        <h3 class="s-item__title">Vintage LEGO Castle Lot</h3>
+      </a>
+      <span class="s-item__price">C $120.00</span>
+    </li>
+    <li class="s-item">
+      <!-- duplicate link to first item; traversal must dedupe -->
+      <a class="s-item__link" href="https://www.ebay.ca/itm/123456789012?var=0">
+        <h3 class="s-item__title">LEGO Friends Bulk Lot 5 lbs (duplicate card)</h3>
+      </a>
+      <span class="s-item__price">C $35.00</span>
+    </li>
+  </ul>
+</body>
+</html>

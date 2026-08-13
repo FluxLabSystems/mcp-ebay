@@ -28,7 +28,8 @@ export interface ParsedMoney {
  * `defaultCurrency` applies to bare "$" amounts (CAD on ebay.ca).
  */
 export function parseMoney(rawText: string, defaultCurrency = 'CAD'): ParsedMoney | null {
-  const text = rawText.replace(/ /g, ' ').trim();
+  // eBay renders prices with NBSP / narrow no-break spaces.
+  const text = rawText.replace(/[\u00a0\u202f]/g, ' ').trim();
   if (text.length === 0) return null;
   if (/\bfree\b/i.test(text)) {
     return { value: 0, currency: defaultCurrency, approximate: false };

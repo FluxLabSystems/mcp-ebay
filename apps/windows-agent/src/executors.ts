@@ -47,9 +47,10 @@ import {
   normalizeEbayImageUrl,
   EBAY_SITE_PROFILE_ID,
 } from '@browser-bridge/site-ebay';
+import type { BrowserSessionRuntime } from '@browser-bridge/browser-core';
 import { ensureDestination } from './destinationFlow.js';
 import type { Logger } from './logger.js';
-import type { SessionManager } from './sessionManager.js';
+import type { SessionOpenResult } from './sessionManager.js';
 
 export interface AgentArtifact {
   artifactId: string;
@@ -63,8 +64,19 @@ export interface ExecutionOutcome {
   artifacts: AgentArtifact[];
 }
 
+/**
+ * Structural facade over SessionManager so transport-layer tests can stub
+ * session ownership without a real browser.
+ */
+export interface SessionHost {
+  open(profileName: string): Promise<SessionOpenResult>;
+  resolve(browserSessionHandle: string): BrowserSessionRuntime;
+  listActive(): BrowserSessionRuntime[];
+  readonly isDegraded: boolean;
+}
+
 export interface ExecutorHost {
-  sessions: SessionManager;
+  sessions: SessionHost;
   logger: Logger;
   expectedPostalCode: string;
   /** Gallery hints; eBay hints by default, injectable for tests. */
@@ -272,7 +284,7 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
 
 async function executeExtract(
   host: ExecutorHost,
-  session: Awaited<ReturnType<SessionManager['resolve']>>,
+  session: BrowserSessionRuntime,
   tabId: string,
 ): Promise<ExecutionOutcome> {
   const tab = session.getTab(tabId);
