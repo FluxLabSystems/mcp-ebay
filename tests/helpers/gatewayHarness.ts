@@ -68,7 +68,13 @@ export function buildGatewayHarness(options: HarnessOptions = {}): GatewayHarnes
     urlSecret: 'test-artifact-url-secret',
     meta: store.artifacts,
   });
-  const broker = new CommandBroker({ registry, store, artifacts, logger });
+  const broker = new CommandBroker({
+    registry,
+    store,
+    artifacts,
+    logger,
+    ebayDestinationPostalCode: config.ebayDestinationPostalCode,
+  });
   const gatewayApp = buildGatewayApp({
     config,
     store,

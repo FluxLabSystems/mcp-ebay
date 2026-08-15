@@ -88,7 +88,13 @@ class MemoryBrowserSessions implements BrowserSessionStore {
   readonly rows = new Map<string, BrowserSessionRow>();
 
   upsert(row: BrowserSessionRow): Promise<void> {
-    this.rows.set(row.browserSessionHandle, { ...row });
+    // Mirror the PG ON CONFLICT semantics: openedAt is preserved on
+    // conflict; only status/lastSeenAt/closedAt update (audit F-14).
+    const existing = this.rows.get(row.browserSessionHandle);
+    this.rows.set(row.browserSessionHandle, {
+      ...row,
+      openedAt: existing?.openedAt ?? row.openedAt,
+    });
     return Promise.resolve();
   }
   get(handle: string): Promise<BrowserSessionRow | null> {

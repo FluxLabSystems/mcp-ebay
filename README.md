@@ -43,9 +43,10 @@ pnpm install --frozen-lockfile
 pnpm build
 pnpm lint
 pnpm typecheck
-pnpm test          # build + unit + contract + security + integration
-pnpm test:e2e      # full stack: MCP client → gateway → WSS → agent → real browser
+pnpm test          # build + unit + contract + security + integration + e2e
 ```
+
+The e2e project (also runnable alone via `pnpm test:e2e`) drives the full stack: MCP client → gateway → WSS → agent → real browser.
 
 Individual layers: `pnpm test:unit`, `pnpm test:contract`, `pnpm test:security`, `pnpm test:integration`.
 

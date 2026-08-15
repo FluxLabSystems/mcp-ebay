@@ -36,8 +36,36 @@ describe('gateway configuration contract (§25)', () => {
       OAUTH_ISSUER: 'https://idp.example.com',
       OAUTH_AUDIENCE: 'https://browser-mcp.example.com',
       OAUTH_JWKS_URI: 'https://idp.example.com/.well-known/jwks.json',
+      ARTIFACT_URL_SECRET: 'a-pinned-32-char-artifact-secret',
     });
     expect(config.oauth).toMatchObject({ mode: 'required', issuer: 'https://idp.example.com' });
+  });
+
+  it('production requires a pinned ARTIFACT_URL_SECRET (audit F-19)', () => {
+    expect(() =>
+      loadGatewayConfig({
+        ...BASE_ENV,
+        NODE_ENV: 'production',
+        OAUTH_ISSUER: 'https://idp.example.com',
+        OAUTH_AUDIENCE: 'https://browser-mcp.example.com',
+        OAUTH_JWKS_URI: 'https://idp.example.com/.well-known/jwks.json',
+      }),
+    ).toThrow(/ARTIFACT_URL_SECRET/);
+    // Development stays free to omit it (per-boot random secret).
+    expect(loadGatewayConfig({ ...BASE_ENV, NODE_ENV: 'development' }).artifactUrlSecret).toBeUndefined();
+  });
+
+  it('parses rate-limit configuration with sane defaults (audit F-05)', () => {
+    const defaults = loadGatewayConfig({ ...BASE_ENV });
+    expect(defaults.rateLimitMcpPerMinute).toBe(120);
+    expect(defaults.rateLimitPairPerMinute).toBe(10);
+    const tuned = loadGatewayConfig({
+      ...BASE_ENV,
+      RATE_LIMIT_MCP_PER_MINUTE: '0',
+      RATE_LIMIT_PAIR_PER_MINUTE: '99',
+    });
+    expect(tuned.rateLimitMcpPerMinute).toBe(0);
+    expect(tuned.rateLimitPairPerMinute).toBe(99);
   });
 
   it('rejects non-https issuer/jwks and caps artifact TTL (§16)', () => {
@@ -62,6 +90,15 @@ describe('agent configuration (§25)', () => {
     );
     expect(config.gatewayHttpUrl).toBe('https://browser-mcp.example.com');
     expect(config.profileDir).toBe('/home/tester/.local/share/Fluxology/BrowserBridge/profiles/ebay-research');
+    expect(config.heartbeatSeconds).toBe(20);
+  });
+
+  it('agent heartbeat cadence is configurable (audit F-15)', () => {
+    const config = loadAgentConfig(
+      { AGENT_GATEWAY_URL: 'wss://browser-mcp.example.com/agent/ws', AGENT_HEARTBEAT_SECONDS: '45', HOME: '/home/t' },
+      'linux',
+    );
+    expect(config.heartbeatSeconds).toBe(45);
   });
 
   it('uses %LOCALAPPDATA% defaults on Windows (§4)', () => {

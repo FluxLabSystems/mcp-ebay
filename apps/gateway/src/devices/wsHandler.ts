@@ -160,7 +160,10 @@ export function handleAgentSocket(socket: WebSocket, deps: WsHandlerDeps): void 
         }
         case 'state.report': {
           // §12.5: reconcile reported sessions with the handle→device map.
+          // Sessions the agent no longer reports are closed (audit F-04);
+          // reported ones are (re)opened.
           const now = new Date();
+          await deps.store.browserSessions.markClosedForDevice(authenticatedDeviceId, now);
           for (const session of message.sessions) {
             deps.registry.rememberSessionOwner(session.browserSessionHandle, authenticatedDeviceId);
             await deps.store.browserSessions.upsert({
@@ -183,8 +186,16 @@ export function handleAgentSocket(socket: WebSocket, deps: WsHandlerDeps): void 
     clearTimeout(authTimeout);
     clearInterval(heartbeatInterval);
     if (authenticatedDeviceId !== null) {
-      deps.registry.unregister(authenticatedDeviceId, socket);
-      deps.logger.info({ deviceId: authenticatedDeviceId }, 'Device disconnected');
+      const deviceId = authenticatedDeviceId;
+      deps.registry.unregister(deviceId, socket);
+      // Mark sessions closed only when this close actually took the device
+      // offline — a superseding reconnect keeps its own sessions (F-04).
+      if (deps.registry.get(deviceId) === undefined) {
+        void deps.store.browserSessions
+          .markClosedForDevice(deviceId, new Date())
+          .catch((err) => deps.logger.warn({ err: String(err) }, 'Failed to close sessions on disconnect'));
+      }
+      deps.logger.info({ deviceId }, 'Device disconnected');
     }
   });
   socket.on('error', (err) => {

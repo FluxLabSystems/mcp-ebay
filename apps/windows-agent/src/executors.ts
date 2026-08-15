@@ -258,12 +258,20 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
         return { result: { ...outcome }, pageRevision: outcome.pageRevision, artifacts: [] };
       }
       case 'extract': {
+        // The gateway threads the deployment-authoritative destination on
+        // the wire envelope (audit F-09); it is not part of the public
+        // tool schema, so strip it before normative validation.
+        const { destinationPostalCode, ...toolArgs } = args as Record<string, unknown>;
         ExtractInput.parse({
           browserSessionHandle: envelope.browserSessionHandle,
           tabId,
-          ...(args as object),
+          ...toolArgs,
         });
-        return executeExtract(host, session, tabId);
+        const expectedPostal =
+          typeof destinationPostalCode === 'string' && destinationPostalCode.length > 0
+            ? destinationPostalCode
+            : host.expectedPostalCode;
+        return executeExtract(host, session, tabId, expectedPostal);
       }
       case 'handoff': {
         const input = HandoffInput.parse({
@@ -286,6 +294,7 @@ async function executeExtract(
   host: ExecutorHost,
   session: BrowserSessionRuntime,
   tabId: string,
+  expectedPostalCode: string = host.expectedPostalCode,
 ): Promise<ExecutionOutcome> {
   const tab = session.getTab(tabId);
   const pageUrl = tab.page.url();
@@ -305,7 +314,7 @@ async function executeExtract(
   // marking shipping destination-resolved.
   let verifiedDestination: { postalCode: string; verified: boolean } | undefined;
   if (isEbayProfile && isListingPage(pageUrl)) {
-    const outcome = await ensureDestination(session, tabId, host.expectedPostalCode, host.logger);
+    const outcome = await ensureDestination(session, tabId, expectedPostalCode, host.logger);
     verifiedDestination =
       outcome.postalCode === null
         ? { postalCode: '', verified: false }
@@ -315,7 +324,7 @@ async function executeExtract(
   const html = await tab.page.content();
   const { document } = parseHTML(html);
   const { record, warnings } = extractListing(document as unknown as Document, pageUrl, {
-    expectedPostalCode: host.expectedPostalCode,
+    expectedPostalCode,
     verifiedDestination,
     pageRevision: tab.revision,
   });

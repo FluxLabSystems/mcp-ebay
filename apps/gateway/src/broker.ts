@@ -7,6 +7,7 @@ import { buildAuditEvent } from '@browser-bridge/audit';
 import {
   BridgeError,
   BROWSER_SESSION_HANDLE_PATTERN,
+  isAllowedArtifactMime,
   isBridgeErrorCode,
   MCP_INLINE_ARTIFACT_MAX_BYTES,
   PENDING_SESSION_HANDLE,
@@ -25,6 +26,8 @@ export interface BrokerDeps {
   store: Store;
   artifacts: ArtifactStore;
   logger: Logger;
+  /** §25: deployment-authoritative destination for ebay.ca.v1 extraction. */
+  ebayDestinationPostalCode: string;
 }
 
 export interface CallerContext {
@@ -91,6 +94,13 @@ export class CommandBroker {
         ? (Number(args.timeoutSeconds ?? 300) + 30) * 1000
         : entry.timeoutMs;
 
+    // §25/§20.1: the gateway is the single source of truth for the
+    // required shipping destination; it rides the wire envelope, never
+    // the public tool schema (audit F-09).
+    if (entry.command === 'extract') {
+      commandArgs.destinationPostalCode = this.deps.ebayDestinationPostalCode;
+    }
+
     const auditBase = {
       userSubject: caller.subject,
       deviceId,
@@ -100,6 +110,7 @@ export class CommandBroker {
       actionClass: entry.policyClass,
       traceId: caller.traceparent,
     };
+    const startedAt = Date.now();
 
     let result: ResultEnvelope;
     try {
@@ -115,20 +126,32 @@ export class CommandBroker {
       });
     } catch (err) {
       const bridgeError = BridgeError.from(err);
-      await this.audit({ ...auditBase, outcome: 'error', errorCode: bridgeError.code, requestId: null });
+      const requestId =
+        typeof bridgeError.details.requestId === 'string' ? bridgeError.details.requestId : null;
+      await this.auditCommand(auditBase, entry.command, requestId, 'error', bridgeError.code, null);
+      await this.audit({ ...auditBase, outcome: 'error', errorCode: bridgeError.code, requestId });
+      this.logToolCall(auditBase, requestId, 'error', bridgeError.code, Date.now() - startedAt, null);
       throw bridgeError;
     }
+
+    // §26: one linked command event per gateway-to-agent command (F-03).
+    await this.auditCommand(
+      auditBase,
+      entry.command,
+      result.requestId,
+      result.status === 'ok' ? 'ok' : 'error',
+      result.error?.code ?? null,
+      result.durationMs,
+    );
 
     if (result.status === 'error') {
       const error = result.error;
       const code = error !== null && isBridgeErrorCode(error.code) ? error.code : 'INTERNAL_ERROR';
       const bridgeError = new BridgeError(code, error?.message, (error?.details as Record<string, unknown>) ?? {});
-      await this.audit({
-        ...auditBase,
-        outcome: bridgeError.code === 'ACTION_BLOCKED' || bridgeError.code === 'SECRET_FIELD_BLOCKED' ? 'denied' : 'error',
-        errorCode: bridgeError.code,
-        requestId: result.requestId,
-      });
+      const outcome =
+        bridgeError.code === 'ACTION_BLOCKED' || bridgeError.code === 'SECRET_FIELD_BLOCKED' ? 'denied' : 'error';
+      await this.audit({ ...auditBase, outcome, errorCode: bridgeError.code, requestId: result.requestId });
+      this.logToolCall(auditBase, result.requestId, outcome, bridgeError.code, Date.now() - startedAt, result.durationMs);
       throw bridgeError;
     }
 
@@ -154,13 +177,83 @@ export class CommandBroker {
     const artifacts = await this.materializeArtifacts(result, caller.subject);
 
     await this.audit({ ...auditBase, outcome: 'ok', errorCode: null, requestId: result.requestId });
+    // §26 counters/timers in structured logs (audit F-08).
+    this.logToolCall(auditBase, result.requestId, 'ok', null, Date.now() - startedAt, result.durationMs);
     return { structured, artifacts };
+  }
+
+  private logToolCall(
+    base: { toolName: string; deviceId: string; browserSessionHandle: string; tabId: string | null },
+    requestId: string | null,
+    outcome: string,
+    errorCode: string | null,
+    durationMs: number,
+    agentDurationMs: number | null,
+  ): void {
+    this.deps.logger.info(
+      {
+        metric: 'tool_call',
+        toolName: base.toolName,
+        deviceId: base.deviceId,
+        browserSessionHandle: base.browserSessionHandle,
+        tabId: base.tabId,
+        requestId,
+        outcome,
+        errorCode,
+        durationMs,
+        agentDurationMs,
+      },
+      'tool call completed',
+    );
+  }
+
+  private async auditCommand(
+    base: {
+      userSubject: string | null;
+      deviceId: string;
+      browserSessionHandle: string;
+      tabId: string | null;
+      toolName: string;
+      traceId: string | null;
+    },
+    command: string,
+    requestId: string | null,
+    outcome: 'ok' | 'error',
+    errorCode: string | null,
+    agentDurationMs: number | null,
+  ): Promise<void> {
+    try {
+      await this.deps.store.audit.insert(
+        buildAuditEvent({
+          userSubject: base.userSubject,
+          deviceId: base.deviceId,
+          browserSessionHandle: base.browserSessionHandle,
+          tabId: base.tabId,
+          toolName: base.toolName,
+          requestId,
+          actionClass: 'command',
+          outcome,
+          errorCode,
+          traceId: base.traceId,
+          metadata: { command, agentDurationMs },
+        }),
+      );
+    } catch (err) {
+      this.deps.logger.error({ err: String(err) }, 'Command audit write failed');
+    }
   }
 
   /** §16: inline ≤8 MiB as MCP image content; larger via signed URL. */
   private async materializeArtifacts(result: ResultEnvelope, subject: string | null): Promise<BrokerArtifactOut[]> {
     const out: BrokerArtifactOut[] = [];
     for (const artifact of result.artifacts as WireArtifact[]) {
+      // Active-content MIME types never enter the artifact store (F-06).
+      if (!isAllowedArtifactMime(artifact.mimeType)) {
+        throw new BridgeError('DOWNLOAD_BLOCKED', `Artifact MIME type "${artifact.mimeType}" is not permitted.`, {
+          artifactId: artifact.artifactId,
+          mimeType: artifact.mimeType,
+        });
+      }
       if (artifact.transfer === 'inline' && artifact.dataBase64 !== null) {
         const bytes = Buffer.from(artifact.dataBase64, 'base64');
         const row = await this.deps.artifacts.put(artifact.artifactId, result.requestId, artifact.mimeType, bytes, subject);

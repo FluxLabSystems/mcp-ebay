@@ -203,4 +203,22 @@ describe('artifact routes (§16)', () => {
     const bad = await fetch(`${urls.httpUrl}/artifacts/art_missing?exp=${Math.floor(Date.now() / 1000) + 60}&sig=forged`);
     expect(bad.status).toBe(404);
   });
+
+  it('active-content MIME types never enter the artifact store (F-06)', async () => {
+    await expect(
+      harness.artifacts.put('art_svg_probe_000000000001', 'req_svg', 'image/svg+xml', Buffer.from('<svg/>'), null),
+    ).rejects.toMatchObject({ code: 'DOWNLOAD_BLOCKED' });
+    await expect(
+      harness.artifacts.put('art_html_probe_00000000001', 'req_html', 'text/html', Buffer.from('<script>'), null),
+    ).rejects.toMatchObject({ code: 'DOWNLOAD_BLOCKED' });
+    // Raster images remain storable.
+    const stored = await harness.artifacts.put(
+      'art_png_probe_0000000000001',
+      'req_png',
+      'image/png',
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]),
+      null,
+    );
+    expect(stored.mimeType).toBe('image/png');
+  });
 });

@@ -23,6 +23,27 @@ export const ARTIFACT_AGGREGATE_MAX_BYTES = 75 * 1024 * 1024;
 /** MIME types allowed for unrecompressed image passthrough (§16). */
 export const IMAGE_PASSTHROUGH_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'] as const;
 
+/**
+ * Passive raster MIME types an artifact may carry. Screenshots are
+ * png/jpeg; listing images add webp/avif/gif. Active-content types
+ * (svg+xml, html, xml) are rejected end to end so artifact downloads can
+ * never render script on the gateway origin (audit F-06).
+ */
+export const ARTIFACT_ALLOWED_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/avif',
+  'image/gif',
+] as const;
+
+export function isAllowedArtifactMime(mimeType: string): boolean {
+  return (ARTIFACT_ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType.toLowerCase().split(';')[0]!.trim());
+}
+
+/** Maximum accepted JSON body size on /mcp and /agent/pair (audit F-23). */
+export const JSON_BODY_MAX_BYTES = 128 * 1024;
+
 /** Default gateway artifact TTL seconds; max configurable (§16). */
 export const ARTIFACT_TTL_DEFAULT_SECONDS = 900;
 export const ARTIFACT_TTL_MAX_SECONDS = 3600;

@@ -39,6 +39,15 @@ interface IdempotencyEntry {
   requestId: string;
 }
 
+/**
+ * Catalogued error code for a command that exceeded its gateway deadline
+ * (audit F-02): navigation deadlines are NAVIGATION_TIMEOUT; every other
+ * command reports CONDITION_TIMEOUT. Both are retryable (§17).
+ */
+export function timeoutErrorCodeFor(command: string): 'NAVIGATION_TIMEOUT' | 'CONDITION_TIMEOUT' {
+  return command === 'navigate' ? 'NAVIGATION_TIMEOUT' : 'CONDITION_TIMEOUT';
+}
+
 export interface SendCommandOptions {
   deviceId: string;
   browserSessionHandle: string;
@@ -161,17 +170,22 @@ export class DeviceRegistry {
       const timer = setTimeout(() => {
         this.settleError(
           requestId,
-          new BridgeError('NAVIGATION_TIMEOUT', `Command ${options.command} timed out after ${options.timeoutMs} ms.`, {
-            command: options.command,
-          }),
+          new BridgeError(
+            timeoutErrorCodeFor(options.command),
+            `Command ${options.command} timed out after ${options.timeoutMs} ms.`,
+            { command: options.command, requestId },
+          ),
         );
-        this.cancel(requestId, 'deadline exceeded');
+        this.cancel(requestId, 'deadline exceeded', options.deviceId);
       }, options.timeoutMs + 2000);
       // §12.4: ack expected within 2 s; a silent agent is treated as offline.
       const ackTimer = setTimeout(() => {
         const request = this.pending.get(requestId);
         if (request !== undefined && !request.acked) {
-          this.settleError(requestId, new BridgeError('DEVICE_OFFLINE', 'Agent did not acknowledge the command.', {}));
+          this.settleError(
+            requestId,
+            new BridgeError('DEVICE_OFFLINE', 'Agent did not acknowledge the command.', { requestId }),
+          );
         }
       }, 4000);
       this.pending.set(requestId, {
@@ -222,17 +236,18 @@ export class DeviceRegistry {
     request.reject(err);
   }
 
-  private cancel(requestId: string, reason: string): void {
-    for (const connection of this.connections.values()) {
-      connection.socket.send(
-        JSON.stringify({
-          protocolVersion: WIRE_PROTOCOL_VERSION,
-          type: 'cancel',
-          requestId,
-          reason,
-        }),
-      );
-    }
+  /** Best-effort cancel, targeted at the owning device only (audit F-10). */
+  private cancel(requestId: string, reason: string, deviceId: string): void {
+    const connection = this.connections.get(deviceId);
+    if (connection === undefined) return;
+    connection.socket.send(
+      JSON.stringify({
+        protocolVersion: WIRE_PROTOCOL_VERSION,
+        type: 'cancel',
+        requestId,
+        reason,
+      }),
+    );
   }
 
   private pruneIdempotency(): void {

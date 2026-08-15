@@ -16,13 +16,23 @@ import {
 } from '@modelcontextprotocol/server';
 import type { Logger } from 'pino';
 import type { GatewayConfig } from '@browser-bridge/config';
-import { getToolEntry, scopeSatisfies, SCOPE_INTERACT, SCOPE_READ, SCOPE_ADMIN, BridgeError } from '@browser-bridge/protocol';
+import {
+  BridgeError,
+  ERROR_CATALOG,
+  getToolEntry,
+  JSON_BODY_MAX_BYTES,
+  SCOPE_ADMIN,
+  SCOPE_INTERACT,
+  SCOPE_READ,
+  scopeSatisfies,
+} from '@browser-bridge/protocol';
 import type { ArtifactTokenIssuer } from './agentAuth.js';
 import type { ArtifactStore } from './artifacts/store.js';
 import type { CommandBroker } from './broker.js';
 import type { DeviceRegistry } from './devices/registry.js';
 import { buildMcpServer } from './mcp/server.js';
 import { handlePairRequest } from './pairing.js';
+import { RateLimiter } from './rateLimit.js';
 import type { Store } from './store/types.js';
 
 export interface GatewayAppDeps {
@@ -83,6 +93,23 @@ export function buildGatewayApp(deps: GatewayAppDeps): GatewayApp {
       ? null
       : requireBearerAuth({ verifier: deps.verifier, resourceMetadataUrl });
 
+  // Audit F-05: token-bucket limits, keyed per OAuth client on /mcp and
+  // per remote address on /agent/pair. A limit of 0 disables the bucket.
+  const mcpLimiter = new RateLimiter(config.rateLimitMcpPerMinute);
+  const pairLimiter = new RateLimiter(config.rateLimitPairPerMinute);
+
+  const rateLimitedResponse = (limiter: RateLimiter, key: string): Response =>
+    Response.json(
+      {
+        error: {
+          code: 'RATE_LIMITED',
+          message: ERROR_CATALOG.RATE_LIMITED.message,
+          retryable: true,
+        },
+      },
+      { status: 429, headers: { 'retry-after': String(limiter.retryAfterSeconds(key)) } },
+    );
+
   const app = createMcpHonoApp({
     allowedHosts: config.allowedHosts,
     allowedOrigins: config.allowedHosts,
@@ -104,12 +131,25 @@ export function buildGatewayApp(deps: GatewayAppDeps): GatewayApp {
       authInfo = gateResult;
     }
 
-    // §10.2/§27.2: insufficient scope fails at the HTTP auth boundary.
+    // Audit F-05: per-client tool-call budget.
+    const limiterKey = `mcp:${authInfo.clientId}`;
+    if (!mcpLimiter.tryTake(limiterKey)) {
+      return rateLimitedResponse(mcpLimiter, limiterKey);
+    }
+
+    // Audit F-23: bounded JSON bodies; §10.2/§27.2: insufficient scope
+    // fails at the HTTP auth boundary.
     let parsedBody: unknown;
-    try {
-      parsedBody = c.req.method === 'POST' ? await c.req.raw.clone().json() : undefined;
-    } catch {
-      parsedBody = undefined;
+    if (c.req.method === 'POST') {
+      const rawBody = await c.req.raw.clone().text();
+      if (Buffer.byteLength(rawBody, 'utf8') > JSON_BODY_MAX_BYTES) {
+        return c.json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'Request body exceeds the permitted size.' } }, 413);
+      }
+      try {
+        parsedBody = JSON.parse(rawBody);
+      } catch {
+        parsedBody = undefined;
+      }
     }
     if (parsedBody !== undefined && typeof parsedBody === 'object' && parsedBody !== null) {
       const body = parsedBody as { method?: unknown; params?: { name?: unknown } };
@@ -134,6 +174,17 @@ export function buildGatewayApp(deps: GatewayAppDeps): GatewayApp {
 
   // ---- Device pairing (§11.3) ----
   app.post('/agent/pair', async (c) => {
+    // Audit F-05: per-address pairing budget (tokens are single-use and
+    // short-lived; this only tames noisy scanners).
+    const remote = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'direct';
+    const limiterKey = `pair:${remote}`;
+    if (!pairLimiter.tryTake(limiterKey)) {
+      return rateLimitedResponse(pairLimiter, limiterKey);
+    }
+    const length = Number(c.req.header('content-length') ?? '0');
+    if (Number.isFinite(length) && length > JSON_BODY_MAX_BYTES) {
+      return c.json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'Request body exceeds the permitted size.' } }, 413);
+    }
     const response = await handlePairRequest(c.req.raw, deps.store, logger);
     return response;
   });
@@ -158,7 +209,8 @@ export function buildGatewayApp(deps: GatewayAppDeps): GatewayApp {
       await deps.artifacts.put(artifactId, requestId, mimeType, bytes, null);
     } catch (err) {
       const bridgeError = BridgeError.from(err);
-      const status = bridgeError.code === 'ARTIFACT_TOO_LARGE' ? 413 : 500;
+      const status =
+        bridgeError.code === 'ARTIFACT_TOO_LARGE' ? 413 : bridgeError.code === 'DOWNLOAD_BLOCKED' ? 415 : 500;
       return c.json({ error: bridgeError.code, message: bridgeError.message }, status);
     }
     return c.json({ ok: true, artifactId, byteLength: bytes.length });
@@ -176,12 +228,16 @@ export function buildGatewayApp(deps: GatewayAppDeps): GatewayApp {
     if (stored === null) {
       return c.json({ error: 'ARTIFACT_EXPIRED', message: 'Artifact TTL elapsed.' }, 404);
     }
+    // Audit F-06: artifacts are downloads, never renderable documents on
+    // this origin.
     return new Response(new Uint8Array(stored.bytes), {
       status: 200,
       headers: {
         'content-type': stored.row.mimeType,
         'content-length': String(stored.row.byteLength),
         'cache-control': 'private, no-store',
+        'x-content-type-options': 'nosniff',
+        'content-disposition': `attachment; filename="${artifactId}"`,
       },
     });
   });

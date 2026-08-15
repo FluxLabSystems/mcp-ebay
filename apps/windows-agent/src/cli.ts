@@ -93,7 +93,7 @@ async function main(): Promise<number> {
         identity,
         host: { sessions, logger, expectedPostalCode: config.ebayDestinationPostalCode },
         logger,
-        heartbeatSeconds: 20,
+        heartbeatSeconds: config.heartbeatSeconds,
       });
       connection.start();
       logger.info({ agentVersion: AGENT_VERSION, deviceId: identity.deviceId }, 'Agent running');

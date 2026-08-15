@@ -49,6 +49,10 @@ export const GatewayEnvSchema = z
       .transform((value) => value === 'true'),
     /** Extra Host header values accepted besides the PUBLIC_BASE_URL host. */
     EXTRA_ALLOWED_HOSTS: z.string().default(''),
+    /** Tool calls per minute per OAuth client on /mcp; 0 disables (audit F-05). */
+    RATE_LIMIT_MCP_PER_MINUTE: z.coerce.number().int().min(0).max(100000).default(120),
+    /** Pairing attempts per minute per remote address; 0 disables. */
+    RATE_LIMIT_PAIR_PER_MINUTE: z.coerce.number().int().min(0).max(1000).default(10),
   })
   .check((ctx) => {
     const env = ctx.value;
@@ -73,6 +77,16 @@ export const GatewayEnvSchema = z
         }
       }
     }
+    // Audit F-19: a per-boot random secret would invalidate signed artifact
+    // URLs on every restart; production must pin one.
+    if (env.NODE_ENV === 'production' && env.ARTIFACT_URL_SECRET === undefined) {
+      ctx.issues.push({
+        code: 'custom',
+        message: 'ARTIFACT_URL_SECRET is required in production (signed artifact URLs must survive restarts)',
+        input: env,
+        path: ['ARTIFACT_URL_SECRET'],
+      });
+    }
   });
 
 export interface GatewayConfig {
@@ -91,6 +105,8 @@ export interface GatewayConfig {
   ebayDestinationPostalCode: string;
   mcpLegacyCompatibility: boolean;
   allowedHosts: string[];
+  rateLimitMcpPerMinute: number;
+  rateLimitPairPerMinute: number;
 }
 
 export function loadGatewayConfig(env: Record<string, string | undefined> = process.env): GatewayConfig {
@@ -121,6 +137,8 @@ export function loadGatewayConfig(env: Record<string, string | undefined> = proc
     logLevel: parsed.LOG_LEVEL,
     ebayDestinationPostalCode: parsed.EBAY_DESTINATION_POSTAL_CODE,
     mcpLegacyCompatibility: parsed.MCP_LEGACY_COMPATIBILITY,
+    rateLimitMcpPerMinute: parsed.RATE_LIMIT_MCP_PER_MINUTE,
+    rateLimitPairPerMinute: parsed.RATE_LIMIT_PAIR_PER_MINUTE,
     allowedHosts: [
       publicBaseUrl.hostname,
       'browser-mcp-gateway',
@@ -140,9 +158,11 @@ export const AgentEnvSchema = z.object({
   /** Dedicated Chrome automation profile dir; %LOCALAPPDATA% default applied on Windows. */
   AGENT_PROFILE_DIR: z.string().optional(),
   AGENT_STATE_DIR: z.string().optional(),
-  AGENT_TEMP_DIR: z.string().optional(),
   AGENT_NAME: z.string().default('windows-browser-agent'),
+  /** WSS heartbeat cadence; keep aligned with the gateway's DEVICE_HEARTBEAT_SECONDS (audit F-15). */
+  AGENT_HEARTBEAT_SECONDS: z.coerce.number().int().min(5).max(120).default(HEARTBEAT_INTERVAL_SECONDS),
   LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
+  /** Fallback destination when a command envelope does not carry one (audit F-09). */
   EBAY_DESTINATION_POSTAL_CODE: z.string().default('M6H 2W9'),
 });
 
@@ -152,15 +172,14 @@ export interface AgentConfig {
   gatewayHttpUrl: string;
   profileDir: string;
   stateDir: string;
-  tempDir: string;
   agentName: string;
+  heartbeatSeconds: number;
   logLevel: (typeof LOG_LEVELS)[number];
   ebayDestinationPostalCode: string;
 }
 
 export const DEFAULT_PROFILE_LEAF = ['Fluxology', 'BrowserBridge', 'profiles', 'ebay-research'] as const;
 export const DEFAULT_STATE_LEAF = ['Fluxology', 'BrowserBridge', 'state'] as const;
-export const DEFAULT_TEMP_LEAF = ['Fluxology', 'BrowserBridge', 'temp'] as const;
 
 function joinPath(base: string, parts: readonly string[], sep: string): string {
   return [base.replace(/[\\/]+$/, ''), ...parts].join(sep);
@@ -173,13 +192,12 @@ function joinPath(base: string, parts: readonly string[], sep: string): string {
 export function defaultAgentDirs(
   platform: NodeJS.Platform = process.platform,
   env: Record<string, string | undefined> = process.env,
-): { profileDir: string; stateDir: string; tempDir: string } {
+): { profileDir: string; stateDir: string } {
   if (platform === 'win32') {
     const localAppData = env.LOCALAPPDATA ?? 'C:\\Users\\Default\\AppData\\Local';
     return {
       profileDir: joinPath(localAppData, DEFAULT_PROFILE_LEAF, '\\'),
       stateDir: joinPath(localAppData, DEFAULT_STATE_LEAF, '\\'),
-      tempDir: joinPath(localAppData, DEFAULT_TEMP_LEAF, '\\'),
     };
   }
   const home = env.HOME ?? '/tmp';
@@ -187,7 +205,6 @@ export function defaultAgentDirs(
   return {
     profileDir: joinPath(base, DEFAULT_PROFILE_LEAF, '/'),
     stateDir: joinPath(base, DEFAULT_STATE_LEAF, '/'),
-    tempDir: joinPath(base, DEFAULT_TEMP_LEAF, '/'),
   };
 }
 
@@ -205,8 +222,8 @@ export function loadAgentConfig(
     gatewayHttpUrl: httpBase,
     profileDir: parsed.AGENT_PROFILE_DIR ?? defaults.profileDir,
     stateDir: parsed.AGENT_STATE_DIR ?? defaults.stateDir,
-    tempDir: parsed.AGENT_TEMP_DIR ?? defaults.tempDir,
     agentName: parsed.AGENT_NAME,
+    heartbeatSeconds: parsed.AGENT_HEARTBEAT_SECONDS,
     logLevel: parsed.LOG_LEVEL,
     ebayDestinationPostalCode: parsed.EBAY_DESTINATION_POSTAL_CODE,
   };

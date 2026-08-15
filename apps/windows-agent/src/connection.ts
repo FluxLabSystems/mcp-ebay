@@ -22,7 +22,7 @@ import {
   type WireArtifact,
 } from '@browser-bridge/protocol';
 import { AGENT_VERSION } from './version.js';
-import { executeCommand, type ExecutorHost } from './executors.js';
+import { executeCommand, type ExecutionOutcome, type ExecutorHost } from './executors.js';
 import type { DeviceIdentity } from './identity.js';
 import type { Logger } from './logger.js';
 
@@ -36,6 +36,8 @@ export interface ConnectionOptions {
   fetchImpl?: typeof fetch;
   /** Injectable for tests. */
   webSocketFactory?: (url: string) => WebSocket;
+  /** Injectable executor (transport tests exercise artifact paths with it). */
+  executeCommandImpl?: (host: ExecutorHost, envelope: CommandEnvelope) => Promise<ExecutionOutcome>;
   onReady?: (connectionId: string) => void;
 }
 
@@ -257,7 +259,8 @@ export class AgentConnection {
       if (this.cancelled.has(envelope.requestId)) {
         throw new BridgeError('CANCELLED', undefined, { requestId: envelope.requestId });
       }
-      const outcome = await executeCommand(this.options.host, envelope);
+      const execute = this.options.executeCommandImpl ?? executeCommand;
+      const outcome = await execute(this.options.host, envelope);
       const artifacts: WireArtifact[] = [];
       for (const artifact of outcome.artifacts) {
         if (artifact.buffer.length <= WIRE_INLINE_ARTIFACT_MAX_BYTES) {

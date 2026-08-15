@@ -7,6 +7,7 @@
 import {
   ARTIFACT_MAX_BYTES,
   BridgeError,
+  isAllowedArtifactMime,
   newImageId,
   type ImageCandidate,
 } from '@browser-bridge/protocol';
@@ -161,9 +162,18 @@ export async function fetchImage(
   }
   const sniffed = sniffImageMeta(buffer);
   const headerMime = response.headers()['content-type']?.split(';')[0]?.trim();
+  const mimeType = sniffed.mimeType ?? headerMime ?? 'application/octet-stream';
+  // Audit F-06: only passive raster images may become artifacts; an
+  // SVG/HTML payload is a policy-violating download (§19).
+  if (!isAllowedArtifactMime(mimeType)) {
+    throw new BridgeError('DOWNLOAD_BLOCKED', `Image MIME type "${mimeType}" is not permitted.`, {
+      imageId,
+      mimeType,
+    });
+  }
   return {
     buffer,
-    mimeType: sniffed.mimeType ?? headerMime ?? 'application/octet-stream',
+    mimeType,
     sourceUrl: entry.sourceUrl,
     pageRevision: tab.revision,
   };

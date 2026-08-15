@@ -38,7 +38,13 @@ async function main(): Promise<void> {
     ...(config.artifactUrlSecret === undefined ? {} : { urlSecret: config.artifactUrlSecret }),
     meta: store.artifacts,
   });
-  const broker = new CommandBroker({ registry, store, artifacts, logger });
+  const broker = new CommandBroker({
+    registry,
+    store,
+    artifacts,
+    logger,
+    ebayDestinationPostalCode: config.ebayDestinationPostalCode,
+  });
   const verifier =
     config.oauth.mode === 'required'
       ? new JwtTokenVerifier({
