@@ -58,8 +58,10 @@ jobs:
       - run: pnpm test:security
 
       # §28 job 7: local test browser fixtures (bundled chromium).
+      # playwright is a workspace dependency (tests package), not a root
+      # one, so exec must run in that package.
       - name: Install Playwright test browser
-        run: pnpm exec playwright install chromium --with-deps
+        run: pnpm --filter @browser-bridge/tests exec playwright install chromium --with-deps
 
       - run: pnpm test:integration
 

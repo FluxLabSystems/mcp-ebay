@@ -23,7 +23,13 @@ RUN pnpm --filter @browser-bridge/protocol build \
 RUN pnpm --filter @browser-bridge/gateway deploy --prod --legacy /out
 
 FROM node:22-alpine
-RUN addgroup -S bridge && adduser -S bridge -G bridge \
+# The runtime only ever executes `node`; drop the bundled npm/corepack
+# toolchain (smaller attack surface, and npm's vendored deps otherwise
+# carry CVEs the image scanner rightly flags).
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn* \
+      /usr/local/bin/yarn /usr/local/bin/yarnpkg \
+ && addgroup -S bridge && adduser -S bridge -G bridge \
  && mkdir -p /var/lib/browser-bridge/artifacts \
  && chown -R bridge:bridge /var/lib/browser-bridge
 WORKDIR /app
