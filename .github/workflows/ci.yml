@@ -119,7 +119,7 @@ jobs:
 
       # Audit F-25: fail on critical, fixable CVEs in the runtime image.
       - name: Scan image for critical vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: browser-mcp-gateway:ci
           severity: CRITICAL

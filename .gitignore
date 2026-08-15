@@ -5,7 +5,6 @@ coverage/
 .env
 .env.*
 !deploy/env.example
-artifacts/
 *.local
 .DS_Store
 playwright-report/
