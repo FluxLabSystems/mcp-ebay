@@ -24,7 +24,7 @@ describe('token-bucket rate limiter (F-05)', () => {
     expect(limiter.tryTake('k', now)).toBe(true);
     expect(limiter.tryTake('k', now)).toBe(true);
     expect(limiter.tryTake('k', now)).toBe(false);
-    expect(limiter.retryAfterSeconds('k', now)).toBeGreaterThanOrEqual(1);
+    expect(limiter.retryAfterSeconds('k')).toBeGreaterThanOrEqual(1);
   });
 
   it('refills continuously and keys are independent', () => {

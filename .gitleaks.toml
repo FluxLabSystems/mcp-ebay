@@ -1,0 +1,15 @@
+# Secret-scanning configuration (audit F-25). Default rules apply; the
+# allowlist covers deliberately fake material: test fixtures/keys and the
+# documented placeholder values in deploy/env.example.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Synthetic test material and documented placeholders"
+paths = [
+  '''tests/''',
+  '''deploy/env\.example''',
+]
+regexes = [
+  '''CHANGE_ME[A-Z_]*''',
+]

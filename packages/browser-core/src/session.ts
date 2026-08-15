@@ -57,6 +57,8 @@ export class BrowserSessionRuntime {
   private readonly queue = new SerialQueue();
   private closed = false;
   private readonly events: SessionEvents;
+  /** Tab automation last touched — the honest "active" notion here (audit F-11). */
+  private activeTabId: string | null = null;
 
   private constructor(
     context: BrowserContext,
@@ -207,6 +209,7 @@ export class BrowserSessionRuntime {
       if (tab) this.tabs.delete(tabId);
       throw new BridgeError('TAB_NOT_FOUND', undefined, { tabId });
     }
+    this.activeTabId = tabId;
     return tab;
   }
 
@@ -224,7 +227,10 @@ export class BrowserSessionRuntime {
         tabId: tab.tabId,
         url: tab.page.url(),
         title,
-        active: tab.page === this.context.pages().at(-1),
+        active:
+          this.activeTabId === null
+            ? tab.page === this.context.pages().at(-1)
+            : tab.tabId === this.activeTabId,
         pageRevision: tab.revision,
       });
     }
@@ -293,6 +299,10 @@ export async function navigate(
     } catch {
       origin = '';
     }
+    // Note (audit F-12): policy denials THROW catalogued errors (FR-12)
+    // rather than returning navigationStatus "blocked"; the enum value is
+    // reserved for future non-error blocked outcomes and is currently
+    // never emitted by this implementation.
     return {
       finalUrl,
       title: await tab.page.title().catch(() => ''),

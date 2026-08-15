@@ -163,10 +163,28 @@ export async function select(
     tab.dirty = true;
     return { pageRevision: tab.revision, selectedValue: results[0] ?? value };
   }
-  // Radio buttons / role=option variants: click to select.
+  // Radio buttons / role=option variants: click, then read the APPLIED
+  // state back from the live element instead of echoing the request
+  // (audit F-13).
   await locator.first().click({ timeout: timeoutMs });
   tab.dirty = true;
-  return { pageRevision: tab.revision, selectedValue: value };
+  const applied = await locator
+    .first()
+    .evaluate((el: Element): string | null => {
+      if (el instanceof HTMLInputElement && (el.type === 'radio' || el.type === 'checkbox')) {
+        return el.checked ? el.value || 'on' : '';
+      }
+      const ariaSelected = el.getAttribute('aria-selected');
+      if (ariaSelected !== null) {
+        return ariaSelected === 'true' ? (el.textContent ?? '').trim() || 'selected' : '';
+      }
+      return null;
+    })
+    .catch(() => null);
+  if (applied === '') {
+    throw new BridgeError('ACTION_BLOCKED', 'Selection did not apply to the target element.', { elementRef, value });
+  }
+  return { pageRevision: tab.revision, selectedValue: applied ?? value };
 }
 
 export interface ScrollResult {

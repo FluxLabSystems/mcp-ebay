@@ -59,6 +59,8 @@ export class AgentConnection {
   private lastGatewayActivity = Date.now();
   private readonly cancelled = new Set<string>();
   private readonly recentResults = new Map<string, RecentResult>();
+  /** Guards against double-execution of retransmitted in-flight requests (audit F-16). */
+  private readonly inFlight = new Set<string>();
 
   constructor(options: ConnectionOptions) {
     this.options = options;
@@ -243,6 +245,13 @@ export class AgentConnection {
       this.ws?.send(recent.frame);
       return;
     }
+    // Retransmission of a still-executing request: never double-execute;
+    // the original execution will deliver the result (audit F-16).
+    if (this.inFlight.has(envelope.requestId)) {
+      this.logger.debug({ requestId: envelope.requestId }, 'Duplicate in-flight command ignored');
+      return;
+    }
+    this.inFlight.add(envelope.requestId);
     // §12.4: ack within 2 s of queueing.
     this.send(
       AckSchema.parse({
@@ -312,6 +321,7 @@ export class AgentConnection {
       };
     } finally {
       this.cancelled.delete(envelope.requestId);
+      this.inFlight.delete(envelope.requestId);
     }
     const frame = JSON.stringify(result);
     this.recentResults.set(envelope.requestId, { at: Date.now(), frame });

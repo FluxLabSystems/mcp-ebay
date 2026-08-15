@@ -144,6 +144,20 @@ describe('navigation + revisions + snapshot (FR-02/03, §14)', () => {
     expect(selectResult.selectedValue).toBe('price_low');
   });
 
+  it('select on radio targets returns the APPLIED state, not the request (F-13)', async () => {
+    const snap = await snapshot(harness.session, tabId, 3000);
+    const usedRadio = snap.snapshot.find((node) => node.role === 'radio' && node.name === 'Condition used');
+    expect(usedRadio?.elementRef).toBeTruthy();
+    const result = await select(harness.session, tabId, usedRadio!.elementRef!, 'used', 10_000);
+    expect(result.selectedValue).toBe('used'); // read back from el.checked/el.value
+  });
+
+  it('the tab automation last touched reports active=true (F-11)', async () => {
+    await snapshot(harness.session, tabId, 3000);
+    const tabs = await harness.session.listTabs();
+    expect(tabs.find((tab) => tab.tabId === tabId)?.active).toBe(true);
+  });
+
   it('scrolls and reports positions; sends allowed keys only', async () => {
     const scrolled = await scroll(harness.session, tabId, 0, 800);
     expect(scrolled.scrollY).toBeGreaterThan(0);

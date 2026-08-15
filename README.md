@@ -65,6 +65,43 @@ Live eBay smoke (opt-in, manual, on the Windows test machine only; never runs in
 BRIDGE_LIVE_SMOKE=1 BRIDGE_LIVE_LISTINGS="https://www.ebay.ca/itm/... ..." pnpm test:live
 ```
 
+## Single-machine smoke (laptop, no VPS)
+
+Run the whole bridge on one Windows machine against your provisioned Google Chrome — gateway in dev mode (OAuth disabled; never production), agent local, MCP Inspector as the client.
+
+```powershell
+# 0. Once: Node >= 22.12, Docker Desktop, and the clean Chrome install.
+corepack enable
+pnpm install --frozen-lockfile
+pnpm build
+
+# 1. Ephemeral PostgreSQL + schema
+docker run -d --name bridge-pg -e POSTGRES_USER=bridge -e POSTGRES_PASSWORD=bridge `
+  -e POSTGRES_DB=browser_bridge -p 127.0.0.1:5432:5432 postgres:17-alpine
+$env:DATABASE_URL = "postgres://bridge:bridge@127.0.0.1:5432/browser_bridge"
+node apps\gateway\dist\cli.js migrate up
+
+# 2. Gateway (terminal A) — dev mode only
+$env:NODE_ENV = "development"; $env:OAUTH_MODE = "disabled"
+$env:PUBLIC_BASE_URL = "http://localhost:3000"
+node apps\gateway\dist\server.js
+
+# 3. Agent (terminal B) — preflight proves branded Chrome (channel "chrome")
+$env:AGENT_GATEWAY_URL = "ws://127.0.0.1:3000/agent/ws"
+node apps\windows-agent\dist\cli.js preflight
+node apps\gateway\dist\cli.js device:pair --name laptop   # prints one-time token
+node apps\windows-agent\dist\cli.js pair --token <one-time-token>
+node apps\windows-agent\dist\cli.js run
+
+# 4. MCP client (terminal C)
+npx @modelcontextprotocol/inspector
+# Connect: Streamable HTTP → http://127.0.0.1:3000/mcp
+# Call browser.session_open with deviceId "default" (single online device),
+# then browser.navigate → https://www.ebay.ca/ , browser.snapshot, etc.
+```
+
+First-run eBay state (SDD §32.1 step 11): with the agent's Chrome window open, log into eBay once in that profile and set the delivery destination to M6H 2W9. Then `pnpm test:live` (with `BRIDGE_LIVE_SMOKE=1` and your listing URLs in `BRIDGE_LIVE_LISTINGS`) runs the live P0/P2 checks.
+
 ## VPS deployment (SDD §23–§25, §32)
 
 The stack **reuses** the pre-existing `fluxology-caddy` container on the external `fluxology-edge` network. It never creates, replaces, restarts, or reconfigures that Caddy, and no service publishes a host port.

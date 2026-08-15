@@ -88,6 +88,44 @@ jobs:
       - name: Build gateway image
         run: docker build -f apps/gateway/Dockerfile -t browser-mcp-gateway:ci .
 
+      # Audit F-01: boot the BUILT image against an ephemeral PostgreSQL,
+      # apply migrations from inside the container, and probe health —
+      # a broken entrypoint/healthcheck/migrations path fails CI, not the VPS.
+      - name: Image boot smoke
+        run: |
+          docker network create smoke-net
+          docker run -d --name smoke-pg --network smoke-net \
+            -e POSTGRES_USER=bridge -e POSTGRES_PASSWORD=bridge -e POSTGRES_DB=browser_bridge \
+            postgres:17-alpine
+          for i in $(seq 1 60); do
+            docker exec smoke-pg pg_isready -U bridge -d browser_bridge >/dev/null 2>&1 && break
+            sleep 1
+          done
+          # network-alias matches the compose alias and the Host allowlist.
+          docker run -d --name smoke-gw --network smoke-net \
+            --network-alias browser-mcp-gateway \
+            -e NODE_ENV=development -e OAUTH_MODE=disabled \
+            -e PUBLIC_BASE_URL=https://browser-mcp.example.com \
+            -e DATABASE_URL=postgres://bridge:bridge@smoke-pg:5432/browser_bridge \
+            browser-mcp-gateway:ci
+          sleep 5
+          docker exec smoke-gw node apps/gateway/dist/cli.js migrate up
+          docker exec smoke-gw node apps/gateway/dist/cli.js migrate status
+          docker run --rm --network smoke-net curlimages/curl:latest -sf http://browser-mcp-gateway:3000/healthz
+          docker run --rm --network smoke-net curlimages/curl:latest -sf http://browser-mcp-gateway:3000/readyz
+          docker exec smoke-gw node apps/gateway/dist/healthcheck.js
+          echo "image boot smoke OK"
+          docker logs smoke-gw | tail -5
+
+      # Audit F-25: fail on critical, fixable CVEs in the runtime image.
+      - name: Scan image for critical vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: browser-mcp-gateway:ci
+          severity: CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+
       # §28 job 9: compose file validates (external edge network stubbed,
       # since fluxology-edge exists only on the production VPS).
       - name: Validate compose config
@@ -96,3 +134,14 @@ jobs:
           cp deploy/env.example deploy/.env
           docker compose -f deploy/compose.yaml config >/dev/null
           echo "compose config OK"
+
+  # Audit F-25: repository secret scanning across full history.
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
