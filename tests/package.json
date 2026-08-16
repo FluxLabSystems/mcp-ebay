@@ -1,0 +1,33 @@
+{
+  "name": "@browser-bridge/tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cross-package test suites (SDD v0.5 section 27)",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@browser-bridge/audit": "workspace:*",
+    "@browser-bridge/browser-core": "workspace:*",
+    "@browser-bridge/config": "workspace:*",
+    "@browser-bridge/gateway": "workspace:*",
+    "@browser-bridge/policy": "workspace:*",
+    "@browser-bridge/protocol": "workspace:*",
+    "@browser-bridge/site-ebay": "workspace:*",
+    "@browser-bridge/windows-agent": "workspace:*",
+    "@modelcontextprotocol/server": "2.0.0",
+    "jose": "^6.2.8",
+    "linkedom": "^0.18.13",
+    "pino": "^10.3.1",
+    "playwright": "1.56.1",
+    "ws": "^8.21.3",
+    "zod": "^4.4.3",
+    "@hono/node-server": "^2.1.0",
+    "hono": "^4.13.2"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "vitest": "^4.1.10"
+  }
+}

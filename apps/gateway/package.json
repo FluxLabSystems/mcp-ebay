@@ -1,0 +1,41 @@
+{
+  "name": "@browser-bridge/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Remote MCP gateway: Hono + MCP SDK v2 modern profile, OAuth resource server, device routing, artifacts (SDD v0.5 sections 9-12, 16, 21, 23)",
+  "bin": {
+    "browser-bridge-gateway": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js",
+    "migrate": "node dist/cli.js migrate up"
+  },
+  "dependencies": {
+    "@browser-bridge/audit": "workspace:*",
+    "@browser-bridge/config": "workspace:*",
+    "@browser-bridge/policy": "workspace:*",
+    "@browser-bridge/protocol": "workspace:*",
+    "@hono/node-server": "^2.1.0",
+    "@modelcontextprotocol/hono": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "hono": "^4.13.2",
+    "jose": "^6.2.8",
+    "pg": "^8.23.0",
+    "pino": "^10.3.1",
+    "ws": "^8.21.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.21.0",
+    "@types/ws": "^8.18.1"
+  }
+}

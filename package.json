@@ -1,0 +1,33 @@
+{
+  "name": "browser-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Connected Browser Bridge: remote MCP gateway + Windows browser agent controlling user-provisioned Google Chrome (SDD v0.5)",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "eslint .",
+    "test": "pnpm run build && pnpm run test:unit && pnpm run test:contract && pnpm run test:security && pnpm run test:integration && pnpm run test:e2e",
+    "test:unit": "vitest run --project unit",
+    "test:contract": "vitest run --project contract",
+    "test:security": "vitest run --project security",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "vitest run --project e2e",
+    "test:live": "BRIDGE_LIVE_SMOKE=1 vitest run --project live",
+    "db:migrate": "pnpm --filter @browser-bridge/gateway run migrate"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.3",
+    "eslint": "^9.39.5",
+    "typescript": "6.0.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.10",
+    "@eslint/js": "^9.39.5"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@browser-bridge/policy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "URL/SSRF, secret-field, and protected-action policy engine (SDD v0.5 section 19)",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@browser-bridge/protocol": "workspace:*"
+  }
+}
