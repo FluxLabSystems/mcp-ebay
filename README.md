@@ -65,7 +65,27 @@ Live eBay smoke (opt-in, manual, on the Windows test machine only; never runs in
 BRIDGE_LIVE_SMOKE=1 BRIDGE_LIVE_LISTINGS="https://www.ebay.ca/itm/... ..." pnpm test:live
 ```
 
-## Single-machine smoke (laptop, no VPS)
+## Single-machine quickstart (Windows, three commands)
+
+The scripted version of the manual smoke below — same topology (gateway in
+dev mode, agent local, everything on localhost), zero terminals to juggle:
+
+```powershell
+# once (and again after every git pull):
+powershell -ExecutionPolicy Bypass -File scripts\windows\lane-a-setup.ps1
+# every session:
+powershell -ExecutionPolicy Bypass -File scripts\windows\lane-a-run.ps1
+# attach Claude Code once:
+claude mcp add --transport http browser-bridge http://127.0.0.1:3000/mcp
+```
+
+`lane-a-run.ps1` starts PostgreSQL and the gateway (minimized window), runs
+the branded-Chrome preflight, pairs the PC on first run, starts the agent in
+its own window, and prints the attach line. First run only: log into eBay in
+the automation Chrome window and set your delivery destination. Dev mode
+disables OAuth and binds to localhost — never expose it to the network.
+
+## Single-machine smoke (laptop, no VPS — manual steps)
 
 Run the whole bridge on one Windows machine against your provisioned Google Chrome — gateway in dev mode (OAuth disabled; never production), agent local, MCP Inspector as the client.
 
