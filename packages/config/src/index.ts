@@ -53,6 +53,16 @@ export const GatewayEnvSchema = z
     RATE_LIMIT_MCP_PER_MINUTE: z.coerce.number().int().min(0).max(100000).default(120),
     /** Pairing attempts per minute per remote address; 0 disables. */
     RATE_LIMIT_PAIR_PER_MINUTE: z.coerce.number().int().min(0).max(1000).default(10),
+    /**
+     * Fluxology dashboard-api root (serves /v1/{scope}/feed|upsert). When
+     * unset the dashboard.* tools are not registered. Plain http is fine on
+     * the internal docker network; https for a public hostname.
+     */
+    DASHBOARD_API_BASE_URL: z.url().optional(),
+    /** Per-dashboard ingest tokens; dashboard.upsert requires the matching one. */
+    DEALS_INGEST_TOKEN: z.string().min(1).optional(),
+    OFFICE_INGEST_TOKEN: z.string().min(1).optional(),
+    JOBS_INGEST_TOKEN: z.string().min(1).optional(),
   })
   .check((ctx) => {
     const env = ctx.value;
@@ -87,6 +97,20 @@ export const GatewayEnvSchema = z
         path: ['ARTIFACT_URL_SECRET'],
       });
     }
+    // A configured ingest token with no API base URL is a misconfiguration
+    // that would otherwise fail silently (tools simply absent).
+    const anyIngestToken =
+      env.DEALS_INGEST_TOKEN !== undefined ||
+      env.OFFICE_INGEST_TOKEN !== undefined ||
+      env.JOBS_INGEST_TOKEN !== undefined;
+    if (anyIngestToken && env.DASHBOARD_API_BASE_URL === undefined) {
+      ctx.issues.push({
+        code: 'custom',
+        message: 'DASHBOARD_API_BASE_URL is required when any *_INGEST_TOKEN is set',
+        input: env,
+        path: ['DASHBOARD_API_BASE_URL'],
+      });
+    }
   });
 
 export interface GatewayConfig {
@@ -107,6 +131,11 @@ export interface GatewayConfig {
   allowedHosts: string[];
   rateLimitMcpPerMinute: number;
   rateLimitPairPerMinute: number;
+  /** Fluxology dashboard write-path; null when DASHBOARD_API_BASE_URL is unset. */
+  dashboards: {
+    baseUrl: string;
+    tokens: { deals?: string; office?: string; jobs?: string };
+  } | null;
 }
 
 export function loadGatewayConfig(env: Record<string, string | undefined> = process.env): GatewayConfig {
@@ -139,6 +168,17 @@ export function loadGatewayConfig(env: Record<string, string | undefined> = proc
     mcpLegacyCompatibility: parsed.MCP_LEGACY_COMPATIBILITY,
     rateLimitMcpPerMinute: parsed.RATE_LIMIT_MCP_PER_MINUTE,
     rateLimitPairPerMinute: parsed.RATE_LIMIT_PAIR_PER_MINUTE,
+    dashboards:
+      parsed.DASHBOARD_API_BASE_URL === undefined
+        ? null
+        : {
+            baseUrl: parsed.DASHBOARD_API_BASE_URL.replace(/\/+$/, ''),
+            tokens: {
+              ...(parsed.DEALS_INGEST_TOKEN === undefined ? {} : { deals: parsed.DEALS_INGEST_TOKEN }),
+              ...(parsed.OFFICE_INGEST_TOKEN === undefined ? {} : { office: parsed.OFFICE_INGEST_TOKEN }),
+              ...(parsed.JOBS_INGEST_TOKEN === undefined ? {} : { jobs: parsed.JOBS_INGEST_TOKEN }),
+            },
+          },
     allowedHosts: [
       publicBaseUrl.hostname,
       'browser-mcp-gateway',

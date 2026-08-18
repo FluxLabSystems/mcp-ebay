@@ -344,12 +344,12 @@
       },
       "protocolMappers": [
         {
-          "name": "audience: fluxology-mcp",
+          "name": "audience: browser bridge",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.custom.audience": "https://mcp.fluxology.ca/mcp",
+            "included.custom.audience": "https://browser-mcp.fluxology.ca/mcp",
             "id.token.claim": "false",
             "access.token.claim": "true",
             "introspection.token.claim": "true"
@@ -359,7 +359,7 @@
     },
     {
       "name": "office:write",
-      "description": "Upsert Office Scout dashboard records via fluxology-mcp",
+      "description": "Upsert Office Scout dashboard records via the Browser Bridge gateway",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "true",
@@ -368,12 +368,12 @@
       },
       "protocolMappers": [
         {
-          "name": "audience: fluxology-mcp",
+          "name": "audience: browser bridge",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.custom.audience": "https://mcp.fluxology.ca/mcp",
+            "included.custom.audience": "https://browser-mcp.fluxology.ca/mcp",
             "id.token.claim": "false",
             "access.token.claim": "true",
             "introspection.token.claim": "true"
@@ -383,7 +383,7 @@
     },
     {
       "name": "deals:write",
-      "description": "Upsert Deals dashboard records via fluxology-mcp",
+      "description": "Upsert Deals dashboard records via the Browser Bridge gateway",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "true",
@@ -392,12 +392,12 @@
       },
       "protocolMappers": [
         {
-          "name": "audience: fluxology-mcp",
+          "name": "audience: browser bridge",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.custom.audience": "https://mcp.fluxology.ca/mcp",
+            "included.custom.audience": "https://browser-mcp.fluxology.ca/mcp",
             "id.token.claim": "false",
             "access.token.claim": "true",
             "introspection.token.claim": "true"
@@ -407,7 +407,7 @@
     },
     {
       "name": "jobs:write",
-      "description": "Upsert Jobs dashboard records via fluxology-mcp",
+      "description": "Upsert Jobs dashboard records via the Browser Bridge gateway",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "true",
@@ -416,12 +416,12 @@
       },
       "protocolMappers": [
         {
-          "name": "audience: fluxology-mcp",
+          "name": "audience: browser bridge",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.custom.audience": "https://mcp.fluxology.ca/mcp",
+            "included.custom.audience": "https://browser-mcp.fluxology.ca/mcp",
             "id.token.claim": "false",
             "access.token.claim": "true",
             "introspection.token.claim": "true"

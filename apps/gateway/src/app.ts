@@ -17,6 +17,7 @@ import {
 import type { Logger } from 'pino';
 import type { GatewayConfig } from '@browser-bridge/config';
 import {
+  ALL_DASHBOARD_SCOPES,
   BridgeError,
   ERROR_CATALOG,
   getToolEntry,
@@ -29,6 +30,7 @@ import {
 import type { ArtifactTokenIssuer } from './agentAuth.js';
 import type { ArtifactStore } from './artifacts/store.js';
 import type { CommandBroker } from './broker.js';
+import { DashboardClient } from './dashboards/client.js';
 import type { DeviceRegistry } from './devices/registry.js';
 import { buildMcpServer } from './mcp/server.js';
 import { handlePairRequest } from './pairing.js';
@@ -45,6 +47,8 @@ export interface GatewayAppDeps {
   verifier: OAuthTokenVerifier | null;
   logger: Logger;
   serverVersion: string;
+  /** Injectable fetch for the dashboard write-path (tests); defaults to global fetch. */
+  dashboardFetch?: typeof fetch;
 }
 
 export interface GatewayApp {
@@ -56,7 +60,7 @@ export interface GatewayApp {
 const DEV_AUTH_INFO: AuthInfo = {
   token: 'local-development',
   clientId: 'local-dev',
-  scopes: [SCOPE_READ, SCOPE_INTERACT, SCOPE_ADMIN],
+  scopes: [SCOPE_READ, SCOPE_INTERACT, SCOPE_ADMIN, ...ALL_DASHBOARD_SCOPES],
   expiresAt: Math.floor(Date.now() / 1000) + 10 * 365 * 24 * 3600,
 };
 
@@ -66,7 +70,12 @@ function protectedResourceMetadata(config: GatewayConfig): Record<string, unknow
   return {
     resource,
     ...(config.oauth.mode === 'required' ? { authorization_servers: [config.oauth.issuer] } : {}),
-    scopes_supported: [SCOPE_READ, SCOPE_INTERACT, SCOPE_ADMIN],
+    scopes_supported: [
+      SCOPE_READ,
+      SCOPE_INTERACT,
+      SCOPE_ADMIN,
+      ...(config.dashboards === null ? [] : ALL_DASHBOARD_SCOPES),
+    ],
     bearer_methods_supported: ['header'],
     resource_name: 'Connected Browser Bridge MCP',
   };
@@ -78,8 +87,18 @@ export function buildGatewayApp(deps: GatewayAppDeps): GatewayApp {
 
   const resourceMetadataUrl = new URL('/.well-known/oauth-protected-resource/mcp', config.publicBaseUrl).toString();
 
+  const dashboards =
+    config.dashboards === null
+      ? null
+      : new DashboardClient({
+          baseUrl: config.dashboards.baseUrl,
+          tokens: config.dashboards.tokens,
+          ...(deps.dashboardFetch === undefined ? {} : { fetchImpl: deps.dashboardFetch }),
+        });
+
   const mcpHandler = createMcpHandler(
-    ({ authInfo }) => buildMcpServer({ broker: deps.broker, serverVersion: deps.serverVersion }, authInfo),
+    ({ authInfo }) =>
+      buildMcpServer({ broker: deps.broker, serverVersion: deps.serverVersion, dashboards }, authInfo),
     {
       // §9: only the 2026-07-28 modern profile unless compatibility is
       // explicitly enabled by configuration.

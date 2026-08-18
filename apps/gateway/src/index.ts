@@ -2,6 +2,7 @@ export * from './agentAuth.js';
 export * from './artifacts/store.js';
 export * from './app.js';
 export * from './broker.js';
+export * from './dashboards/client.js';
 export * from './devices/registry.js';
 export * from './devices/wsHandler.js';
 export * from './auth/verifier.js';
