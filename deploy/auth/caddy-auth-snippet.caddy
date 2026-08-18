@@ -1,0 +1,82 @@
+# Site block for the EXISTING fluxology-caddy instance — auth.fluxology.ca.
+# Add to the VPS-wide Caddyfile and validate/reload with the existing
+# deployment method (docker exec <caddy> caddy validate / caddy reload).
+# Do NOT overwrite the global Caddyfile and do NOT recreate the
+# fluxology-caddy container. Do NOT paste a second auth.fluxology.ca block —
+# Caddy rejects duplicate hostnames and takes every site down with it.
+#
+# Upstream: the Keycloak container from deploy/auth/compose.auth.yaml,
+# reachable as fluxology-auth:8080 on the shared fluxology-edge network.
+# Keycloak runs with --proxy-headers xforwarded and --http-enabled true and
+# KC_HOSTNAME=https://auth.fluxology.ca, so it trusts exactly the
+# X-Forwarded-* values set below and builds all its URLs (issuer, JWKS,
+# admin console) against the public hostname.
+#
+# If the VPS Caddyfile already carries the (fluxology-defaults) snippet from
+# fluxology-site docs/CADDY-INTEGRATION.md, replace the encode/header/log
+# directives below with a single `import fluxology-defaults` line — they are
+# copies of that snippet so this block also works standalone.
+
+auth.fluxology.ca {
+	encode zstd gzip
+
+	header {
+		# Caddy is the sole TLS terminator; it alone asserts HTTPS-only.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	# The only per-request record for token and login traffic.
+	log {
+		output stdout
+		format console
+	}
+
+	# Largest legitimate payload on this hostname is an admin-console partial
+	# import upload; token/authorize requests are far below this. Write it as
+	# MiB, not MB: Caddy reads `4MB` as 4000000.
+	request_body {
+		max_size 4MiB
+	}
+
+	reverse_proxy fluxology-auth:8080 {
+		# Keycloak (--proxy-headers xforwarded) derives its public URLs and
+		# secure-cookie behaviour from these. Caddy appends X-Forwarded-For
+		# on its own; the rest are pinned explicitly so a future Caddy
+		# default change cannot silently break issuer/redirect construction.
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+		header_up X-Forwarded-Port {port}
+
+		# Readiness, on Keycloak's MANAGEMENT interface (:9000 — enabled by
+		# KC_HEALTH_ENABLED=true in compose.auth.yaml). /health/ready fails
+		# when the auth DB is unreachable; with no working database nothing
+		# on this hostname can answer anyway, so unlike the mcp.fluxology.ca
+		# block there is no bootstrap route worth keeping in rotation.
+		health_uri /health/ready
+		health_port 9000
+		health_interval 30s
+		health_timeout 5s
+	}
+
+	# --- Optional: RFC 8414 path-insertion discovery shim -----------------
+	# Some OAuth clients try
+	#   /.well-known/oauth-authorization-server/realms/fluxology
+	# at the ORIGIN before falling back to OIDC discovery at
+	#   /realms/fluxology/.well-known/openid-configuration
+	# Verify first whether your Keycloak version serves the former natively
+	# (see deploy/auth/README.md §Verify); only if it 404s AND a client
+	# refuses the OIDC fallback, wrap the reverse_proxy above in a
+	# `handle { ... }` block and add before it:
+	#
+	# handle /.well-known/oauth-authorization-server/realms/* {
+	# 	uri strip_prefix /.well-known/oauth-authorization-server
+	# 	rewrite * {path}/.well-known/openid-configuration
+	# 	reverse_proxy fluxology-auth:8080 {
+	# 		header_up X-Forwarded-Proto {scheme}
+	# 		header_up X-Forwarded-Host {host}
+	# 		header_up X-Forwarded-Port {port}
+	# 	}
+	# }
+}
