@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<!-- Synthetic kijiji.ca search-results page (radius-pass traversal fixture):
+     three cards (one a duplicate ad id that must dedupe), one off-site
+     anchor that must be ignored, and a next-page pagination anchor. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>lego in City of Toronto | Kijiji</title>
+</head>
+<body>
+  <ul data-testid="srp-search-list">
+    <li data-testid="listing-card-1712345678">
+      <a href="/v-buy-sell/city-of-toronto/lego-friends-bulk-lot-5-lbs/1712345678">
+        <h3>LEGO Friends Bulk Lot 5 lbs</h3>
+      </a>
+      <div data-testid="listing-price">$35.00</div>
+      <span data-testid="listing-location">City of Toronto</span>
+      <span data-testid="listing-date">Yesterday</span>
+    </li>
+    <li data-testid="listing-card-2109876543">
+      <a href="/v-buy-sell/north-york/lego-technic-swap/2109876543">
+        <h3>LEGO Technic - Swap for Star Wars</h3>
+      </a>
+      <div data-testid="listing-price">Swap / Trade</div>
+      <span data-testid="listing-location">North York</span>
+      <span data-testid="listing-date">2 days ago</span>
+    </li>
+    <li data-testid="listing-card-duplicate">
+      <!-- duplicate link to the first ad; traversal must dedupe -->
+      <a href="/v-buy-sell/city-of-toronto/lego-friends-bulk-lot-5-lbs/1712345678?src=srp">
+        <h3>LEGO Friends Bulk Lot 5 lbs (duplicate card)</h3>
+      </a>
+      <div data-testid="listing-price">$35.00</div>
+    </li>
+    <li>
+      <!-- off-site anchor with a numeric tail; host filter must exclude it -->
+      <a href="https://example.com/lego/99999999">Sponsored: lego on example.com</a>
+    </li>
+  </ul>
+  <nav aria-label="Pagination">
+    <a data-testid="pagination-next-link" href="/b-buy-sell/city-of-toronto/lego/page-2/c10l1700273?radius=45">Next</a>
+  </nav>
+</body>
+</html>

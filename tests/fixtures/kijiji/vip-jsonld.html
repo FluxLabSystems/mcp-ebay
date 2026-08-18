@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<!-- Synthetic kijiji.ca VIP fixture: active ad with schema.org JSON-LD plus
+     conflicting DOM price so tests can assert jsonld provenance wins.
+     Content is fabricated for tests. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>LEGO Friends Bulk Lot 5 lbs | Kijiji</title>
+  <link rel="canonical" href="https://www.kijiji.ca/v-buy-sell/city-of-toronto/lego-friends-bulk-lot-5-lbs/1712345678?utm_source=share">
+  <meta property="og:url" content="https://www.kijiji.ca/v-buy-sell/city-of-toronto/lego-friends-bulk-lot-5-lbs/1712345678">
+  <meta property="og:title" content="LEGO Friends Bulk Lot 5 lbs | Kijiji">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "LEGO Friends Bulk Lot 5 lbs",
+    "sku": "1712345678",
+    "description": "Five pounds of clean mixed LEGO Friends bricks with minifigures. Pickup near Dufferin Grove.",
+    "image": [
+      "https://media.kijiji.ca/api/v1/ca-prod-fsbo-ads/images/aa/aaaa1111.jpg",
+      "https://media.kijiji.ca/api/v1/ca-prod-fsbo-ads/images/bb/bbbb2222.jpg"
+    ],
+    "offers": {
+      "@type": "Offer",
+      "price": "35.00",
+      "priceCurrency": "CAD",
+      "availability": "https://schema.org/InStock",
+      "url": "https://www.kijiji.ca/v-buy-sell/city-of-toronto/lego-friends-bulk-lot-5-lbs/1712345678",
+      "seller": { "@type": "Person", "name": "brickmover_to" }
+    }
+  }
+  </script>
+</head>
+<body>
+  <h1 data-testid="listing-title">LEGO Friends Bulk Lot 5 lbs (DOM heading)</h1>
+
+  <!-- DOM price deliberately disagrees with JSON-LD so provenance is observable. -->
+  <div data-testid="listing-price">$40.00</div>
+
+  <span data-testid="listing-location">Toronto, ON M6H 2W9</span>
+  <time datetime="2026-08-15T09:30:00.000Z">August 15, 2026</time>
+
+  <ul data-testid="attribute-list">
+    <li><span>For Sale By:</span> <span>Owner</span></li>
+    <li><span>Condition:</span> <span>Used</span></li>
+  </ul>
+
+  <div data-testid="listing-description">
+    Five pounds of clean mixed LEGO Friends bricks with minifigures (DOM copy).
+  </div>
+
+  <div class="vip-actions">
+    <button>Reply to this ad</button>
+    <button>Add to favourites</button>
+  </div>
+</body>
+</html>

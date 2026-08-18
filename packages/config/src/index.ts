@@ -164,6 +164,12 @@ export const AgentEnvSchema = z.object({
   LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
   /** Fallback destination when a command envelope does not carry one (audit F-09). */
   EBAY_DESTINATION_POSTAL_CODE: z.string().default('M6H 2W9'),
+  /**
+   * Comma-separated versioned site-profile ids the agent enables. The
+   * default enables every profile compiled into the agent; narrow it to
+   * e.g. "ebay.ca.v1" to pin a session to one marketplace.
+   */
+  AGENT_SITE_PROFILES: z.string().default('ebay.ca.v1,kijiji.ca.v1'),
 });
 
 export interface AgentConfig {
@@ -176,6 +182,8 @@ export interface AgentConfig {
   heartbeatSeconds: number;
   logLevel: (typeof LOG_LEVELS)[number];
   ebayDestinationPostalCode: string;
+  /** Ordered, deduplicated site-profile ids from AGENT_SITE_PROFILES. */
+  siteProfileIds: string[];
 }
 
 export const DEFAULT_PROFILE_LEAF = ['Fluxology', 'BrowserBridge', 'profiles', 'ebay-research'] as const;
@@ -217,6 +225,16 @@ export function loadAgentConfig(
   const ws = new URL(parsed.AGENT_GATEWAY_URL);
   const httpProtocol = ws.protocol === 'wss:' ? 'https:' : 'http:';
   const httpBase = `${httpProtocol}//${ws.host}`;
+  const siteProfileIds = [
+    ...new Set(
+      parsed.AGENT_SITE_PROFILES.split(',')
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0),
+    ),
+  ];
+  if (siteProfileIds.length === 0) {
+    throw new Error('AGENT_SITE_PROFILES must name at least one site profile id');
+  }
   return {
     gatewayWsUrl: parsed.AGENT_GATEWAY_URL,
     gatewayHttpUrl: httpBase,
@@ -226,5 +244,6 @@ export function loadAgentConfig(
     heartbeatSeconds: parsed.AGENT_HEARTBEAT_SECONDS,
     logLevel: parsed.LOG_LEVEL,
     ebayDestinationPostalCode: parsed.EBAY_DESTINATION_POSTAL_CODE,
+    siteProfileIds,
   };
 }

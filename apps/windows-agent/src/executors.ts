@@ -43,10 +43,17 @@ import {
   classifyEbayPage,
   EBAY_GALLERY_SELECTORS,
   extractListing,
+  extractListingCandidates,
   isListingPage,
   normalizeEbayImageUrl,
   EBAY_SITE_PROFILE_ID,
 } from '@browser-bridge/site-ebay';
+import {
+  classifyKijijiPage,
+  extractKijijiListing,
+  extractSearchResults,
+  KIJIJI_SITE_PROFILE_ID,
+} from '@browser-bridge/site-kijiji';
 import type { BrowserSessionRuntime } from '@browser-bridge/browser-core';
 import { ensureDestination } from './destinationFlow.js';
 import type { Logger } from './logger.js';
@@ -94,6 +101,26 @@ function ebayGalleryHints(): GalleryHints {
     gallerySelectors: EBAY_GALLERY_SELECTORS,
     normalizeImageUrl: normalizeEbayImageUrl,
   };
+}
+
+type ExtractionSite = 'ebay' | 'kijiji' | 'generic';
+
+/**
+ * Extraction dispatches by the page actually loaded, not by the session's
+ * (possibly composite) profile id — the policy layer already decides which
+ * hosts are reachable at navigation time, so by the time extract runs on a
+ * marketplace page that marketplace was allowed. 'generic' covers test
+ * harness profiles and falls through to the historical behavior.
+ */
+function siteForUrl(pageUrl: string): ExtractionSite {
+  try {
+    const host = new URL(pageUrl).hostname.toLowerCase();
+    if (host === 'kijiji.ca' || host.endsWith('.kijiji.ca')) return 'kijiji';
+    if (/(?:^|\.)ebay\.(?:ca|com)$/.test(host)) return 'ebay';
+    return 'generic';
+  } catch {
+    return 'generic';
+  }
 }
 
 export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelope): Promise<ExecutionOutcome> {
@@ -184,8 +211,11 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
           tabId,
           ...(args as object),
         });
+        // Hint selection follows the loaded page, not the profile id: a
+        // composite profile (e.g. ebay+kijiji) still gets eBay hints on
+        // eBay pages and generic enumeration elsewhere.
         const hints =
-          host.galleryHints ?? (session.policy.profile.id === EBAY_SITE_PROFILE_ID ? ebayGalleryHints() : {});
+          host.galleryHints ?? (siteForUrl(session.getTab(tabId).page.url()) === 'ebay' ? ebayGalleryHints() : {});
         const outcome = await enumerateImages(session, tabId, input.scope, hints);
         return { result: { ...outcome }, pageRevision: outcome.pageRevision, artifacts: [] };
       }
@@ -262,7 +292,7 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
         // the wire envelope (audit F-09); it is not part of the public
         // tool schema, so strip it before normative validation.
         const { destinationPostalCode, ...toolArgs } = args as Record<string, unknown>;
-        ExtractInput.parse({
+        const input = ExtractInput.parse({
           browserSessionHandle: envelope.browserSessionHandle,
           tabId,
           ...toolArgs,
@@ -271,7 +301,7 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
           typeof destinationPostalCode === 'string' && destinationPostalCode.length > 0
             ? destinationPostalCode
             : host.expectedPostalCode;
-        return executeExtract(host, session, tabId, expectedPostal);
+        return executeExtract(host, session, tabId, expectedPostal, input.siteProfile);
       }
       case 'handoff': {
         const input = HandoffInput.parse({
@@ -295,25 +325,122 @@ async function executeExtract(
   session: BrowserSessionRuntime,
   tabId: string,
   expectedPostalCode: string = host.expectedPostalCode,
+  declaredSiteProfile: string = EBAY_SITE_PROFILE_ID,
 ): Promise<ExecutionOutcome> {
   const tab = session.getTab(tabId);
   const pageUrl = tab.page.url();
-  const isEbayProfile = session.policy.profile.id === EBAY_SITE_PROFILE_ID;
-  if (isEbayProfile) {
-    const kind = classifyEbayPage(pageUrl);
-    if (kind !== 'listing') {
+  const site = siteForUrl(pageUrl);
+
+  // The declared siteProfile is caller intent; the page decides what runs.
+  // A mismatch is a warning, never a refusal — the scheduled research runs
+  // hop between marketplaces inside one session.
+  const intentWarnings: string[] = [];
+  if (site !== 'generic') {
+    const activeProfile = site === 'kijiji' ? KIJIJI_SITE_PROFILE_ID : EBAY_SITE_PROFILE_ID;
+    if (declaredSiteProfile !== activeProfile) {
+      intentWarnings.push(
+        `DECLARED_SITE_PROFILE_MISMATCH: extraction ran ${activeProfile} for ${pageUrl}; the call declared ${declaredSiteProfile}.`,
+      );
+    }
+  }
+
+  if (site === 'kijiji') {
+    const kind = classifyKijijiPage(pageUrl);
+    if (kind === 'other') {
       throw new BridgeError(
         'SITE_PROFILE_MISMATCH',
-        `ebay.ca.v1 listing extraction supports canonical /itm/ pages; current page is "${kind}" (${pageUrl}).`,
+        `kijiji.ca.v1 extraction supports ad (VIP) and search (/b-*) pages; current page is "${kind}" (${pageUrl}). Navigate to a search-results or ad page first.`,
         { pageUrl, kind },
       );
     }
+    const html = await tab.page.content();
+    const { document } = parseHTML(html);
+    if (kind === 'search') {
+      const searchPage = extractSearchResults(document as unknown as Document, pageUrl);
+      const warnings = [...intentWarnings];
+      if (searchPage.results.length === 0) {
+        warnings.push(
+          'NO_LISTING_CANDIDATES: no ad links found — an empty results page, or the result-card selectors need updating.',
+        );
+      }
+      return {
+        result: {
+          siteProfile: KIJIJI_SITE_PROFILE_ID,
+          pageRevision: tab.revision,
+          record: {
+            siteProfile: KIJIJI_SITE_PROFILE_ID,
+            pageKind: 'search',
+            pageUrl,
+            candidateCount: searchPage.results.length,
+            candidates: searchPage.results,
+            hasNextPage: searchPage.hasNextPage,
+            nextPageUrl: searchPage.nextPageUrl,
+            note: 'Candidate snippets are traversal hints; open each ad URL and extract it for canonical evidence.',
+          },
+          warnings,
+        },
+        pageRevision: tab.revision,
+        artifacts: [],
+      };
+    }
+    const { record, warnings } = extractKijijiListing(document as unknown as Document, pageUrl, {
+      pageRevision: tab.revision,
+    });
+    return {
+      result: {
+        siteProfile: record.siteProfile,
+        pageRevision: tab.revision,
+        record: record as unknown as Record<string, unknown>,
+        warnings: [...intentWarnings, ...warnings],
+      },
+      pageRevision: tab.revision,
+      artifacts: [],
+    };
+  }
+
+  // eBay pages dispatch by kind (FR-15); 'generic' hosts (test-harness
+  // profiles) keep the historical straight-to-listing-extractor path.
+  const kind = site === 'ebay' ? classifyEbayPage(pageUrl) : ('listing' as const);
+  if (kind === 'search' || kind === 'store') {
+    const html = await tab.page.content();
+    const { document } = parseHTML(html);
+    const candidates = extractListingCandidates(document as unknown as Document, pageUrl);
+    const warnings = [...intentWarnings];
+    if (candidates.length === 0) {
+      warnings.push(
+        'NO_LISTING_CANDIDATES: no /itm/ links found — an empty results page, or the result-card selectors need updating.',
+      );
+    }
+    return {
+      result: {
+        siteProfile: EBAY_SITE_PROFILE_ID,
+        pageRevision: tab.revision,
+        record: {
+          siteProfile: EBAY_SITE_PROFILE_ID,
+          pageKind: kind,
+          pageUrl,
+          candidateCount: candidates.length,
+          candidates,
+          note: 'Candidate snippets are traversal hints; open each /itm/ URL and extract it for canonical evidence.',
+        },
+        warnings,
+      },
+      pageRevision: tab.revision,
+      artifacts: [],
+    };
+  }
+  if (kind !== 'listing') {
+    throw new BridgeError(
+      'SITE_PROFILE_MISMATCH',
+      `ebay.ca.v1 extraction supports item (/itm/), search (/sch/), and seller store (/str/, /usr/) pages; current page is "${kind}" (${pageUrl}). Navigate to a search-results, store, or item page first.`,
+      { pageUrl, kind },
+    );
   }
 
   // §20.1: verify/set destination through reversible controls before
   // marking shipping destination-resolved.
   let verifiedDestination: { postalCode: string; verified: boolean } | undefined;
-  if (isEbayProfile && isListingPage(pageUrl)) {
+  if (site === 'ebay' && isListingPage(pageUrl)) {
     const outcome = await ensureDestination(session, tabId, expectedPostalCode, host.logger);
     verifiedDestination =
       outcome.postalCode === null
@@ -329,7 +456,7 @@ async function executeExtract(
     pageRevision: tab.revision,
   });
 
-  const allWarnings = [...warnings];
+  const allWarnings = [...intentWarnings, ...warnings];
   if (verifiedDestination !== undefined && !verifiedDestination.verified) {
     allWarnings.push('DESTINATION_UNVERIFIED');
   }

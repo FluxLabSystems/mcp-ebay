@@ -1,0 +1,21 @@
+{
+  "name": "@browser-bridge/site-kijiji",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "kijiji.ca.v1 site profile: allowlist, protected-action rules, extraction, search traversal for the Fluxology local-classifieds workflows (read-only MVP)",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@browser-bridge/policy": "workspace:*",
+    "zod": "^4.4.3"
+  }
+}

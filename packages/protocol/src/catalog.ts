@@ -211,7 +211,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'read',
     timeoutMs: DEFAULT_TIMEOUT_MS,
     description:
-      'Run the named versioned site-profile extraction (ebay.ca.v1) returning a structured record with provenance and confidence.',
+      'Run versioned site-profile extraction on the current page, dispatched by page kind. eBay (ebay.ca.v1): item /itm/ pages return the full listing record with provenance and confidence; search /sch/ and seller store /str/ or /usr/ pages return an ordered listing-candidate list for traversal. Kijiji (kijiji.ca.v1): ad (VIP) pages return the full record; search /b-* pages return candidates plus next-page pagination. Candidate snippets are traversal hints - follow each candidate URL and extract the item page for canonical evidence.',
     inputSchema: ExtractInput,
     outputSchema: ExtractOutput,
   },

@@ -258,7 +258,12 @@ export const WaitOutput = z.strictObject({
 export const ExtractInput = z.strictObject({
   browserSessionHandle: z.string(),
   tabId: z.string(),
-  siteProfile: z.literal('ebay.ca.v1'),
+  /**
+   * Versioned site profiles the bridge ships extractors for. The agent
+   * dispatches by the live page's host and page kind; this field declares
+   * caller intent and a mismatch downgrades to a warning, never a refusal.
+   */
+  siteProfile: z.enum(['ebay.ca.v1', 'kijiji.ca.v1']),
 });
 export const ExtractOutput = z.strictObject({
   siteProfile: z.string(),

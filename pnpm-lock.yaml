@@ -93,6 +93,9 @@ importers:
       '@browser-bridge/site-ebay':
         specifier: workspace:*
         version: link:../../packages/site-ebay
+      '@browser-bridge/site-kijiji':
+        specifier: workspace:*
+        version: link:../../packages/site-kijiji
       linkedom:
         specifier: ^0.18.13
         version: 0.18.13
@@ -157,6 +160,15 @@ importers:
       '@browser-bridge/protocol':
         specifier: workspace:*
         version: link:../protocol
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
+  packages/site-kijiji:
+    dependencies:
+      '@browser-bridge/policy':
+        specifier: workspace:*
+        version: link:../policy
       zod:
         specifier: ^4.4.3
         version: 4.4.3
