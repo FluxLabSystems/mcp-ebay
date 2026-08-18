@@ -8,8 +8,10 @@
  */
 import { buildChromeLaunchPlan, preflightBrowser } from '@browser-bridge/browser-core';
 import { loadAgentConfig } from '@browser-bridge/config';
+import { mergeSiteProfiles, type SitePolicyProfile } from '@browser-bridge/policy';
 import { BridgeError } from '@browser-bridge/protocol';
 import { ebaySiteProfile } from '@browser-bridge/site-ebay';
+import { kijijiSiteProfile } from '@browser-bridge/site-kijiji';
 import { AgentConnection } from './connection.js';
 import { IdentityStore } from './identity.js';
 import { createLogger } from './logger.js';
@@ -17,6 +19,11 @@ import { pairDevice } from './pairing.js';
 import { createPagePolicy } from './policyEngine.js';
 import { SessionManager } from './sessionManager.js';
 import { AGENT_VERSION } from './version.js';
+
+/** Site profiles compiled into this agent build, keyed by versioned id. */
+const SITE_PROFILES: ReadonlyMap<string, SitePolicyProfile> = new Map(
+  [ebaySiteProfile, kijijiSiteProfile].map((profile) => [profile.id, profile]),
+);
 
 function parseFlags(argv: string[]): Map<string, string> {
   const flags = new Map<string, string>();
@@ -85,7 +92,17 @@ async function main(): Promise<number> {
       if (process.platform !== 'win32') {
         logger.warn({}, 'Running on a non-Windows host: development/test mode only');
       }
-      const policy = createPagePolicy(ebaySiteProfile);
+      const unknownIds = config.siteProfileIds.filter((id) => !SITE_PROFILES.has(id));
+      if (unknownIds.length > 0) {
+        console.error(
+          `Unknown site profile id(s) in AGENT_SITE_PROFILES: ${unknownIds.join(', ')}. ` +
+            `Available: ${[...SITE_PROFILES.keys()].join(', ')}`,
+        );
+        return 2;
+      }
+      const policy = createPagePolicy(
+        mergeSiteProfiles(config.siteProfileIds.map((id) => SITE_PROFILES.get(id)!)),
+      );
       const sessions = new SessionManager({ profileDir: config.profileDir, policy, logger });
       const connection = new AgentConnection({
         gatewayWsUrl: config.gatewayWsUrl,
@@ -96,7 +113,10 @@ async function main(): Promise<number> {
         heartbeatSeconds: config.heartbeatSeconds,
       });
       connection.start();
-      logger.info({ agentVersion: AGENT_VERSION, deviceId: identity.deviceId }, 'Agent running');
+      logger.info(
+        { agentVersion: AGENT_VERSION, deviceId: identity.deviceId, siteProfiles: config.siteProfileIds },
+        'Agent running',
+      );
       await new Promise<void>((resolve) => {
         const shutdown = () => {
           logger.info({}, 'Shutting down');
