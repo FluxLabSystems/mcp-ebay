@@ -41,6 +41,8 @@ export interface HarnessOptions {
   verifier?: OAuthTokenVerifier | null;
   env?: Record<string, string>;
   heartbeatSeconds?: number;
+  /** Stub the dashboard write-path's outbound fetch (dashboard.* tools). */
+  dashboardFetch?: typeof fetch;
 }
 
 export function buildGatewayHarness(options: HarnessOptions = {}): GatewayHarness {
@@ -85,6 +87,7 @@ export function buildGatewayHarness(options: HarnessOptions = {}): GatewayHarnes
     verifier: options.verifier ?? null,
     logger,
     serverVersion: '0.1.0-test',
+    ...(options.dashboardFetch === undefined ? {} : { dashboardFetch: options.dashboardFetch }),
   });
   gatewayApp.markReady();
 

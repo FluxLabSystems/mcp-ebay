@@ -284,4 +284,38 @@ export const HandoffOutput = z.strictObject({
   url: z.string(),
 });
 
+/**
+ * Fluxology dashboard tools — served by the gateway itself (no Windows
+ * device involved). The gateway holds the per-dashboard ingest tokens; the
+ * scheduled research runs never see credentials in task text or output.
+ */
+export const DASHBOARD_IDS = ['deals', 'office', 'jobs'] as const;
+export type DashboardId = (typeof DASHBOARD_IDS)[number];
+
+export const DashboardFeedInput = z.strictObject({
+  dashboard: z.enum(DASHBOARD_IDS),
+  /**
+   * 'ids' returns root metadata plus per-listing {id, firstSeen, lastSeen,
+   * lastChanged, status} only — enough to diff a run's findings against the
+   * stored feed without pulling every full record into context.
+   */
+  mode: z.enum(['full', 'ids']).default('full'),
+});
+export const DashboardFeedOutput = z.strictObject({
+  dashboard: z.string(),
+  listingCount: z.int(),
+  root: z.looseObject({}),
+});
+
+export const DashboardUpsertInput = z.strictObject({
+  dashboard: z.enum(DASHBOARD_IDS),
+  /** Merged by stable id server-side; existing unrelated records are preserved. */
+  listings: z.array(z.looseObject({ id: z.string().min(1) })).min(1).max(500),
+});
+export const DashboardUpsertOutput = z.strictObject({
+  dashboard: z.string(),
+  ok: z.boolean(),
+  result: z.looseObject({}),
+});
+
 export type WaitCondition = z.infer<typeof WaitConditionBase>;

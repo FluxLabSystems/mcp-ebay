@@ -6,15 +6,24 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import {
   BridgeError,
+  DASHBOARD_TOOL_CATALOG,
+  DashboardFeedInput,
+  DashboardUpsertInput,
+  dashboardScopeSatisfies,
+  requiredDashboardScope,
   scopeSatisfies,
   TOOL_CATALOG,
+  type DashboardToolCatalogEntry,
   type ToolCatalogEntry,
 } from '@browser-bridge/protocol';
 import type { CommandBroker } from '../broker.js';
+import type { DashboardClient } from '../dashboards/client.js';
 
 export interface McpFactoryDeps {
   broker: CommandBroker;
   serverVersion: string;
+  /** Present only when the deployment configures the dashboard write-path. */
+  dashboards?: DashboardClient | null;
 }
 
 interface ToolResultShape {
@@ -41,7 +50,76 @@ export function buildMcpServer(deps: McpFactoryDeps, authInfo: { scopes: string[
   for (const entry of TOOL_CATALOG) {
     registerBridgeTool(server, deps, entry, authInfo);
   }
+  if (deps.dashboards !== undefined && deps.dashboards !== null) {
+    for (const entry of DASHBOARD_TOOL_CATALOG) {
+      registerDashboardTool(server, deps.dashboards, entry, authInfo);
+    }
+  }
   return server;
+}
+
+function registerDashboardTool(
+  server: McpServer,
+  client: DashboardClient,
+  entry: DashboardToolCatalogEntry,
+  authInfo: { scopes: string[]; clientId: string; extra?: Record<string, unknown> } | undefined,
+): void {
+  const handler = async (args: Record<string, unknown>): Promise<ToolResultShape> => {
+    try {
+      // Re-parse defensively; unlike browser tools there is no agent-side
+      // schema validation behind these.
+      const structured =
+        entry.action === 'feed'
+          ? await (async () => {
+              const input = DashboardFeedInput.parse(args);
+              assertDashboardScope(authInfo, input.dashboard, entry.action);
+              return client.feed(input.dashboard, input.mode);
+            })()
+          : await (async () => {
+              const input = DashboardUpsertInput.parse(args);
+              assertDashboardScope(authInfo, input.dashboard, entry.action);
+              return client.upsert(input.dashboard, input.listings);
+            })();
+      const payload = structured as unknown as Record<string, unknown>;
+      return {
+        content: [{ type: 'text', text: JSON.stringify(payload) }],
+        structuredContent: payload,
+      };
+    } catch (err) {
+      return errorResult(BridgeError.from(err));
+    }
+  };
+  server.registerTool(
+    entry.name,
+    {
+      description: `${entry.description} Requires scope ${
+        entry.action === 'upsert' ? '{dashboard}:write (e.g. deals:write)' : 'dashboards:read or any dashboard write scope'
+      }.`,
+      inputSchema: entry.inputSchema,
+      outputSchema: entry.outputSchema,
+      annotations: {
+        readOnlyHint: entry.action === 'feed',
+        destructiveHint: false,
+        idempotentHint: entry.action === 'feed',
+        openWorldHint: true,
+      },
+    } as never,
+    handler as never,
+  );
+}
+
+function assertDashboardScope(
+  authInfo: { scopes: string[] } | undefined,
+  dashboard: 'deals' | 'office' | 'jobs',
+  action: 'feed' | 'upsert',
+): void {
+  const scopes = authInfo?.scopes ?? [];
+  if (!dashboardScopeSatisfies(scopes, dashboard, action)) {
+    throw new BridgeError('ACTION_BLOCKED', `Token lacks required scope ${requiredDashboardScope(dashboard, action)}.`, {
+      requiredScope: requiredDashboardScope(dashboard, action),
+      dashboard,
+    });
+  }
 }
 
 function registerBridgeTool(

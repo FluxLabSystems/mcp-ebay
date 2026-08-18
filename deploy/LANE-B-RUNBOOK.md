@@ -340,6 +340,15 @@ DEVICE_HEARTBEAT_SECONDS=20
 RATE_LIMIT_MCP_PER_MINUTE=120
 RATE_LIMIT_PAIR_PER_MINUTE=10
 EBAY_DESTINATION_POSTAL_CODE=M6H 2W9
+
+# Dashboard write-path (dashboard.feed / dashboard.upsert served by THIS
+# gateway). The three token values already exist in the fluxology-site
+# stack's .env on this VPS — copy them from there; do not mint new ones.
+DASHBOARD_API_BASE_URL=http://fluxology-dashboard-api:8082
+DEALS_INGEST_TOKEN=<from fluxology-site .env>
+OFFICE_INGEST_TOKEN=<from fluxology-site .env>
+JOBS_INGEST_TOKEN=<from fluxology-site .env>
+
 LOG_LEVEL=info
 
 POSTGRES_USER=bridge
@@ -423,10 +432,12 @@ Expected:
 [27]  {
         "resource": "https://browser-mcp.fluxology.ca/mcp",
         "authorization_servers": ["https://auth.fluxology.ca/realms/fluxology"],
-        "scopes_supported": ["browser:read", "browser:interact", "browser:admin"],
+        "scopes_supported": ["browser:read", "browser:interact", "browser:admin",
+                             "dashboards:read", "office:write", "deals:write", "jobs:write"],
         "bearer_methods_supported": ["header"],
         "resource_name": "Connected Browser Bridge MCP"
       }
+      (the four dashboard scopes appear only when 4.1's dashboard block is set)
 [28]  HTTP/2 401
       www-authenticate: Bearer ... resource_metadata="https://browser-mcp.fluxology.ca/.well-known/oauth-protected-resource/mcp"
 ```
@@ -587,9 +598,10 @@ claude mcp add --transport http --client-id claude-code --callback-port 18800 \
 
 Then open a Claude Code session and run `/mcp` → select `browser-bridge` →
 **Authenticate**. A browser opens on the Keycloak login page — sign in as the
-operator user from 2.4, approve the requested `browser:*` scopes, and the
-browser lands on `http://localhost:18800/callback`, which Claude Code serves
-locally to capture the code.
+operator user from 2.4, approve the requested `browser:*` and dashboard
+(`dashboards:read`, `*:write`) scopes, and the browser lands on
+`http://localhost:18800/callback`, which Claude Code serves locally to
+capture the code.
 
 > **VERIFY LIVE — Keycloak redirect-URI exactness.** If Keycloak answers the
 > authorization redirect with `invalid_redirect_uri` instead of a login page,
@@ -675,13 +687,24 @@ Notes:
 
 ---
 
-## 7. Switch fluxology-mcp to the same issuer + attach it to claude.ai
+## 7. Dashboard write-path — now served by the bridge itself
 
-The dashboard write connector (`fluxology-mcp`, already deployed by the
-fluxology-site stack at `mcp.fluxology.ca`) is issuer-agnostic; point it at
-the new realm so one Keycloak serves both resources. The realm already
-carries its scopes (`dashboards:read`, `office:write`, `deals:write`,
-`jobs:write`) and an audience mapper for it.
+**The bridge gateway serves `dashboard.feed` and `dashboard.upsert`
+directly** once 4.1's dashboard block is filled in: the realm's dashboard
+scopes (`dashboards:read`, `office:write`, `deals:write`, `jobs:write`) have
+their audience mappers pointed at `https://browser-mcp.fluxology.ca/mcp`, so
+the ONE connector from section 6 covers browsing **and** dashboard writes.
+Smoke it after 6.2: in a session with the connector, call `dashboard.feed`
+with `{"dashboard":"deals","mode":"ids"}` — it must return the stored
+listing ids, and `dashboard.upsert` without the matching gateway token must
+name the missing `*_INGEST_TOKEN` in its error.
+
+Everything below is the OPTIONAL legacy alternative — the standalone
+`fluxology-mcp` connector from the fluxology-site stack. Skip it unless you
+specifically want that second connector; if you do use it, note its tokens
+now expect the audience `https://browser-mcp.fluxology.ca/mcp` realm-side,
+so its `MCP_OAUTH_AUDIENCE` no longer matches the realm mappers without
+re-adding a mapper for `https://mcp.fluxology.ca/mcp`.
 
 In the **fluxology-site checkout** on the VPS (wherever that stack deploys
 from), edit `.env` — note all three URLs carry the **realm path**, which the
@@ -746,11 +769,11 @@ Run top to bottom; every row must match before Lane B is declared done.
 | V5 | `GET https://auth.fluxology.ca/realms/fluxology/protocol/openid-connect/certs` [12] | 200; ≥ 1 key |
 | V6 | `GET https://browser-mcp.fluxology.ca/healthz` [25] | 200 `{"status":"ok"}` |
 | V7 | `GET https://browser-mcp.fluxology.ca/readyz` [26] | 200 `{"status":"ready"}` |
-| V8 | `GET https://browser-mcp.fluxology.ca/.well-known/oauth-protected-resource/mcp` [27] | 200; `resource` = `…/mcp`, `authorization_servers` = the issuer, three `browser:*` scopes |
+| V8 | `GET https://browser-mcp.fluxology.ca/.well-known/oauth-protected-resource/mcp` [27] | 200; `resource` = `…/mcp`, `authorization_servers` = the issuer, three `browser:*` + four dashboard scopes |
 | V9 | Unauthenticated `POST https://browser-mcp.fluxology.ca/mcp` [28] | **401** + `WWW-Authenticate: Bearer … resource_metadata="…"` |
 | V10 | `device:list` on the gateway [38] | Two rows (`laptop`, `desktop`), both `active`, `last_seen` advancing |
 | V11 | `claude mcp list` [40] | `browser-bridge … ✓ Connected` |
-| V12 | claude.ai → Settings → Connectors | `Browser Bridge` and `Fluxology Dashboards` both **Connected** |
+| V12 | claude.ai → Settings → Connectors | `Browser Bridge` **Connected** (a second `Fluxology Dashboards` connector is optional — section 7) |
 | V13 | Smoke on laptop device (6.3) | session opens on laptop; ebay.ca navigated; extract returns data |
 | V14 | Smoke on desktop device (6.3) | same, visibly on the desktop |
 | V15 | `GET https://mcp.fluxology.ca/healthz` | 200 |

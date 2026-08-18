@@ -7,6 +7,10 @@ import type * as z from 'zod/v4';
 import {
   ClickInput,
   ClickOutput,
+  DashboardFeedInput,
+  DashboardFeedOutput,
+  DashboardUpsertInput,
+  DashboardUpsertOutput,
   ExtractInput,
   ExtractOutput,
   FillInput,
@@ -35,6 +39,7 @@ import {
   TabsOutput,
   WaitInput,
   WaitOutput,
+  type DashboardId,
 } from './tools.js';
 
 export const SCOPE_READ = 'browser:read';
@@ -242,4 +247,75 @@ export function scopeSatisfies(tokenScopes: readonly string[], required: BridgeS
   if (tokenScopes.includes(required)) return true;
   if (required === SCOPE_READ && tokenScopes.includes(SCOPE_INTERACT)) return true;
   return false;
+}
+
+/* ------------------------------------------------------------------------- *
+ * Fluxology dashboard tools — gateway-served, no device on the path. The
+ * gateway holds per-dashboard ingest tokens; OAuth scopes below gate which
+ * callers may read feeds or upsert records (defined in the Lane B realm).
+ * ------------------------------------------------------------------------- */
+
+export const SCOPE_DASHBOARDS_READ = 'dashboards:read';
+
+export const DASHBOARD_WRITE_SCOPES: Readonly<Record<DashboardId, string>> = {
+  deals: 'deals:write',
+  office: 'office:write',
+  jobs: 'jobs:write',
+};
+
+export const ALL_DASHBOARD_SCOPES: readonly string[] = [
+  SCOPE_DASHBOARDS_READ,
+  ...Object.values(DASHBOARD_WRITE_SCOPES),
+];
+
+export type DashboardToolAction = 'feed' | 'upsert';
+
+export interface DashboardToolCatalogEntry {
+  /** Public MCP tool name, e.g. `dashboard.upsert`. */
+  name: string;
+  action: DashboardToolAction;
+  /** Gateway tool-call deadline in milliseconds. */
+  timeoutMs: number;
+  description: string;
+  inputSchema: z.ZodType;
+  outputSchema: z.ZodType;
+}
+
+export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
+  {
+    name: 'dashboard.feed',
+    action: 'feed',
+    timeoutMs: 30_000,
+    description:
+      'Read the current Fluxology dashboard feed (deals, office, or jobs) so a run can diff its findings against stored records before writing. mode "ids" returns root metadata plus per-listing identity/freshness fields only.',
+    inputSchema: DashboardFeedInput,
+    outputSchema: DashboardFeedOutput,
+  },
+  {
+    name: 'dashboard.upsert',
+    action: 'upsert',
+    timeoutMs: 30_000,
+    description:
+      'Upsert listing records into a Fluxology dashboard (deals, office, or jobs). Records merge by stable id server-side; unrelated and historical records are preserved. Send only new or materially changed records.',
+    inputSchema: DashboardUpsertInput,
+    outputSchema: DashboardUpsertOutput,
+  },
+];
+
+/**
+ * Feed reads accept dashboards:read or any per-dashboard write scope
+ * (write implies read); upserts require that dashboard's write scope.
+ */
+export function dashboardScopeSatisfies(
+  tokenScopes: readonly string[],
+  dashboard: DashboardId,
+  action: DashboardToolAction,
+): boolean {
+  if (action === 'upsert') return tokenScopes.includes(DASHBOARD_WRITE_SCOPES[dashboard]);
+  if (tokenScopes.includes(SCOPE_DASHBOARDS_READ)) return true;
+  return Object.values(DASHBOARD_WRITE_SCOPES).some((scope) => tokenScopes.includes(scope));
+}
+
+export function requiredDashboardScope(dashboard: DashboardId, action: DashboardToolAction): string {
+  return action === 'upsert' ? DASHBOARD_WRITE_SCOPES[dashboard] : SCOPE_DASHBOARDS_READ;
 }
