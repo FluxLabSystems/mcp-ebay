@@ -1,0 +1,162 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parseHTML } from 'linkedom';
+import { describe, expect, it } from 'vitest';
+// site-kijiji is imported by relative path rather than a workspace alias:
+// tests/package.json is not modified by this change, so the package is not
+// linked into tests/node_modules; tsc and vitest both resolve the
+// TypeScript source directly through this path.
+import {
+  buildSearchUrl,
+  classifyKijijiPage,
+  extractKijijiListing,
+  extractSearchResults,
+  isKijijiListingPage,
+  KijijiExtractionRecordSchema,
+} from '../../packages/site-kijiji/src/index.js';
+
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'kijiji');
+
+function loadFixture(name: string): Document {
+  const html = readFileSync(join(FIXTURES, name), 'utf8');
+  return parseHTML(html).document as unknown as Document;
+}
+
+describe('kijiji.ca.v1 VIP extraction', () => {
+  it('extracts the active ad with JSON-LD provenance winning over DOM candidates', () => {
+    const document = loadFixture('vip-jsonld.html');
+    const { record, warnings } = extractKijijiListing(
+      document,
+      'https://www.kijiji.ca/v-buy-sell/city-of-toronto/lego-friends-bulk-lot-5-lbs/1712345678?utm_campaign=social',
+      { pageRevision: 2 },
+    );
+
+    expect(KijijiExtractionRecordSchema.parse(record)).toBeTruthy();
+    expect(record.adId).toMatchObject({ value: '1712345678', confidence: 1.0 });
+    expect(record.canonicalUrl).toMatchObject({
+      value: 'https://www.kijiji.ca/v-buy-sell/city-of-toronto/lego-friends-bulk-lot-5-lbs/1712345678',
+      source: 'computed',
+    });
+    expect(record.title).toMatchObject({ value: 'LEGO Friends Bulk Lot 5 lbs', source: 'jsonld' });
+    // The DOM shows $40.00; JSON-LD's 35.00 must win with jsonld provenance.
+    expect(record.price).toMatchObject({ kind: 'amount', value: 35, currency: 'CAD', source: 'jsonld' });
+    expect(record.location).toMatchObject({ text: 'Toronto, ON M6H 2W9', source: 'dom' });
+    expect(record.postedAt).toBe('2026-08-15T09:30:00.000Z');
+    expect(record.postedText).toBe('August 15, 2026');
+    expect(record.sellerName).toMatchObject({ value: 'brickmover_to', source: 'jsonld' });
+    expect(record.sellerType).toBe('owner');
+    expect(record.attributes).toContainEqual({ label: 'For Sale By', value: 'Owner' });
+    expect(record.description).toMatchObject({ source: 'jsonld' });
+    expect(record.imageCount).toBe(2);
+    expect(record.listingStatus).toBe('active');
+    expect(record.pageRevision).toBe(2);
+    expect(warnings).toEqual([]);
+  });
+
+  it('falls back to DOM selectors with dom provenance and confidence', () => {
+    const document = loadFixture('vip-dom-only.html');
+    const { record, warnings } = extractKijijiListing(
+      document,
+      'https://www.kijiji.ca/v-buy-sell/north-york/lego-technic-bins/2109876543?hidepostedad=true',
+    );
+
+    expect(KijijiExtractionRecordSchema.parse(record)).toBeTruthy();
+    expect(record.adId).toMatchObject({ value: '2109876543', source: 'dom' });
+    expect(record.canonicalUrl?.value).toBe('https://www.kijiji.ca/v-buy-sell/north-york/lego-technic-bins/2109876543');
+    expect(record.title).toMatchObject({ value: 'LEGO Technic Bins - Huge Cleanout', source: 'dom', confidence: 0.99 });
+    expect(record.price).toMatchObject({ kind: 'contact', value: null, source: 'dom', confidence: 0.99 });
+    expect(record.location).toMatchObject({ text: 'North York, ON', source: 'dom' });
+    expect(record.postedAt).toBeNull();
+    expect(record.postedText).toBe('Posted less than an hour ago');
+    expect(record.sellerName).toMatchObject({ value: 'North York Brick Depot', source: 'dom' });
+    expect(record.sellerType).toBe('dealer');
+    expect(record.attributes).toContainEqual({ label: 'Condition', value: 'Used - Fair' });
+    expect(record.description?.source).toBe('dom');
+    expect(record.description?.value).toHaveLength(500);
+    expect(record.imageCount).toBe(3);
+    expect(record.listingStatus).toBe('active');
+    expect(warnings.some((warning) => warning.includes('postedAt'))).toBe(true);
+  });
+
+  it('detects deleted and expired ads from marker text', () => {
+    expect(
+      extractKijijiListing(loadFixture('vip-deleted.html'), 'https://www.kijiji.ca/v-buy-sell/x/1111111111').record
+        .listingStatus,
+    ).toBe('deleted');
+    expect(
+      extractKijijiListing(loadFixture('vip-expired.html'), 'https://www.kijiji.ca/v-buy-sell/x/2222222222').record
+        .listingStatus,
+    ).toBe('expired');
+  });
+});
+
+describe('kijiji search traversal', () => {
+  it('extracts deduplicated result cards and next-page detection', () => {
+    const document = loadFixture('search-results.html');
+    const page = extractSearchResults(
+      document,
+      'https://www.kijiji.ca/b-buy-sell/city-of-toronto/lego/c10l1700273?radius=45&address=M6H+2W9',
+    );
+
+    expect(page.results).toHaveLength(2);
+    expect(page.results[0]).toMatchObject({
+      adId: '1712345678',
+      url: 'https://www.kijiji.ca/v-buy-sell/city-of-toronto/lego-friends-bulk-lot-5-lbs/1712345678',
+      title: 'LEGO Friends Bulk Lot 5 lbs',
+      priceText: '$35.00',
+      locationText: 'City of Toronto',
+      postedText: 'Yesterday',
+    });
+    expect(page.results[0]?.price).toMatchObject({ kind: 'amount', value: 35, currency: 'CAD' });
+    expect(page.results[1]).toMatchObject({ adId: '2109876543' });
+    expect(page.results[1]?.price).toMatchObject({ kind: 'swap', value: null });
+    expect(page.hasNextPage).toBe(true);
+    expect(page.nextPageUrl).toBe('https://www.kijiji.ca/b-buy-sell/city-of-toronto/lego/page-2/c10l1700273?radius=45');
+  });
+
+  it('builds radius search URLs for the independent 45 km and 65 km passes', () => {
+    expect(
+      buildSearchUrl({
+        query: 'lego bulk lot',
+        categoryPath: 'b-buy-sell/city-of-toronto/c10l1700273',
+        radiusKm: 45,
+        address: 'M6H 2W9',
+        sortByNewest: true,
+      }),
+    ).toBe('https://www.kijiji.ca/b-buy-sell/city-of-toronto/c10l1700273?q=lego+bulk+lot&radius=45&address=M6H+2W9&sort=dateDesc');
+    expect(
+      buildSearchUrl({
+        query: 'lego bulk lot',
+        categoryPath: '/b-buy-sell/canada/',
+        radiusKm: 65,
+        address: 'M6H 2W9',
+        sortByNewest: false,
+      }),
+    ).toBe('https://www.kijiji.ca/b-buy-sell/canada?q=lego+bulk+lot&radius=65&address=M6H+2W9');
+    expect(
+      buildSearchUrl({ query: '', categoryPath: '', radiusKm: Number.NaN, address: null, sortByNewest: false }),
+    ).toBe('https://www.kijiji.ca/b-buy-sell/canada');
+  });
+});
+
+describe('kijiji page classification', () => {
+  it('recognizes VIP pages on the kijiji.ca host family only', () => {
+    expect(isKijijiListingPage('https://www.kijiji.ca/v-buy-sell/city-of-toronto/lego-lot/1712345678')).toBe(true);
+    expect(isKijijiListingPage('https://www.kijiji.ca/v-buy-sell/city-of-toronto/lego-lot/1712345678?utm=1')).toBe(true);
+    expect(isKijijiListingPage('https://kijiji.ca/v-view-details.html?adId=1712345678')).toBe(true);
+    expect(isKijijiListingPage('https://www.kijiji.ca/b-buy-sell/city-of-toronto/c10l1700273')).toBe(false);
+    expect(isKijijiListingPage('https://www.ebay.ca/itm/123456789012')).toBe(false);
+    expect(isKijijiListingPage('https://www.kijiji.ca/')).toBe(false);
+    expect(isKijijiListingPage('not a url')).toBe(false);
+  });
+
+  it('classifies listing, search, and other page kinds', () => {
+    expect(classifyKijijiPage('https://www.kijiji.ca/v-buy-sell/city-of-toronto/lego-lot/1712345678')).toBe('listing');
+    expect(classifyKijijiPage('https://www.kijiji.ca/b-buy-sell/city-of-toronto/lego/c10l1700273?radius=45')).toBe(
+      'search',
+    );
+    expect(classifyKijijiPage('https://www.kijiji.ca/')).toBe('other');
+    expect(classifyKijijiPage('not a url')).toBe('other');
+  });
+});
