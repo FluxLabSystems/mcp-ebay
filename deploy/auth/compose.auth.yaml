@@ -1,0 +1,126 @@
+# Keycloak authorization-server stack for the Fluxology edge — Lane B.
+#
+# One OAuth 2.1 / OIDC authorization server (Keycloak 26.x) plus its own
+# PostgreSQL 17, serving tokens for TWO resource servers:
+#   - the browser-bridge gateway (this repo, apps/gateway) — scopes
+#     browser:read / browser:interact / browser:admin;
+#   - fluxology-mcp (fluxology-site repo, services/fluxology-mcp) — scopes
+#     dashboards:read / office:write / deals:write / jobs:write.
+#
+# Deployment shape mirrors deploy/compose.yaml: the pre-existing external
+# network `fluxology-edge` is reused; the independently-managed
+# fluxology-caddy container (which owns 80/443) is NEVER created, stopped,
+# restarted, or reconfigured here. No service publishes a host port — Caddy
+# reaches Keycloak over fluxology-edge (see caddy-auth-snippet.caddy).
+#
+# First boot: cp env.auth.example .env && chmod 600 .env, fill in values,
+# then `docker compose -f compose.auth.yaml up -d` FROM THIS DIRECTORY
+# (compose reads ./.env for the ${...} substitutions below).
+services:
+  keycloak:
+    # Pin a known 26.x release; check quay.io for the newest 26.x patch and
+    # bump deliberately. Do not use :latest — a surprise major upgrade can
+    # change the hostname/proxy option surface again (25 -> 26 did).
+    image: quay.io/keycloak/keycloak:26.3
+    container_name: fluxology-auth
+    restart: unless-stopped
+    # `start` (production mode) — NOT `start-dev`. TLS terminates at Caddy,
+    # so HTTP is enabled internally and the X-Forwarded-* headers Caddy
+    # sends are honoured. KC_HOSTNAME (from .env) pins the public URL so the
+    # issuer is stable regardless of how the container is reached.
+    command:
+      - start
+      - --http-enabled=true
+      - --proxy-headers=xforwarded
+      - --import-realm
+    # .env provides KC_BOOTSTRAP_ADMIN_USERNAME / KC_BOOTSTRAP_ADMIN_PASSWORD
+    # (Keycloak 26.x bootstrap pattern: creates a TEMPORARY admin on the
+    # first boot against an empty database only) and KC_HOSTNAME.
+    env_file: .env
+    environment:
+      # ---- Database (auth-db below, resolved over fluxology-edge) ----
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://fluxology-auth-db:5432/${POSTGRES_DB:-keycloak}
+      KC_DB_USERNAME: ${POSTGRES_USER:-keycloak}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/auth/.env}
+      # ---- Observability ----
+      # /health/* is served on the MANAGEMENT interface (port 9000), not on
+      # 8080 — both the container healthcheck below and the Caddy active
+      # health check rely on this.
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "false"
+      # ---- Resource consciousness ----
+      # Single node: local cache skips Infinispan clustering (jgroups
+      # discovery threads + heap) entirely.
+      KC_CACHE: local
+    expose:
+      - "8080"
+    networks:
+      fluxology-edge:
+        aliases:
+          # The name the Caddy site block proxies to.
+          - fluxology-auth
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    volumes:
+      # --import-realm imports every file in this directory on startup and
+      # SKIPS any realm that already exists in the database — edits to the
+      # JSON after first boot are deliberately NOT re-applied (make live
+      # changes in the admin console instead).
+      - ./realm-fluxology.json:/opt/keycloak/data/import/realm-fluxology.json:ro
+    # The image's default JAVA_OPTS_KC_HEAP sizes the JVM from the container
+    # limit (-XX:MaxRAMPercentage=70), so this cap also right-sizes the heap.
+    mem_limit: 1g
+    healthcheck:
+      # The Keycloak image ships no curl/wget; bash's /dev/tcp against the
+      # management interface is the stock workaround. Checks /health/ready
+      # (DB reachable + realm loaded), answered on :9000.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: 127.0.0.1:9000\r\nConnection: close\r\n\r\n' >&3 &&
+          read -r status <&3 &&
+          case "$$status" in *" 200 "*) exit 0;; *) exit 1;; esac
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # First boot builds the augmented server image and imports the realm;
+      # give the JVM room before counting failures.
+      start_period: 120s
+
+  auth-db:
+    image: postgres:17-alpine
+    container_name: fluxology-auth-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-keycloak}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/auth/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-keycloak}
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    # Joined to fluxology-edge per the Lane B deployment plan (no host
+    # ports; only containers already on this network can reach it, and it
+    # requires the password above). Hardening option: move this service and
+    # a second keycloak network onto an `internal: true` network, mirroring
+    # deploy/compose.yaml's `backend` — nothing in this stack depends on the
+    # DB being on the edge network.
+    networks:
+      fluxology-edge:
+        aliases:
+          - fluxology-auth-db
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  fluxology-edge:
+    external: true
+    name: fluxology-edge
+
+volumes:
+  auth-db-data: {}
