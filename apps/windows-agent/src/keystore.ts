@@ -15,25 +15,34 @@ export interface KeyStore {
   readonly kind: 'dpapi' | 'plainfile-dev';
 }
 
+// The payload travels over STDIN, never argv. Two reasons, both learned on a
+// real machine: (1) `powershell.exe -Command <script> <extra>` does NOT bind
+// the extra token to $args[0] — the CLI folds everything after -Command into
+// the command text, so the base64 key was parsed as a statement and pairing
+// died with CommandNotFoundException on every Windows box; (2) argv is
+// visible to any process lister, and this particular argument is the
+// device's private key.
 const DPAPI_PROTECT = `
 Add-Type -AssemblyName System.Security;
-$bytes = [Convert]::FromBase64String($args[0]);
+$inputBase64 = [Console]::In.ReadToEnd().Trim();
+$bytes = [Convert]::FromBase64String($inputBase64);
 $out = [System.Security.Cryptography.ProtectedData]::Protect($bytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser);
 [Convert]::ToBase64String($out)
 `;
 
 const DPAPI_UNPROTECT = `
 Add-Type -AssemblyName System.Security;
-$bytes = [Convert]::FromBase64String($args[0]);
+$inputBase64 = [Console]::In.ReadToEnd().Trim();
+$bytes = [Convert]::FromBase64String($inputBase64);
 $out = [System.Security.Cryptography.ProtectedData]::Unprotect($bytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser);
 [Convert]::ToBase64String($out)
 `;
 
-function runPowershell(script: string, argument: string): string {
+function runPowershell(script: string, inputBase64: string): string {
   const stdout = execFileSync(
     'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script, argument],
-    { encoding: 'utf8', windowsHide: true },
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+    { encoding: 'utf8', windowsHide: true, input: inputBase64 },
   );
   return stdout.trim();
 }
