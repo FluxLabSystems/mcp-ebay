@@ -6,6 +6,14 @@ behind the existing `fluxology-caddy` edge, OAuth 2.1 against a self-hosted
 Keycloak at `auth.fluxology.ca`, both Windows PCs (laptop + desktop) paired as
 browser agents, and both claude.ai and Claude Code attached as OAuth clients.
 
+> **Scripted path:** `bash deploy/scripts/lane-b-deploy.sh` automates the VPS
+> side of this runbook end to end — sections 1–4 plus the kcadm equivalent of
+> 2.4, pairing-token minting for section 5, and the [25]–[28] verifications —
+> with generated secrets, idempotent re-runs, and `--from`/`--only` resume.
+> It prompts only for true decisions (`--yes` accepts every default) and
+> prints the Windows/claude.ai steps it cannot perform. This document remains
+> the reference for what every step means and how to do it by hand.
+
 Companion documents:
 
 - `README.md` — sections *VPS deployment (SDD §23–§25, §32)* and *Windows agent setup*
@@ -134,19 +142,23 @@ procedure is:
 # [4]
 cd /opt/mcp-ebay
 # [5]
-cp deploy/auth/env.auth.example deploy/auth/.env.auth && chmod 0600 deploy/auth/.env.auth
+cp deploy/auth/env.auth.example deploy/auth/.env && chmod 0600 deploy/auth/.env
 # [6]  Generate real secrets for every CHANGE_ME in the file (one call per secret):
 openssl rand -base64 32
 ```
 
-Edit `deploy/auth/.env.auth` and replace every placeholder — at minimum the
+(`deploy/auth/.env` is the name `compose.auth.yaml` actually reads for its
+`env_file` and `${...}` substitutions — an earlier revision of this runbook
+said `.env.auth`, which compose never loads.)
+
+Edit `deploy/auth/.env` and replace every placeholder — at minimum the
 first-boot admin password and the Keycloak database password — with output
 from [6]. The repo's `.gitignore` covers `.env.*`, so this file never enters
 git. Verify:
 
 ```bash
 # [7]
-grep -c CHANGE_ME deploy/auth/.env.auth
+grep -c CHANGE_ME deploy/auth/.env
 ```
 
 Expected output: `0`.
@@ -201,7 +213,7 @@ The `issuer` value must be **exactly** `https://auth.fluxology.ca/realms/fluxolo
 — with the realm path, no trailing slash. Every token carries this as `iss`
 and both resource servers compare it byte for byte. If it comes back as an
 internal hostname or `http://`, the Keycloak hostname setting in
-`deploy/auth/.env.auth` is wrong; fix it before continuing.
+`deploy/auth/.env` is wrong; fix it before continuing.
 
 ```bash
 # [11]  RFC 8414 path-inserted form — what spec-compliant MCP clients
@@ -217,7 +229,7 @@ curl -fsS https://auth.fluxology.ca/realms/fluxology/protocol/openid-connect/cer
 ### 2.4 First-boot admin, operator user, real claude-ai secret
 
 In a browser: `https://auth.fluxology.ca` → **Administration Console** → log
-in with the first-boot admin credentials from `deploy/auth/.env.auth` (after
+in with the first-boot admin credentials from `deploy/auth/.env` (after
 section 3 wires Caddy; before that, per `deploy/auth/README.md`).
 
 1. Switch the realm selector from `master` to **fluxology**.
