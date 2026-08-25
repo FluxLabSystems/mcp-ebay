@@ -226,6 +226,16 @@ curl -fsS https://auth.fluxology.ca/realms/fluxology/protocol/openid-connect/cer
 
 [11] must return the same `issuer`; [12] must print a number ≥ 1.
 
+> **[11] only works through Caddy.** RFC 8414 §3.1 *inserts* the well-known
+> path before the issuer's path, and Keycloak does not serve that shape — it
+> serves the path-*appended* `/realms/fluxology/.well-known/oauth-authorization-server`.
+> The rewrite shim in `deploy/auth/caddy-auth-snippet.caddy` maps one onto the
+> other, so [11] answers 200 at the edge and 404s if you ask the Keycloak
+> container directly. If [11] 404s through Caddy, that block is missing the
+> shim (an auth site block appended before 2026-08-25 will not have it) — add
+> the two `@rfc8414` lines, `caddy validate`, `caddy reload`, and re-run
+> `lane-b-deploy.sh --from verify-auth`.
+
 ### 2.4 First-boot admin, operator user, real claude-ai secret
 
 In a browser: `https://auth.fluxology.ca` → **Administration Console** → log
