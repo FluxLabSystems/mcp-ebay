@@ -186,7 +186,10 @@ stage_host_preflight() {
 
 stage_dns() {
   hdr "Stage dns — [1]-[3] A records must match the apex"
-  local apex auth bridge
+  local apex auth bridge tries=0
+  # Bounded: under --yes, confirm() returns the default without prompting, so
+  # an unbounded retry loop spins forever on DNS that never propagates.
+  local max_tries="${DNS_MAX_TRIES:-20}"
   while :; do
     apex="$(resolve4 "$APEX_HOST" | head -1)"
     auth="$(resolve4 "$AUTH_HOST" | head -1)"
@@ -198,6 +201,9 @@ stage_dns() {
     fi
     warn "auth/bridge records missing or stale. Create both A records -> $apex, then retry."
     warn "Proceeding to the Caddy stage with bad DNS triggers rate-limited ACME failures (runbook §1)."
+    tries=$(( tries + 1 ))
+    (( tries >= max_tries )) \
+      && die "DNS still not propagated after $tries checks (~$(( tries * 15 ))s). Create the auth/bridge A records -> $apex and re-run: $0 --from dns"
     if confirm "Retry DNS check now (n = abort)?" 1; then sleep 15; else die "DNS not propagated"; fi
   done
 }

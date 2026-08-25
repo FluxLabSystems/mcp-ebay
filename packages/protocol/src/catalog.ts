@@ -288,7 +288,7 @@ export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
     action: 'feed',
     timeoutMs: 30_000,
     description:
-      'Read the current Fluxology dashboard feed (deals, office, or jobs) so a run can diff its findings against stored records before writing. mode "ids" returns root metadata plus per-listing identity/freshness fields only.',
+      'Read the current Fluxology dashboard feed (deals, office, jobs, or vacation) so a run can diff its findings against stored records before writing. mode "ids" returns root metadata plus per-listing identity/freshness fields only.',
     inputSchema: DashboardFeedInput,
     outputSchema: DashboardFeedOutput,
   },
@@ -297,7 +297,7 @@ export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
     action: 'upsert',
     timeoutMs: 30_000,
     description:
-      'Upsert listing records into a Fluxology dashboard (deals, office, or jobs). Records merge by stable id server-side; unrelated and historical records are preserved. Send only new or materially changed records.',
+      'Upsert listing records into a Fluxology dashboard (deals, office, jobs, or vacation). Records merge by stable id server-side; unrelated and historical records are preserved. Send only new or materially changed records.',
     inputSchema: DashboardUpsertInput,
     outputSchema: DashboardUpsertOutput,
   },
