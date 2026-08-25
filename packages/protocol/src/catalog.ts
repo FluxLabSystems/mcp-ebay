@@ -261,6 +261,7 @@ export const DASHBOARD_WRITE_SCOPES: Readonly<Record<DashboardId, string>> = {
   deals: 'deals:write',
   office: 'office:write',
   jobs: 'jobs:write',
+  vacation: 'vacation:write',
 };
 
 export const ALL_DASHBOARD_SCOPES: readonly string[] = [

@@ -34,7 +34,7 @@ BAD_TOKEN="${VERIFY_BAD_TOKEN:-}"         # mode (a): wrong-audience token
 CLIENT_ID="${VERIFY_CLIENT_ID:-}"         # mode (b): confidential client
 CLIENT_SECRET="${VERIFY_CLIENT_SECRET:-}"
 BRIDGE_SCOPES="${VERIFY_BRIDGE_SCOPES:-browser:read browser:interact}"
-FLUX_SCOPES="${VERIFY_MCP_SCOPES:-dashboards:read office:write deals:write jobs:write}"
+FLUX_SCOPES="${VERIFY_MCP_SCOPES:-dashboards:read office:write deals:write jobs:write vacation:write}"
 DEVICE=""
 CURL_MAX_TIME=20
 SMOKE_MAX_TIME=90
@@ -611,15 +611,16 @@ check_flux_tools_list() {
         [[ " $scopes " == *" office:write "* ]] && printf '%s\n' upsert_office_listings
         [[ " $scopes " == *" deals:write "* ]] && printf '%s\n' upsert_deal_listings
         [[ " $scopes " == *" jobs:write "* ]] && printf '%s\n' upsert_job_listings
+        [[ " $scopes " == *" vacation:write "* ]] && printf '%s\n' upsert_vacation_listings
         true
       } | sort | paste -sd, -
     )"
     if [[ "$names" == "$expected" ]]; then
-      if [[ "$count" == "5" ]]; then
-        pass "mcp tools/list: all five tools listed [$names]"
+      if [[ "$count" == "6" ]]; then
+        pass "mcp tools/list: all six tools listed [$names]"
       else
         pass "mcp tools/list: lists exactly the $count tool(s) the token's scopes allow [$names]"
-        note "token scope=[$scopes] — grant all of: dashboards:read office:write deals:write jobs:write to see all five"
+        note "token scope=[$scopes] — grant all of: dashboards:read office:write deals:write jobs:write vacation:write to see all six"
       fi
     else
       fail "mcp tools/list: for scope=[$scopes] expected [$expected], got [$names]"

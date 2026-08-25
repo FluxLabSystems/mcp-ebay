@@ -63,6 +63,7 @@ export const GatewayEnvSchema = z
     DEALS_INGEST_TOKEN: z.string().min(1).optional(),
     OFFICE_INGEST_TOKEN: z.string().min(1).optional(),
     JOBS_INGEST_TOKEN: z.string().min(1).optional(),
+    VACATION_INGEST_TOKEN: z.string().min(1).optional(),
   })
   .check((ctx) => {
     const env = ctx.value;
@@ -102,7 +103,8 @@ export const GatewayEnvSchema = z
     const anyIngestToken =
       env.DEALS_INGEST_TOKEN !== undefined ||
       env.OFFICE_INGEST_TOKEN !== undefined ||
-      env.JOBS_INGEST_TOKEN !== undefined;
+      env.JOBS_INGEST_TOKEN !== undefined ||
+      env.VACATION_INGEST_TOKEN !== undefined;
     if (anyIngestToken && env.DASHBOARD_API_BASE_URL === undefined) {
       ctx.issues.push({
         code: 'custom',
@@ -177,6 +179,7 @@ export function loadGatewayConfig(env: Record<string, string | undefined> = proc
               ...(parsed.DEALS_INGEST_TOKEN === undefined ? {} : { deals: parsed.DEALS_INGEST_TOKEN }),
               ...(parsed.OFFICE_INGEST_TOKEN === undefined ? {} : { office: parsed.OFFICE_INGEST_TOKEN }),
               ...(parsed.JOBS_INGEST_TOKEN === undefined ? {} : { jobs: parsed.JOBS_INGEST_TOKEN }),
+              ...(parsed.VACATION_INGEST_TOKEN === undefined ? {} : { vacation: parsed.VACATION_INGEST_TOKEN }),
             },
           },
     allowedHosts: [

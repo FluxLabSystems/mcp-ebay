@@ -87,7 +87,7 @@ Fixed identifiers used throughout:
 | Confidential client (claude.ai) | `claude-ai` |
 | Public client (Claude Code, PKCE) | `claude-code`, redirect `http://localhost:18800/callback` |
 | Bridge scopes | `browser:read`, `browser:interact`, `browser:admin` |
-| Dashboard-connector scopes | `dashboards:read`, `office:write`, `deals:write`, `jobs:write` |
+| Dashboard-connector scopes | `dashboards:read`, `office:write`, `deals:write`, `jobs:write`, `vacation:write` |
 | Second resource (section 7) | `mcp.fluxology.ca` (fluxology-mcp) |
 
 The realm ships both scope families with audience mappers (see
@@ -354,12 +354,13 @@ RATE_LIMIT_PAIR_PER_MINUTE=10
 EBAY_DESTINATION_POSTAL_CODE=M6H 2W9
 
 # Dashboard write-path (dashboard.feed / dashboard.upsert served by THIS
-# gateway). The three token values already exist in the fluxology-site
+# gateway). The four token values already exist in the fluxology-site
 # stack's .env on this VPS — copy them from there; do not mint new ones.
 DASHBOARD_API_BASE_URL=http://fluxology-dashboard-api:8082
 DEALS_INGEST_TOKEN=<from fluxology-site .env>
 OFFICE_INGEST_TOKEN=<from fluxology-site .env>
 JOBS_INGEST_TOKEN=<from fluxology-site .env>
+VACATION_INGEST_TOKEN=<from fluxology-site .env>
 
 LOG_LEVEL=info
 
@@ -445,11 +446,12 @@ Expected:
         "resource": "https://browser-mcp.fluxology.ca/mcp",
         "authorization_servers": ["https://auth.fluxology.ca/realms/fluxology"],
         "scopes_supported": ["browser:read", "browser:interact", "browser:admin",
-                             "dashboards:read", "office:write", "deals:write", "jobs:write"],
+                             "dashboards:read", "office:write", "deals:write", "jobs:write",
+                             "vacation:write"],
         "bearer_methods_supported": ["header"],
         "resource_name": "Connected Browser Bridge MCP"
       }
-      (the four dashboard scopes appear only when 4.1's dashboard block is set)
+      (the five dashboard scopes appear only when 4.1's dashboard block is set)
 [28]  HTTP/2 401
       www-authenticate: Bearer ... resource_metadata="https://browser-mcp.fluxology.ca/.well-known/oauth-protected-resource/mcp"
 ```
@@ -703,7 +705,8 @@ Notes:
 
 **The bridge gateway serves `dashboard.feed` and `dashboard.upsert`
 directly** once 4.1's dashboard block is filled in: the realm's dashboard
-scopes (`dashboards:read`, `office:write`, `deals:write`, `jobs:write`) have
+scopes (`dashboards:read`, `office:write`, `deals:write`, `jobs:write`,
+`vacation:write`) have
 their audience mappers pointed at `https://browser-mcp.fluxology.ca/mcp`, so
 the ONE connector from section 6 covers browsing **and** dashboard writes.
 Smoke it after 6.2: in a session with the connector, call `dashboard.feed`
@@ -755,7 +758,7 @@ Then attach it as a **second claude.ai connector**, exactly as in 6.2:
 3. Advanced settings: Client ID `claude-ai`, the same regenerated secret.
    The claude.ai callback URL is already registered on the client from 6.2.
 4. Authorize, consenting to the `dashboards:*`/`*:write` scopes.
-5. Verify the tool scan shows the five dashboard tools (three category
+5. Verify the tool scan shows the six dashboard tools (four category
    upserts + reads) and **no** delete or feed-replacement tool — the same
    gate as fluxology-site `docs/MCP-CONNECTOR.md` step 4.
 
@@ -781,7 +784,7 @@ Run top to bottom; every row must match before Lane B is declared done.
 | V5 | `GET https://auth.fluxology.ca/realms/fluxology/protocol/openid-connect/certs` [12] | 200; ≥ 1 key |
 | V6 | `GET https://browser-mcp.fluxology.ca/healthz` [25] | 200 `{"status":"ok"}` |
 | V7 | `GET https://browser-mcp.fluxology.ca/readyz` [26] | 200 `{"status":"ready"}` |
-| V8 | `GET https://browser-mcp.fluxology.ca/.well-known/oauth-protected-resource/mcp` [27] | 200; `resource` = `…/mcp`, `authorization_servers` = the issuer, three `browser:*` + four dashboard scopes |
+| V8 | `GET https://browser-mcp.fluxology.ca/.well-known/oauth-protected-resource/mcp` [27] | 200; `resource` = `…/mcp`, `authorization_servers` = the issuer, three `browser:*` + five dashboard scopes |
 | V9 | Unauthenticated `POST https://browser-mcp.fluxology.ca/mcp` [28] | **401** + `WWW-Authenticate: Bearer … resource_metadata="…"` |
 | V10 | `device:list` on the gateway [38] | Two rows (`laptop`, `desktop`), both `active`, `last_seen` advancing |
 | V11 | `claude mcp list` [40] | `browser-bridge … ✓ Connected` |

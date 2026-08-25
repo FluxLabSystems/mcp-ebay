@@ -377,7 +377,7 @@ stage_gateway_env() {
   fi
   local tok missing=0
   if [[ "$SITE_ENV" != skip && -f "$SITE_ENV" ]]; then
-    for key in DEALS_INGEST_TOKEN OFFICE_INGEST_TOKEN JOBS_INGEST_TOKEN; do
+    for key in DEALS_INGEST_TOKEN OFFICE_INGEST_TOKEN JOBS_INGEST_TOKEN VACATION_INGEST_TOKEN; do
       tok="$(sed -n "s/^${key}=//p" "$SITE_ENV" | tail -1)"
       if [[ -n "$tok" ]]; then fill_placeholder "$GW_ENV" "$key" "$tok"
       else warn "$key not found in $SITE_ENV"; missing=1; fi
@@ -389,7 +389,7 @@ stage_gateway_env() {
   fi
   if (( missing )); then
     # Unset disables dashboard.feed/upsert cleanly (env.example contract).
-    sed -i -E 's~^(DASHBOARD_API_BASE_URL=.*)$~# \1~; s~^((DEALS|OFFICE|JOBS)_INGEST_TOKEN=CHANGE_ME.*)$~# \1~' "$GW_ENV"
+    sed -i -E 's~^(DASHBOARD_API_BASE_URL=.*)$~# \1~; s~^((DEALS|OFFICE|JOBS|VACATION)_INGEST_TOKEN=CHANGE_ME.*)$~# \1~' "$GW_ENV"
     warn "dashboard block commented out — dashboard.feed/upsert disabled until you fill the tokens and re-up"
   fi
   ! grep -q '^[^#]*CHANGE_ME' "$GW_ENV" || die "CHANGE_ME placeholders remain in $GW_ENV"

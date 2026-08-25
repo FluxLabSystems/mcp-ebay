@@ -289,7 +289,7 @@ export const HandoffOutput = z.strictObject({
  * device involved). The gateway holds the per-dashboard ingest tokens; the
  * scheduled research runs never see credentials in task text or output.
  */
-export const DASHBOARD_IDS = ['deals', 'office', 'jobs'] as const;
+export const DASHBOARD_IDS = ['deals', 'office', 'jobs', 'vacation'] as const;
 export type DashboardId = (typeof DASHBOARD_IDS)[number];
 
 export const DashboardFeedInput = z.strictObject({
