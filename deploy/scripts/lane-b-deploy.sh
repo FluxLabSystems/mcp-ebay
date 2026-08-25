@@ -310,10 +310,23 @@ stage_verify_auth() {
   iss="$(jq -r '.issuer' <<<"$doc")"
   [[ "$iss" == "$ISSUER" ]] || die "[10] issuer is '$iss', expected exactly '$ISSUER' — fix KC_HOSTNAME in deploy/auth/.env"
   ok "[10] issuer exact: $ISSUER"
-  iss="$(curl -fsS --max-time 20 "https://${AUTH_HOST}/.well-known/oauth-authorization-server/realms/${REALM}" | jq -r '.issuer')" \
-    || die "[11] RFC 8414 path-inserted discovery failed"
-  [[ "$iss" == "$ISSUER" ]] || die "[11] RFC 8414 issuer mismatch: $iss"
-  ok "[11] RFC 8414 discovery: same issuer"
+  # RFC 8414 section 3.1 INSERTS the well-known path before the issuer's
+  # path; Keycloak only serves the APPENDED form. Requiring the inserted one
+  # made this stage unsatisfiable against a stock Keycloak. Probe the same
+  # candidate list, in the same order, as scripts/verify-lane-b.sh and
+  # services/fluxology-mcp/src/auth.mjs -- either satisfies the connector.
+  local inserted="https://${AUTH_HOST}/.well-known/oauth-authorization-server/realms/${REALM}"
+  local suffixed="${ISSUER}/.well-known/oauth-authorization-server"
+  local cand served=""
+  for cand in "$inserted" "$suffixed"; do
+    iss="$(curl -fsS --max-time 20 "$cand" 2>/dev/null | jq -r '.issuer // empty' 2>/dev/null || true)"
+    if [[ "${iss%/}" == "$ISSUER" ]]; then served="$cand"; break; fi
+  done
+  [[ -n "$served" ]] || die "[11] RFC 8414 metadata: neither $inserted nor $suffixed returned issuer '$ISSUER' (enable the path-insertion shim in deploy/auth/caddy-auth-snippet.caddy, then re-run --from verify-auth)"
+  ok "[11] RFC 8414 discovery: same issuer (served at $served)"
+  if [[ "$served" == "$suffixed" ]]; then
+    warn "[11] the RFC 8414 path-inserted form ($inserted) is not served. fluxology-mcp falls back to the appended form, but an MCP client that only implements path-insertion will fail discovery. Enable the shim in deploy/auth/caddy-auth-snippet.caddy and reload Caddy."
+  fi
   local keys
   keys="$(curl -fsS --max-time 20 "$JWKS_URI" | jq '.keys | length')"
   [[ "$keys" =~ ^[0-9]+$ && "$keys" -ge 1 ]] || die "[12] JWKS has no keys"

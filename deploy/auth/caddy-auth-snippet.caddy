@@ -42,11 +42,12 @@ auth.fluxology.ca {
 
 	reverse_proxy fluxology-auth:8080 {
 		# Keycloak (--proxy-headers xforwarded) derives its public URLs and
-		# secure-cookie behaviour from these. Caddy appends X-Forwarded-For
-		# on its own; the rest are pinned explicitly so a future Caddy
-		# default change cannot silently break issuer/redirect construction.
-		header_up X-Forwarded-Proto {scheme}
-		header_up X-Forwarded-Host {host}
+		# secure-cookie behaviour from the X-Forwarded-* set. Caddy already
+		# sends X-Forwarded-For, -Proto and -Host by default -- setting those
+		# three explicitly makes `caddy validate` warn "Unnecessary header_up"
+		# on every reload, which is noise that trains an operator to ignore
+		# warnings. X-Forwarded-Port is NOT in Caddy's default set, so it is
+		# the one that has to be sent here.
 		header_up X-Forwarded-Port {port}
 
 		# Readiness, on Keycloak's MANAGEMENT interface (:9000 — enabled by
@@ -60,23 +61,31 @@ auth.fluxology.ca {
 		health_timeout 5s
 	}
 
-	# --- Optional: RFC 8414 path-insertion discovery shim -----------------
-	# Some OAuth clients try
+	# --- RFC 8414 path-insertion discovery shim ---------------------------
+	# RFC 8414 section 3.1 forms the metadata URL by INSERTING the well-known
+	# path between the host and the issuer's path:
 	#   /.well-known/oauth-authorization-server/realms/fluxology
-	# at the ORIGIN before falling back to OIDC discovery at
+	# Keycloak does not serve that shape. It serves the path-APPENDED forms:
+	#   /realms/fluxology/.well-known/oauth-authorization-server
 	#   /realms/fluxology/.well-known/openid-configuration
-	# Verify first whether your Keycloak version serves the former natively
-	# (see deploy/auth/README.md §Verify); only if it 404s AND a client
-	# refuses the OIDC fallback, wrap the reverse_proxy above in a
-	# `handle { ... }` block and add before it:
+	# so the RFC-conformant URL 404s -- verified against Keycloak 26 on
+	# 2026-08-25, which is what made lane-b-deploy.sh step [11] fail.
 	#
-	# handle /.well-known/oauth-authorization-server/realms/* {
-	# 	uri strip_prefix /.well-known/oauth-authorization-server
-	# 	rewrite * {path}/.well-known/openid-configuration
-	# 	reverse_proxy fluxology-auth:8080 {
-	# 		header_up X-Forwarded-Proto {scheme}
-	# 		header_up X-Forwarded-Host {host}
-	# 		header_up X-Forwarded-Port {port}
-	# 	}
-	# }
+	# An MCP client that only implements path-insertion (the MCP
+	# authorization spec requires clients to try it) would give up there, so
+	# this is on by default rather than optional: it costs one rewrite and
+	# removes a whole class of client-side discovery failure.
+	#
+	# `rewrite` is ordered before `reverse_proxy`, so the matched request is
+	# rewritten and then handled by the same upstream, headers and health
+	# checks as everything else -- no `handle` wrapper, nothing duplicated.
+	# The regexp anchors on a single realm segment, so a longer path is left
+	# alone and reaches Keycloak untouched (it 404s there, correctly).
+	#
+	# Verified with `caddy validate` and against a live Caddy: the inserted
+	# form (with and without a trailing slash) reaches
+	# /realms/<realm>/.well-known/openid-configuration, while
+	# /realms/..., /admin/... and every other path pass through unchanged.
+	@rfc8414 path_regexp r8414 ^/\.well-known/oauth-authorization-server/realms/([^/]+)/?$
+	rewrite @rfc8414 /realms/{re.r8414.1}/.well-known/openid-configuration
 }

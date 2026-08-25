@@ -144,8 +144,13 @@ curl -fsS https://auth.fluxology.ca/realms/fluxology/.well-known/openid-configur
 # Signing keys:
 curl -fsS https://auth.fluxology.ca/realms/fluxology/protocol/openid-connect/certs | jq '.keys[].alg'
 
-# RFC 8414 path-insertion form (needs-live-verification — see below):
+# RFC 8414 path-insertion form. Keycloak does NOT serve this shape; it is
+# answered by the rewrite shim in caddy-auth-snippet.caddy, so it works
+# through the edge and 404s if you bypass Caddy and ask Keycloak directly:
 curl -fsS https://auth.fluxology.ca/.well-known/oauth-authorization-server/realms/fluxology | jq .issuer
+
+# The form Keycloak serves natively (path-APPENDED), for comparison:
+curl -fsS https://auth.fluxology.ca/realms/fluxology/.well-known/oauth-authorization-server | jq .issuer
 ```
 
 To inspect what a token will contain **before** wiring any client: fluxology
@@ -263,14 +268,18 @@ deployment:
    insists on RFC 7591 dynamic client registration, either create an
    initial-access token (fluxology realm → Client registration) or check
    the connector's advanced settings for manual client entry.
-3. **RFC 8414 path-insertion discovery**
-   (`/.well-known/oauth-authorization-server/realms/fluxology` at the
-   origin) — not confirmed that Keycloak 26.x serves this form natively.
-   Both resource servers are unaffected (the gateway never discovers;
-   fluxology-mcp falls through to OIDC discovery, which Keycloak serves),
-   and MCP clients are specified to fall back to OIDC discovery too. If a
-   client refuses the fallback, enable the commented shim in
-   `caddy-auth-snippet.caddy`.
+3. ~~**RFC 8414 path-insertion discovery**~~ — **resolved 2026-08-25.**
+   Keycloak 26.x does **not** serve
+   `/.well-known/oauth-authorization-server/realms/fluxology` at the origin;
+   it 404s, which is what made `lane-b-deploy.sh` step [11] fail on the
+   first real deploy. Keycloak serves only the path-APPENDED forms under
+   `/realms/<realm>/.well-known/...`. The rewrite shim in
+   `caddy-auth-snippet.caddy` is therefore **on by default** rather than
+   commented out: it maps the RFC-conformant URL onto Keycloak's OIDC
+   discovery document, so a client that only implements path-insertion
+   still discovers the AS. Both resource servers were always unaffected
+   (the gateway never discovers; fluxology-mcp falls through to the
+   appended form).
 4. **Keycloak image tag** — `quay.io/keycloak/keycloak:26.3` was current
    stable 26.x when written; check quay.io for the newest 26.x and bump the
    tag in `compose.auth.yaml` before first deploy.
