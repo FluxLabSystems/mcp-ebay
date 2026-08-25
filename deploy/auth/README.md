@@ -172,8 +172,16 @@ scopes carries an *Audience* mapper (`oidc-audience-mapper`,
 
 - `browser:read`, `browser:interact`, `browser:admin` →
   `https://browser-mcp.fluxology.ca/mcp`
-- `dashboards:read`, `office:write`, `deals:write`, `jobs:write` →
+- `dashboards:read`, `office:write`, `deals:write`, `jobs:write`,
+  `vacation:write` → **both** `https://browser-mcp.fluxology.ca/mcp` **and**
   `https://mcp.fluxology.ca/mcp`
+
+The dashboard scopes carry two audience mappers because two resource servers
+now serve the same dashboards: the Browser Bridge gateway (`dashboard.feed` /
+`dashboard.upsert`) and the standalone fluxology-mcp connector
+(`upsert_*_listings`), which hard-requires `https://mcp.fluxology.ca/mcp` and
+is already deployed by the fluxology-site stack. A single audience would have
+silently 401'd whichever server was not named.
 
 So a token requested with `scope=browser:interact office:write` carries
 `aud: ["https://browser-mcp.fluxology.ca/mcp", "https://mcp.fluxology.ca/mcp"]`

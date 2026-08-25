@@ -714,12 +714,13 @@ with `{"dashboard":"deals","mode":"ids"}` — it must return the stored
 listing ids, and `dashboard.upsert` without the matching gateway token must
 name the missing `*_INGEST_TOKEN` in its error.
 
-Everything below is the OPTIONAL legacy alternative — the standalone
-`fluxology-mcp` connector from the fluxology-site stack. Skip it unless you
-specifically want that second connector; if you do use it, note its tokens
-now expect the audience `https://browser-mcp.fluxology.ca/mcp` realm-side,
-so its `MCP_OAUTH_AUDIENCE` no longer matches the realm mappers without
-re-adding a mapper for `https://mcp.fluxology.ca/mcp`.
+Everything below is the OPTIONAL second connector — the standalone
+`fluxology-mcp` from the fluxology-site stack, which exposes the same four
+dashboards as `upsert_*_listings`. It keeps working alongside the bridge:
+each dashboard scope carries audience mappers for **both** resource servers,
+so one token satisfies `https://browser-mcp.fluxology.ca/mcp` and
+`https://mcp.fluxology.ca/mcp` and each server still enforces its own scopes.
+Skip this section unless you want that connector attached as well.
 
 In the **fluxology-site checkout** on the VPS (wherever that stack deploys
 from), edit `.env` — note all three URLs carry the **realm path**, which the
