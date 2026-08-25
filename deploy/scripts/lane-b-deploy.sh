@@ -45,6 +45,7 @@ AUTH_HOST="auth.fluxology.ca"
 BRIDGE_HOST="browser-mcp.fluxology.ca"
 APEX_HOST="fluxology.ca"
 REALM="fluxology"
+ACME_WAIT="${ACME_WAIT:-180}"   # seconds to wait for first-issuance TLS on a new hostname
 ISSUER="https://${AUTH_HOST}/realms/${REALM}"
 JWKS_URI="${ISSUER}/protocol/openid-connect/certs"
 BRIDGE_BASE="https://${BRIDGE_HOST}"
@@ -108,6 +109,21 @@ resolve4() { # resolve4 host -> prints A records (dig, else getent)
 
 curl_code() { curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$@" || true; }
 
+# Caddy issues a certificate on the FIRST request for a new hostname, so the
+# very first HTTPS call after a reload routinely fails the TLS handshake (curl
+# reports 000) for tens of seconds. Poll until one of the accepted codes shows
+# up rather than dying on ACME latency.
+wait_http_code() { # wait_http_code <url> <timeout-seconds> <accepted-code>...
+  local url="$1" timeout="$2"; shift 2
+  local deadline=$(( SECONDS + timeout )) code accepted
+  while :; do
+    code="$(curl_code "$url")"
+    for accepted in "$@"; do [[ "$code" == "$accepted" ]] && { printf '%s' "$code"; return 0; }; done
+    (( SECONDS >= deadline )) && { printf '%s' "$code"; return 1; }
+    sleep 5
+  done
+}
+
 wait_healthy() { # wait_healthy <container-id-or-name> <timeout-seconds> <label>
   local target="$1" timeout="$2" label="$3" t=0 st
   while (( t < timeout )); do
@@ -170,7 +186,10 @@ stage_host_preflight() {
 
 stage_dns() {
   hdr "Stage dns — [1]-[3] A records must match the apex"
-  local apex auth bridge
+  local apex auth bridge tries=0
+  # Bounded: under --yes, confirm() returns the default without prompting, so
+  # an unbounded retry loop spins forever on DNS that never propagates.
+  local max_tries="${DNS_MAX_TRIES:-20}"
   while :; do
     apex="$(resolve4 "$APEX_HOST" | head -1)"
     auth="$(resolve4 "$AUTH_HOST" | head -1)"
@@ -182,6 +201,9 @@ stage_dns() {
     fi
     warn "auth/bridge records missing or stale. Create both A records -> $apex, then retry."
     warn "Proceeding to the Caddy stage with bad DNS triggers rate-limited ACME failures (runbook §1)."
+    tries=$(( tries + 1 ))
+    (( tries >= max_tries )) \
+      && die "DNS still not propagated after $tries checks (~$(( tries * 15 ))s). Create the auth/bridge A records -> $apex and re-run: $0 --from dns"
     if confirm "Retry DNS check now (n = abort)?" 1; then sleep 15; else die "DNS not propagated"; fi
   done
 }
@@ -268,14 +290,15 @@ stage_caddy() {
   fi
   # [15]/[16]
   local code
-  code="$(curl_code "https://${AUTH_HOST}/realms/${REALM}/.well-known/openid-configuration")"
-  [[ "$code" == 200 ]] || die "[15] expected 200 from auth discovery through Caddy, got $code"
+  say "  waiting for TLS/ACME on the new hostnames (first issuance can take a minute)…"
+  code="$(wait_http_code "https://${AUTH_HOST}/realms/${REALM}/.well-known/openid-configuration" "$ACME_WAIT" 200)" \
+    || die "[15] expected 200 from auth discovery through Caddy within ${ACME_WAIT}s, got $code (000 = TLS/ACME never completed: check DNS [1]-[3] and 'docker logs fluxology-caddy')"
   ok "[15] auth discovery through the edge: 200"
-  code="$(curl_code "${BRIDGE_BASE}/healthz")"
+  code="$(wait_http_code "${BRIDGE_BASE}/healthz" "$ACME_WAIT" 200 502)" || true
   case "$code" in
     200) ok "[16] bridge healthz: 200 (gateway already deployed)" ;;
     502) ok "[16] bridge answers 502 — TLS + routing up, gateway not deployed yet (expected)" ;;
-    *)   die "[16] expected 200 or 502 from ${BRIDGE_BASE}/healthz, got $code (DNS or merge problem)" ;;
+    *)   die "[16] expected 200 or 502 from ${BRIDGE_BASE}/healthz within ${ACME_WAIT}s, got $code (DNS, ACME or merge problem)" ;;
   esac
 }
 
@@ -375,11 +398,14 @@ stage_gateway_env() {
     prompt_default "Path to the fluxology-site stack .env (ingest tokens)? ('skip' disables dashboard tools)" "$SITE_ENV"
     SITE_ENV="$REPLY"
   fi
-  local tok missing=0
+  local tok found=0 missing=0
   if [[ "$SITE_ENV" != skip && -f "$SITE_ENV" ]]; then
-    for key in DEALS_INGEST_TOKEN OFFICE_INGEST_TOKEN JOBS_INGEST_TOKEN; do
+    for key in DEALS_INGEST_TOKEN OFFICE_INGEST_TOKEN JOBS_INGEST_TOKEN VACATION_INGEST_TOKEN; do
       tok="$(sed -n "s/^${key}=//p" "$SITE_ENV" | tail -1)"
-      if [[ -n "$tok" ]]; then fill_placeholder "$GW_ENV" "$key" "$tok"
+      # An upgraded deployment's .env predates a newly added token key, so add
+      # the line rather than dying on a missing placeholder.
+      grep -q "^${key}=" "$GW_ENV" || printf '%s=CHANGE_ME\n' "$key" >> "$GW_ENV"
+      if [[ -n "$tok" ]]; then fill_placeholder "$GW_ENV" "$key" "$tok"; found=1
       else warn "$key not found in $SITE_ENV"; missing=1; fi
     done
     (( missing )) || ok "ingest tokens copied from $SITE_ENV"
@@ -387,9 +413,18 @@ stage_gateway_env() {
     [[ "$SITE_ENV" == skip ]] || warn "$SITE_ENV not found"
     missing=1
   fi
-  if (( missing )); then
-    # Unset disables dashboard.feed/upsert cleanly (env.example contract).
-    sed -i -E 's~^(DASHBOARD_API_BASE_URL=.*)$~# \1~; s~^((DEALS|OFFICE|JOBS)_INGEST_TOKEN=CHANGE_ME.*)$~# \1~' "$GW_ENV"
+  # A PARTIAL token set must never comment out DASHBOARD_API_BASE_URL: the
+  # gateway refuses to boot when any *_INGEST_TOKEN is set without a base URL,
+  # so disabling the URL while leaving real tokens behind bricks the stack.
+  # The gateway accepts a subset — a dashboard whose token is absent simply
+  # refuses its own upsert with a message naming the missing variable.
+  if (( found )); then
+    # Drop only the placeholders that were never filled.
+    sed -i -E 's~^((DEALS|OFFICE|JOBS|VACATION)_INGEST_TOKEN=CHANGE_ME.*)$~# \1~' "$GW_ENV"
+    (( missing )) && warn "some ingest tokens were absent; their dashboards stay read-only until you add them and re-up"
+  elif (( missing )); then
+    # Nothing to write with: unset the whole block (env.example contract).
+    sed -i -E 's~^(DASHBOARD_API_BASE_URL=.*)$~# \1~; s~^((DEALS|OFFICE|JOBS|VACATION)_INGEST_TOKEN=CHANGE_ME.*)$~# \1~' "$GW_ENV"
     warn "dashboard block commented out — dashboard.feed/upsert disabled until you fill the tokens and re-up"
   fi
   ! grep -q '^[^#]*CHANGE_ME' "$GW_ENV" || die "CHANGE_ME placeholders remain in $GW_ENV"

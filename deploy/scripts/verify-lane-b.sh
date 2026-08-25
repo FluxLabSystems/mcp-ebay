@@ -34,7 +34,7 @@ BAD_TOKEN="${VERIFY_BAD_TOKEN:-}"         # mode (a): wrong-audience token
 CLIENT_ID="${VERIFY_CLIENT_ID:-}"         # mode (b): confidential client
 CLIENT_SECRET="${VERIFY_CLIENT_SECRET:-}"
 BRIDGE_SCOPES="${VERIFY_BRIDGE_SCOPES:-browser:read browser:interact}"
-FLUX_SCOPES="${VERIFY_MCP_SCOPES:-dashboards:read office:write deals:write jobs:write}"
+FLUX_SCOPES="${VERIFY_MCP_SCOPES:-dashboards:read office:write deals:write jobs:write vacation:write}"
 DEVICE=""
 CURL_MAX_TIME=20
 SMOKE_MAX_TIME=90
@@ -575,17 +575,29 @@ check_bridge_tools_list() {
     fail "bridge tools/list: HTTP $HTTP_STATUS (www-authenticate: $(response_header 'www-authenticate'))"
     return 0
   fi
-  local names count nonbrowser
+  local names browsers nonbrowser unexpected
   names="$(json_of_response | jq -r '[.result.tools[]?.name] | sort | join(",")')"
-  count="$(json_of_response | jq -r '.result.tools | length')"
-  nonbrowser="$(json_of_response | jq -r '[.result.tools[]?.name | select(startswith("browser.") | not)] | join(",")')"
+  browsers="$(json_of_response | jq -r '[.result.tools[]?.name | select(startswith("browser."))] | length')"
+  nonbrowser="$(json_of_response | jq -r '[.result.tools[]?.name | select(startswith("browser.") | not)] | sort | join(",")')"
   # Contract: exactly 15 browser.* tools incl. browser.extract
   # (tests/contract/mcpHttp.test.ts:23-32; packages/protocol/src/catalog.ts).
-  if [[ "$count" == "15" && "$names" == *browser.extract* && -z "$nonbrowser" ]]; then
-    pass "bridge tools/list: 15 browser.* tools (browser.extract present)"
+  # The gateway ALSO serves dashboard.feed/dashboard.upsert whenever section
+  # 4.1's dashboard block is configured, so the surface is 15 or 17 tools. An
+  # earlier revision demanded exactly 15 with zero non-browser tools, which
+  # failed on a correctly deployed gateway; only an UNEXPECTED extra tool is a
+  # real finding.
+  unexpected="$(json_of_response | jq -r '[.result.tools[]?.name
+    | select(startswith("browser.") | not)
+    | select(. != "dashboard.feed" and . != "dashboard.upsert")] | join(",")')"
+  if [[ "$browsers" == "15" && "$names" == *browser.extract* && -z "$unexpected" ]]; then
+    if [[ -n "$nonbrowser" ]]; then
+      pass "bridge tools/list: 15 browser.* tools + dashboard tools [$nonbrowser]"
+    else
+      pass "bridge tools/list: 15 browser.* tools (dashboard block not configured)"
+    fi
     BRIDGE_SESSION_OK=1
   else
-    fail "bridge tools/list: expected 15 browser.* tools, got ${count:-0} [$names]"
+    fail "bridge tools/list: expected 15 browser.* tools (+ optional dashboard.feed/upsert), got browsers=${browsers:-0} unexpected=[${unexpected}] all=[$names]"
   fi
 }
 
@@ -611,15 +623,16 @@ check_flux_tools_list() {
         [[ " $scopes " == *" office:write "* ]] && printf '%s\n' upsert_office_listings
         [[ " $scopes " == *" deals:write "* ]] && printf '%s\n' upsert_deal_listings
         [[ " $scopes " == *" jobs:write "* ]] && printf '%s\n' upsert_job_listings
+        [[ " $scopes " == *" vacation:write "* ]] && printf '%s\n' upsert_vacation_listings
         true
       } | sort | paste -sd, -
     )"
     if [[ "$names" == "$expected" ]]; then
-      if [[ "$count" == "5" ]]; then
-        pass "mcp tools/list: all five tools listed [$names]"
+      if [[ "$count" == "6" ]]; then
+        pass "mcp tools/list: all six tools listed [$names]"
       else
         pass "mcp tools/list: lists exactly the $count tool(s) the token's scopes allow [$names]"
-        note "token scope=[$scopes] — grant all of: dashboards:read office:write deals:write jobs:write to see all five"
+        note "token scope=[$scopes] — grant all of: dashboards:read office:write deals:write jobs:write vacation:write to see all six"
       fi
     else
       fail "mcp tools/list: for scope=[$scopes] expected [$expected], got [$names]"

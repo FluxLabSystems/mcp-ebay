@@ -47,6 +47,10 @@ const stubDashboardApi: typeof fetch = async (input, init) => {
   if (url.endsWith('/v1/deals/feed')) {
     return Response.json(FEED_ROOT);
   }
+  if (url.endsWith('/v1/vacation/upsert')) {
+    const listings = (body as { listings: unknown[] }).listings;
+    return Response.json({ ok: true, scope: 'vacation', upserted: listings.length, unchanged: 0 });
+  }
   if (url.endsWith('/v1/deals/upsert')) {
     const listings = (body as { listings: unknown[] }).listings;
     return Response.json({ ok: true, scope: 'deals', upserted: listings.length, unchanged: 0 });
@@ -70,6 +74,7 @@ beforeAll(async () => {
     env: {
       DASHBOARD_API_BASE_URL: 'http://dashboard-api:8082',
       DEALS_INGEST_TOKEN: 'secret-deals-token',
+      VACATION_INGEST_TOKEN: 'secret-vacation-token',
     },
     dashboardFetch: stubDashboardApi,
   });
@@ -118,6 +123,32 @@ describe('dashboard tools over the live MCP surface', () => {
     };
     expect(structured.listingCount).toBe(1);
     expect(structured.root.listings).toEqual([{ id: 'kijiji-1111111', lastSeen: '2026-08-17T00:00:00Z' }]);
+  });
+
+  it('upserts to the vacation dashboard with vacation:write only', async () => {
+    const response = await clientWith(await mintToken('vacation:write')).callTool('dashboard.upsert', {
+      dashboard: 'vacation',
+      listings: [{ id: 'vacation-someresort-oceansuite', title: 'Ocean Suite' }],
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.result?.isError).not.toBe(true);
+    const structured = response.body.result?.structuredContent as { ok: boolean; result: { upserted: number } };
+    expect(structured.ok).toBe(true);
+    expect(structured.result.upserted).toBe(1);
+    const upstream = upstreamRequests.find((r) => r.url.endsWith('/v1/vacation/upsert'));
+    expect(upstream?.authorization).toBe('Bearer secret-vacation-token');
+    expect(JSON.stringify(response.body)).not.toContain('secret-vacation-token');
+  });
+
+  it('a vacation:write token cannot write the deals dashboard', async () => {
+    const response = await clientWith(await mintToken('vacation:write')).callTool('dashboard.upsert', {
+      dashboard: 'deals',
+      listings: [{ id: 'ebay-1' }],
+    });
+    const parsed = JSON.parse(response.body.result?.content?.[0]?.text ?? '{}') as { error?: { code: string; message: string } };
+    expect(response.body.result?.isError).toBe(true);
+    expect(parsed.error?.code).toBe('ACTION_BLOCKED');
+    expect(parsed.error?.message).toContain('deals:write');
   });
 
   it('refuses an upsert from a browser-scopes-only token', async () => {

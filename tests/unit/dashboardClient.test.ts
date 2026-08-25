@@ -98,18 +98,24 @@ describe('dashboard scope rules', () => {
     expect(dashboardScopeSatisfies(['deals:write'], 'deals', 'upsert')).toBe(true);
     expect(dashboardScopeSatisfies(['deals:write'], 'jobs', 'upsert')).toBe(false);
     expect(dashboardScopeSatisfies(['dashboards:read'], 'deals', 'upsert')).toBe(false);
+    expect(dashboardScopeSatisfies(['vacation:write'], 'vacation', 'upsert')).toBe(true);
+    expect(dashboardScopeSatisfies(['jobs:write'], 'vacation', 'upsert')).toBe(false);
+    expect(dashboardScopeSatisfies(['vacation:write'], 'deals', 'upsert')).toBe(false);
     expect(dashboardScopeSatisfies(['browser:interact'], 'deals', 'upsert')).toBe(false);
   });
 
   it('feed accepts dashboards:read or any write scope (write implies read)', () => {
     expect(dashboardScopeSatisfies(['dashboards:read'], 'office', 'feed')).toBe(true);
     expect(dashboardScopeSatisfies(['jobs:write'], 'office', 'feed')).toBe(true);
+    expect(dashboardScopeSatisfies(['vacation:write'], 'office', 'feed')).toBe(true);
+    expect(dashboardScopeSatisfies(['dashboards:read'], 'vacation', 'feed')).toBe(true);
     expect(dashboardScopeSatisfies(['browser:read'], 'office', 'feed')).toBe(false);
   });
 
   it('names the required scope for error messages', () => {
     expect(requiredDashboardScope('deals', 'upsert')).toBe('deals:write');
     expect(requiredDashboardScope('deals', 'feed')).toBe('dashboards:read');
+    expect(requiredDashboardScope('vacation', 'upsert')).toBe('vacation:write');
   });
 });
 
@@ -124,14 +130,16 @@ describe('gateway dashboard configuration', () => {
       DASHBOARD_API_BASE_URL: 'http://dashboard-api:8082/',
       DEALS_INGEST_TOKEN: 'a',
       JOBS_INGEST_TOKEN: 'b',
+      VACATION_INGEST_TOKEN: 'c',
     });
     expect(config.dashboards).toEqual({
       baseUrl: 'http://dashboard-api:8082',
-      tokens: { deals: 'a', jobs: 'b' },
+      tokens: { deals: 'a', jobs: 'b', vacation: 'c' },
     });
   });
 
   it('rejects a token configured without a base URL', () => {
     expect(() => loadGatewayConfig({ ...BASE_ENV, DEALS_INGEST_TOKEN: 'a' })).toThrow(/DASHBOARD_API_BASE_URL/);
+    expect(() => loadGatewayConfig({ ...BASE_ENV, VACATION_INGEST_TOKEN: 'a' })).toThrow(/DASHBOARD_API_BASE_URL/);
   });
 });

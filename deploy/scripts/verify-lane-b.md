@@ -33,7 +33,7 @@ temp files (never argv) and are never printed.
 5. **Authenticated probes** (when a token source is given) — `tools/list`
    against both: bridge must list its 15 `browser.*` tools; the connector
    lists the subset of its five tools the token's scopes permit (all five with
-   `dashboards:read office:write deals:write jobs:write`). A wrong-audience
+   `dashboards:read office:write deals:write jobs:write vacation:write`). A wrong-audience
    token must be rejected 401 by both.
 6. **Optional browser smoke** (`--device <deviceId>`) —
    `browser.session_open → browser.navigate(https://www.ebay.ca/) →
@@ -70,7 +70,7 @@ VERIFY_CLIENT_SECRET='…' ./verify-lane-b.sh --client-id verify-cli
 
 It requests one token per resource (`--bridge-scopes`, default
 `browser:read browser:interact`; `--mcp-scopes`, default
-`dashboards:read office:write deals:write jobs:write`) plus one **scopeless**
+`dashboards:read office:write deals:write jobs:write vacation:write`) plus one **scopeless**
 token used as the wrong-audience probe.
 
 Keycloak setup for `verify-cli` (optional, one-time):

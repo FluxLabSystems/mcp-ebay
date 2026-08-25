@@ -14,6 +14,8 @@ import {
   scopeSatisfies,
   TOOL_CATALOG,
   type DashboardToolCatalogEntry,
+  type DashboardId,
+  type DashboardToolAction,
   type ToolCatalogEntry,
 } from '@browser-bridge/protocol';
 import type { CommandBroker } from '../broker.js';
@@ -110,8 +112,8 @@ function registerDashboardTool(
 
 function assertDashboardScope(
   authInfo: { scopes: string[] } | undefined,
-  dashboard: 'deals' | 'office' | 'jobs',
-  action: 'feed' | 'upsert',
+  dashboard: DashboardId,
+  action: DashboardToolAction,
 ): void {
   const scopes = authInfo?.scopes ?? [];
   if (!dashboardScopeSatisfies(scopes, dashboard, action)) {
