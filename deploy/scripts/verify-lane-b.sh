@@ -575,17 +575,29 @@ check_bridge_tools_list() {
     fail "bridge tools/list: HTTP $HTTP_STATUS (www-authenticate: $(response_header 'www-authenticate'))"
     return 0
   fi
-  local names count nonbrowser
+  local names browsers nonbrowser unexpected
   names="$(json_of_response | jq -r '[.result.tools[]?.name] | sort | join(",")')"
-  count="$(json_of_response | jq -r '.result.tools | length')"
-  nonbrowser="$(json_of_response | jq -r '[.result.tools[]?.name | select(startswith("browser.") | not)] | join(",")')"
+  browsers="$(json_of_response | jq -r '[.result.tools[]?.name | select(startswith("browser."))] | length')"
+  nonbrowser="$(json_of_response | jq -r '[.result.tools[]?.name | select(startswith("browser.") | not)] | sort | join(",")')"
   # Contract: exactly 15 browser.* tools incl. browser.extract
   # (tests/contract/mcpHttp.test.ts:23-32; packages/protocol/src/catalog.ts).
-  if [[ "$count" == "15" && "$names" == *browser.extract* && -z "$nonbrowser" ]]; then
-    pass "bridge tools/list: 15 browser.* tools (browser.extract present)"
+  # The gateway ALSO serves dashboard.feed/dashboard.upsert whenever section
+  # 4.1's dashboard block is configured, so the surface is 15 or 17 tools. An
+  # earlier revision demanded exactly 15 with zero non-browser tools, which
+  # failed on a correctly deployed gateway; only an UNEXPECTED extra tool is a
+  # real finding.
+  unexpected="$(json_of_response | jq -r '[.result.tools[]?.name
+    | select(startswith("browser.") | not)
+    | select(. != "dashboard.feed" and . != "dashboard.upsert")] | join(",")')"
+  if [[ "$browsers" == "15" && "$names" == *browser.extract* && -z "$unexpected" ]]; then
+    if [[ -n "$nonbrowser" ]]; then
+      pass "bridge tools/list: 15 browser.* tools + dashboard tools [$nonbrowser]"
+    else
+      pass "bridge tools/list: 15 browser.* tools (dashboard block not configured)"
+    fi
     BRIDGE_SESSION_OK=1
   else
-    fail "bridge tools/list: expected 15 browser.* tools, got ${count:-0} [$names]"
+    fail "bridge tools/list: expected 15 browser.* tools (+ optional dashboard.feed/upsert), got browsers=${browsers:-0} unexpected=[${unexpected}] all=[$names]"
   fi
 }
 
