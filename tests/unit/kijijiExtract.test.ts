@@ -160,3 +160,57 @@ describe('kijiji page classification', () => {
     expect(classifyKijijiPage('not a url')).toBe('other');
   });
 });
+
+// Four defects a live Kijiji run surfaced on 2026-08-26. Each fixture fails
+// against the extractor as it stood before this suite was added.
+describe('defects found on the first live Kijiji run', () => {
+  const LIVE_AD_URL = 'https://www.kijiji.ca/v-toys-games/city-of-toronto/lego-bulk-lot/1712345678';
+
+  function liveAd() {
+    return extractKijijiListing(loadFixture('live-ad-with-i18n-bundle.html'), LIVE_AD_URL, { pageRevision: 1 });
+  }
+
+  it('does not read a banner string out of the inline i18n bundle', () => {
+    // body.textContent includes <script>, and Kijiji ships every banner
+    // string it can render inline. The page displays none of them.
+    expect(liveAd().record.listingStatus).toBe('active');
+  });
+
+  it('takes the seller username, not the avatar monogram', () => {
+    // The profile anchor wraps a "J" avatar; the username is on its title.
+    expect(liveAd().record.sellerName?.value).toBe('junior');
+  });
+
+  it('resolves location from the postal code the sidebar renders', () => {
+    const { record, warnings } = liveAd();
+    expect(record.location?.text).toContain('M6H 2W9');
+    expect(warnings.some((warning) => warning.startsWith('location resolved from a postal code'))).toBe(true);
+  });
+
+  it('still validates against the canonical record schema', () => {
+    expect(KijijiExtractionRecordSchema.safeParse(liveAd().record).success).toBe(true);
+  });
+
+  it('reports more pages from the stated count when no next link is present', () => {
+    const page = extractSearchResults(
+      loadFixture('search-results-count-only.html'),
+      'https://www.kijiji.ca/b-buy-sell/city-of-toronto/lego/c10l1700273',
+    );
+    // 73 results, 40 shown: there is unambiguously a page two, whether or
+    // not a "next" anchor can be found.
+    expect(page.totalResults).toBe(73);
+    expect(page.hasNextPage).toBe(true);
+    // Best-effort link, synthesised from the URL shape.
+    expect(page.nextPageUrl).toContain('page-2');
+  });
+
+  it('does not claim a next page when the count says this is all of them', () => {
+    const document = loadFixture('search-results-count-only.html');
+    const header = document.querySelector('[data-testid="srp-results-count"] span');
+    if (header) header.textContent = '1 - 2 of 2 Ads';
+    const page = extractSearchResults(document, 'https://www.kijiji.ca/b-buy-sell/city-of-toronto/lego/c10l1700273');
+    expect(page.totalResults).toBe(2);
+    expect(page.hasNextPage).toBe(false);
+    expect(page.nextPageUrl).toBeNull();
+  });
+});

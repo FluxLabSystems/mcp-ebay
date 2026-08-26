@@ -1,0 +1,30 @@
+<!doctype html>
+<!-- Synthetic LIVE Kijiji ad reproducing four defects a real run surfaced.
+     The __NEXT_DATA__ script below carries every banner string the app can
+     render -- exactly as the real page does -- so a body.textContent scan
+     sees "this ad is no longer available" on a page displaying no such
+     banner. The seller anchor wraps an avatar monogram, and the location
+     exists only as a postal code in the sidebar. -->
+<html lang="en">
+<head><title>LEGO Bulk Lot - Toronto | Kijiji</title></head>
+<body>
+  <main>
+    <h1 data-testid="listing-title">LEGO Bulk Lot 12 lbs Mixed Bricks</h1>
+    <span data-testid="listing-price">$180.00</span>
+    <div data-testid="listing-description">Mixed LEGO from a smoke-free home.</div>
+    <a href="/o-profile/1234567" data-testid="profile-link" title="junior">
+      <span class="avatarMonogram">J</span>
+    </a>
+    <button data-testid="vip-reply-button">Message the seller</button>
+    <aside class="sidebarContainer">
+      <div class="mapContainer">
+        <span>Toronto, ON M6H 2W9</span>
+      </div>
+    </aside>
+  </main>
+  <script id="__NEXT_DATA__" type="application/json">
+  {"props":{"i18n":{"vip.removed":"This ad is no longer available",
+  "vip.expired":"This ad has expired","vip.deleted":"This ad was deleted"}}}
+  </script>
+</body>
+</html>
