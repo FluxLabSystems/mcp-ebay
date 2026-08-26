@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canonicalListingUrl,
+  cleanTitle,
   itemIdFromUrl,
   normalizeEbayImageUrl,
   normalizePostalCode,
@@ -24,17 +25,90 @@ describe('postal normalization (§20.1)', () => {
 
 describe('money parsing (§20.3)', () => {
   it('parses eBay-rendered amounts', () => {
-    expect(parseMoney('C $35.00')).toEqual({ value: 35, currency: 'CAD', approximate: false });
-    expect(parseMoney('US $12.50')).toEqual({ value: 12.5, currency: 'USD', approximate: false });
-    expect(parseMoney('C $1,234.56')).toEqual({ value: 1234.56, currency: 'CAD', approximate: false });
-    expect(parseMoney('$10.99')).toEqual({ value: 10.99, currency: 'CAD', approximate: false });
-    expect(parseMoney('Free shipping')).toEqual({ value: 0, currency: 'CAD', approximate: false });
+    expect(parseMoney('C $35.00')).toEqual({ value: 35, currency: 'CAD', approximate: false, ambiguousFree: false });
+    expect(parseMoney('US $12.50')).toEqual({ value: 12.5, currency: 'USD', approximate: false, ambiguousFree: false });
+    expect(parseMoney('C $1,234.56')).toEqual({
+      value: 1234.56,
+      currency: 'CAD',
+      approximate: false,
+      ambiguousFree: false,
+    });
+    expect(parseMoney('$10.99')).toEqual({ value: 10.99, currency: 'CAD', approximate: false, ambiguousFree: false });
+    expect(parseMoney('Free shipping')).toEqual({ value: 0, currency: 'CAD', approximate: false, ambiguousFree: false });
+    expect(parseMoney('Free')).toEqual({ value: 0, currency: 'CAD', approximate: false, ambiguousFree: false });
   });
   it('flags ranges as approximate at the low bound', () => {
-    expect(parseMoney('C $8.91 to C $12.00')).toEqual({ value: 8.91, currency: 'CAD', approximate: true });
+    expect(parseMoney('C $8.91 to C $12.00')).toEqual({
+      value: 8.91,
+      currency: 'CAD',
+      approximate: true,
+      ambiguousFree: false,
+    });
   });
   it('rejects non-monetary text', () => {
     expect(parseMoney('See details')).toBeNull();
+  });
+
+  // An eBay International Shipping block renders "free returns" beside the
+  // real figure. A bare /free/ test zeroed the cost while observedText still
+  // showed it -- a silent zero that corrupts landed-cost arithmetic.
+  it('does not zero a real amount because the text mentions free returns', () => {
+    expect(parseMoney('C $28.36 eBay International Shipping | Free returns')).toEqual({
+      value: 28.36,
+      currency: 'CAD',
+      approximate: false,
+      ambiguousFree: false,
+    });
+    expect(parseMoney('US $14.99 expedited shipping. Free 30-day returns.')).toEqual({
+      value: 14.99,
+      currency: 'USD',
+      approximate: false,
+      ambiguousFree: false,
+    });
+  });
+
+  it('still takes free when the word actually modifies shipping, and flags a mixed cell', () => {
+    expect(parseMoney('Free standard shipping')).toEqual({
+      value: 0,
+      currency: 'CAD',
+      approximate: false,
+      ambiguousFree: false,
+    });
+    // Free standard, paid expedited: free is the standard cost, but the cell
+    // was not unambiguous and says so.
+    expect(parseMoney('Free shipping | C $12.00 expedited')).toEqual({
+      value: 0,
+      currency: 'CAD',
+      approximate: false,
+      ambiguousFree: true,
+    });
+  });
+});
+
+describe('title cleaning', () => {
+  it('strips the screen-reader anchor text eBay puts inside every card title', () => {
+    expect(cleanTitle('LEGO Friends Bulk Lot 5 lbs Opens in a new window or tab')).toBe('LEGO Friends Bulk Lot 5 lbs');
+  });
+  it('strips badge prefixes, including stacked ones', () => {
+    expect(cleanTitle('New Listing LEGO Castle Lot')).toBe('LEGO Castle Lot');
+    expect(cleanTitle('SPONSORED Almost gone Vintage LEGO Space Set')).toBe('Vintage LEGO Space Set');
+    expect(cleanTitle('Watching: LEGO Technic 42115')).toBe('LEGO Technic 42115');
+  });
+  it('matches whole badge phrases, so a shared first word is not enough to strip', () => {
+    // "New" alone is never a badge -- only "New Listing" is -- so this survives.
+    expect(cleanTitle('New Balance 990v5 Made in USA')).toBe('New Balance 990v5 Made in USA');
+  });
+  it('KNOWN LIMIT: a title whose real first word IS a badge phrase loses it', () => {
+    // "Sponsored" is a single-word badge, so a genuine title starting with it
+    // is trimmed. Accepted: eBay stamps that badge on cards far more often
+    // than a listing title begins with the word, and the alternative is
+    // leaving the badge on every sponsored card. Documented rather than
+    // silently tolerated -- if this bites, the fix is to read the badge from
+    // its own span and subtract it, not to widen the regex.
+    expect(cleanTitle('Sponsored Content Book First Edition')).toBe('Content Book First Edition');
+  });
+  it('collapses the whitespace eBay renders with non-breaking spaces', () => {
+    expect(cleanTitle('LEGO\u00a0Star\u00a0Wars   75192')).toBe('LEGO Star Wars 75192');
   });
 });
 

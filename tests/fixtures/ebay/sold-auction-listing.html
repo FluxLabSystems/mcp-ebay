@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- Synthetic sold-auction fixture: the two defects a live run surfaced --
+     a sold listing reported as `unknown`, and an auction whose current bid
+     was indistinguishable from a fixed price. Banner markup deliberately
+     uses a selector the original ENDED detection did not know about. -->
+<html lang="en">
+<head><title>LEGO Star Wars UCS Millennium Falcon 75192 | eBay</title></head>
+<body>
+  <div class="x-status-message" data-testid="x-status-message">
+    <span>This listing sold on Aug 24, 2026.</span>
+  </div>
+  <div id="mainContent">
+    <div class="x-buybox" data-testid="x-buybox">
+      <h1 class="x-item-title__mainTitle">
+        <span class="s-item__title--tag">New Listing</span>
+        LEGO Star Wars UCS Millennium Falcon 75192
+        <span class="clipped">Opens in a new window or tab</span>
+      </h1>
+      <div class="x-price-primary"><span>C $1,249.00</span></div>
+      <div class="x-bid-count" data-testid="x-bid-count"><span>37 bids</span></div>
+      <div class="ux-labels-values ux-labels-values--shipping">
+        <div class="ux-labels-values__values">
+          C $28.36 eBay International Shipping | Free returns
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
