@@ -9,12 +9,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { BrowserSessionRuntime } from '@browser-bridge/browser-core';
-import {
-  BridgeError,
-  ExtractOutput,
-  WIRE_PROTOCOL_VERSION,
-  type CommandEnvelope,
-} from '@browser-bridge/protocol';
+import { ExtractOutput, WIRE_PROTOCOL_VERSION, type CommandEnvelope } from '@browser-bridge/protocol';
 import { mergeSiteProfiles } from '@browser-bridge/policy';
 import { ebaySiteProfile } from '@browser-bridge/site-ebay';
 import {
@@ -108,15 +103,41 @@ describe('browser.extract dispatches by page kind instead of refusing', () => {
     expect(record.candidateCount).toBeGreaterThan(0);
   });
 
-  it('only genuinely unsupported eBay pages refuse, with an actionable message', async () => {
-    await expect(runExtract('https://www.ebay.ca/', '<html><body></body></html>', 'ebay.ca.v1')).rejects.toSatisfy(
-      (error: unknown) => {
-        expect(error).toBeInstanceOf(BridgeError);
-        expect((error as BridgeError).code).toBe('SITE_PROFILE_MISMATCH');
-        expect((error as BridgeError).message).toContain('/sch/');
-        return true;
-      },
+  it('an unclassified eBay page still extracts, scanning it for /itm/ links', async () => {
+    // The eBay homepage classifies as 'other'. It is not a refusal: the same
+    // scan the search pages use runs, and it finds whatever item links exist.
+    const outcome = await runExtract('https://www.ebay.ca/', fixture('ebay', 'search-results.html'), 'ebay.ca.v1');
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as { pageKind: string; candidateCount: number };
+    expect(record.pageKind).toBe('other');
+    expect(record.candidateCount).toBeGreaterThan(0);
+    expect(parsed.warnings.some((warning) => warning.startsWith('UNCLASSIFIED_PAGE'))).toBe(true);
+  });
+
+  it('an unclassified eBay page with no listings reports empty rather than failing', async () => {
+    const outcome = await runExtract('https://www.ebay.ca/', '<html><body></body></html>', 'ebay.ca.v1');
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as { pageKind: string; candidateCount: number };
+    expect(record.pageKind).toBe('other');
+    expect(record.candidateCount).toBe(0);
+    // Both warnings matter: one says the page kind was unknown, the other
+    // says the scan came back empty. Neither alone distinguishes "no
+    // listings here" from "wrong page".
+    expect(parsed.warnings.some((warning) => warning.startsWith('UNCLASSIFIED_PAGE'))).toBe(true);
+    expect(parsed.warnings.some((warning) => warning.startsWith('NO_LISTING_CANDIDATES'))).toBe(true);
+  });
+
+  it('an unclassified Kijiji page still extracts rather than refusing', async () => {
+    const outcome = await runExtract(
+      'https://www.kijiji.ca/',
+      fixture('kijiji', 'search-results.html'),
+      'kijiji.ca.v1',
     );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as { pageKind: string; candidateCount: number };
+    expect(record.pageKind).toBe('other');
+    expect(record.candidateCount).toBeGreaterThan(0);
+    expect(parsed.warnings.some((warning) => warning.startsWith('UNCLASSIFIED_PAGE'))).toBe(true);
   });
 
   it('Kijiji search results return candidates plus next-page pagination', async () => {

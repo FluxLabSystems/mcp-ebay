@@ -346,18 +346,18 @@ async function executeExtract(
 
   if (site === 'kijiji') {
     const kind = classifyKijijiPage(pageUrl);
-    if (kind === 'other') {
-      throw new BridgeError(
-        'SITE_PROFILE_MISMATCH',
-        `kijiji.ca.v1 extraction supports ad (VIP) and search (/b-*) pages; current page is "${kind}" (${pageUrl}). Navigate to a search-results or ad page first.`,
-        { pageUrl, kind },
-      );
-    }
     const html = await tab.page.content();
     const { document } = parseHTML(html);
-    if (kind === 'search') {
+    // 'other' is not a refusal: run the same ad-link scan the search pages
+    // use. Worst case it finds nothing and says so.
+    if (kind === 'search' || kind === 'other') {
       const searchPage = extractSearchResults(document as unknown as Document, pageUrl);
       const warnings = [...intentWarnings];
+      if (kind === 'other') {
+        warnings.push(
+          `UNCLASSIFIED_PAGE: ${pageUrl} is not a Kijiji ad or search URL; returned a best-effort ad-link scan. An empty candidate list here may mean the page has no ads, not that extraction failed.`,
+        );
+      }
       if (searchPage.results.length === 0) {
         warnings.push(
           'NO_LISTING_CANDIDATES: no ad links found — an empty results page, or the result-card selectors need updating.',
@@ -369,7 +369,7 @@ async function executeExtract(
           pageRevision: tab.revision,
           record: {
             siteProfile: KIJIJI_SITE_PROFILE_ID,
-            pageKind: 'search',
+            pageKind: kind,
             pageUrl,
             candidateCount: searchPage.results.length,
             candidates: searchPage.results,
@@ -400,12 +400,19 @@ async function executeExtract(
 
   // eBay pages dispatch by kind (FR-15); 'generic' hosts (test-harness
   // profiles) keep the historical straight-to-listing-extractor path.
+  // Page kind selects an extractor; it never refuses a page. Anything that
+  // is not an item page gets the /itm/-link scan, including 'other'.
   const kind = site === 'ebay' ? classifyEbayPage(pageUrl) : ('listing' as const);
-  if (kind === 'search' || kind === 'store') {
+  if (kind === 'search' || kind === 'store' || kind === 'other') {
     const html = await tab.page.content();
     const { document } = parseHTML(html);
     const candidates = extractListingCandidates(document as unknown as Document, pageUrl);
     const warnings = [...intentWarnings];
+    if (kind === 'other') {
+      warnings.push(
+        `UNCLASSIFIED_PAGE: ${pageUrl} is not an item (/itm/), search (/sch/) or store (/str/, /usr/) URL; returned a best-effort /itm/-link scan. An empty candidate list here may mean the page has no listings, not that extraction failed.`,
+      );
+    }
     if (candidates.length === 0) {
       warnings.push(
         'NO_LISTING_CANDIDATES: no /itm/ links found — an empty results page, or the result-card selectors need updating.',
@@ -429,14 +436,6 @@ async function executeExtract(
       artifacts: [],
     };
   }
-  if (kind !== 'listing') {
-    throw new BridgeError(
-      'SITE_PROFILE_MISMATCH',
-      `ebay.ca.v1 extraction supports item (/itm/), search (/sch/), and seller store (/str/, /usr/) pages; current page is "${kind}" (${pageUrl}). Navigate to a search-results, store, or item page first.`,
-      { pageUrl, kind },
-    );
-  }
-
   // §20.1: verify/set destination through reversible controls before
   // marking shipping destination-resolved.
   let verifiedDestination: { postalCode: string; verified: boolean } | undefined;

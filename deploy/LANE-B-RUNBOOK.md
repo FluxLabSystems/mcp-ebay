@@ -713,17 +713,24 @@ Prompt, laptop first:
 ```text
 Using the browser-bridge tools: call browser.session_open with deviceId
 "dev_a1b2..." (laptop), then browser.navigate that session's tab to
-https://www.ebay.ca/ , then browser.extract the current page.
+https://www.ebay.ca/sch/i.html?_nkw=lego+star+wars , then browser.extract the
+current page.
 ```
 
 Expected behavior:
 
 1. `browser.session_open` returns a `browserSessionHandle`; Chrome visibly
    opens on the **laptop** with the `ebay-research` automation profile.
-2. `browser.navigate` returns the final `https://www.ebay.ca/` URL, title,
-   and a `pageRevision`.
-3. `browser.extract` returns structured listing/page data with prices in CAD
-   and shipping computed against destination M6H 2W9.
+2. `browser.navigate` returns the final URL, title, and a `pageRevision`.
+3. `browser.extract` returns listing candidates with prices in CAD and
+   shipping computed against destination M6H 2W9.
+
+A `/sch/` URL rather than the eBay homepage: page kind selects which
+extractor runs (`classifyEbayPage`), and a search page is both a richer smoke
+target and the same path the Deals routine takes in production. Extract does
+not refuse any page — an unclassified one gets a best-effort `/itm/`-link
+scan and an `UNCLASSIFIED_PAGE` warning — but the homepage yields far less
+than a search does.
 
 Repeat with the desktop's `dev_…` id and confirm Chrome opens on the
 **desktop**. That proves per-device routing, not just connectivity.
