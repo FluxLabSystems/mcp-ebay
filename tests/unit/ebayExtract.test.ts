@@ -107,3 +107,61 @@ describe('search/store traversal (FR-15)', () => {
     expect(candidates.map((candidate) => candidate.itemId)).toEqual(['555666777888', '123456789012']);
   });
 });
+
+// Four defects a live end-to-end run surfaced on 2026-08-26. Each fixture
+// fails against the extractor as it stood before this suite was added.
+describe('defects found on the first live extraction run', () => {
+  const SOLD_AUCTION_URL = 'https://www.ebay.ca/itm/751920000001';
+
+  function soldAuction() {
+    return extractListing(loadFixture('sold-auction-listing.html'), SOLD_AUCTION_URL, {
+      expectedPostalCode: 'M6H 2W9',
+    });
+  }
+
+  it('keeps the real shipping cost when the cell also advertises free returns', () => {
+    const { record } = soldAuction();
+    // Was 0: a bare /free/ test matched "Free returns" and won over the
+    // amount, so observedText showed C $28.36 while value said nothing to pay.
+    expect(record.shipping?.value).toBe(28.36);
+    expect(record.shipping?.currency).toBe('CAD');
+    expect(record.shipping?.observedText).toContain('28.36');
+  });
+
+  it('reports a sold listing as sold, not unknown', () => {
+    // The banner uses .x-status-message, which the original selector list did
+    // not carry -- so a plainly sold listing came back "unknown".
+    expect(soldAuction().record.listingStatus).toBe('sold');
+  });
+
+  it('distinguishes an auction bid from a fixed price', () => {
+    const { record, warnings } = soldAuction();
+    expect(record.sellingFormat.kind).toBe('auction');
+    expect(record.sellingFormat.bidCount).toBe(37);
+    // itemPrice on an auction is a live bid, not something purchasable.
+    expect(warnings.some((warning) => warning.startsWith('AUCTION_PRICE'))).toBe(true);
+  });
+
+  it('reads a fixed-price listing as fixed price with no bid count', () => {
+    const { record, warnings } = extractListing(
+      loadFixture('fixed-price-listing.html'),
+      'https://www.ebay.ca/itm/421150000002',
+      { expectedPostalCode: 'M6H 2W9' },
+    );
+    expect(record.sellingFormat.kind).toBe('fixed_price');
+    expect(record.sellingFormat.bidCount).toBeNull();
+    expect(warnings.some((warning) => warning.startsWith('AUCTION_PRICE'))).toBe(false);
+    // Genuinely free shipping still reads as 0.
+    expect(record.shipping?.value).toBe(0);
+  });
+
+  it('strips badge spans and screen-reader text from the item title', () => {
+    // textContent concatenates the "New Listing" badge and the clipped
+    // "Opens in a new window or tab" into the h1.
+    expect(soldAuction().record.title?.value).toBe('LEGO Star Wars UCS Millennium Falcon 75192');
+  });
+
+  it('still validates against the canonical record schema', () => {
+    expect(ExtractionRecordSchema.safeParse(soldAuction().record).success).toBe(true);
+  });
+});

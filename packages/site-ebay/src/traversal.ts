@@ -4,7 +4,7 @@
  * traversal hints only and are never accepted as canonical listing
  * evidence (§20.2).
  */
-import { itemIdFromUrl, parseMoney } from './normalize.js';
+import { cleanTitle, itemIdFromUrl, parseMoney } from './normalize.js';
 
 export interface ListingCandidate {
   itemId: string;
@@ -63,10 +63,14 @@ export function extractListingCandidates(document: Document, pageUrl: string): L
       seen.add(itemId);
 
       const card = anchor.closest('.s-item, .str-item-card, li, article') ?? anchor;
-      const titleText =
-        card.querySelector('.s-item__title, .str-item-card__title, h3, .s-card__title')?.textContent?.replace(/\s+/g, ' ').trim() ??
-        anchor.textContent?.replace(/\s+/g, ' ').trim() ??
+      // Card titles carry badge spans ("New Listing", "SPONSORED") and a
+      // screen-reader "Opens in a new window or tab" inside the same element,
+      // and textContent concatenates all of it into the title.
+      const rawTitle =
+        card.querySelector('.s-item__title, .str-item-card__title, h3, .s-card__title')?.textContent ??
+        anchor.textContent ??
         null;
+      const titleText = rawTitle === null ? null : cleanTitle(rawTitle);
       const priceText = card.querySelector('.s-item__price, .str-item-card__price, .s-card__price')?.textContent ?? '';
       const parsedPrice = parseMoney(priceText);
 

@@ -5,7 +5,7 @@
  * normalizations (source "computed"). Search-results snippets are never
  * accepted as canonical listing evidence.
  */
-import { canonicalListingUrl, itemIdFromUrl, normalizePostalCode, parseMoney, postalCodesMatch } from './normalize.js';
+import { canonicalListingUrl, cleanTitle, itemIdFromUrl, normalizePostalCode, parseMoney, postalCodesMatch } from './normalize.js';
 import { EBAY_DESTINATION_POSTAL_CODE } from './profile.js';
 import type { ExtractionRecord, FieldSource, ListingStatus } from './record.js';
 
@@ -114,12 +114,17 @@ const DELIVERY_SELECTORS = [
   '.vim-delivery-module',
 ];
 
+const SOLD_MARKERS = ['this listing sold', 'item sold', 'sold for', 'winning bid', 'sold on '];
 const ENDED_MARKERS = [
   'this listing has ended',
   'this listing was ended',
   'bidding has ended',
-  'this listing sold',
-  'item sold',
+  'this listing ended',
+  'the listing has ended',
+  'bidding ended',
+  'auction has ended',
+  'ended on ',
+  'no longer available for purchase',
 ];
 const UNAVAILABLE_MARKERS = [
   'the item you selected is unavailable',
@@ -128,16 +133,115 @@ const UNAVAILABLE_MARKERS = [
   'listing is no longer available',
 ];
 
+/**
+ * Status banners have moved around eBay's markup more than once, and a
+ * selector list that misses the current one returns 'unknown' for a plainly
+ * ended listing -- which reads as "could not tell" rather than "over".
+ * Widened, and backed by a bounded scan of the page's leading text when no
+ * banner element matches: markers are whole sentences specific enough that a
+ * related-items strip does not trip them.
+ */
+const STATUS_SELECTORS = [
+  '.ux-message__title',
+  '.ux-message',
+  '.ux-statusmessage',
+  '[data-testid="ux-message"]',
+  '[data-testid="x-status-message"]',
+  '.x-status-message',
+  '.vi-status',
+  '#vi-esc-cnt',
+  '.statusMessage',
+  '.vim-status',
+  '#msgPanel',
+];
+
+const BID_COUNT_SELECTORS = [
+  '.x-bid-count',
+  '[data-testid="x-bid-count"]',
+  '#qty-test-bid-count',
+  '.vi-bidCount',
+  '#qty-test',
+  '.x-quantity__availability--bidcount',
+];
+const BIN_SELECTORS = ['#binBtn_btn', '[data-testid="x-bin-action"]', '.x-bin-action', '.vi-bin-btn'];
+/** Where price/format live; scanned instead of the whole page so a
+ *  "Buy It Now" in a related-items strip cannot flip an auction. */
+const FORMAT_SCOPE_SELECTORS = [
+  '.x-buybox',
+  '[data-testid="x-buybox"]',
+  '.vim-buybox',
+  '#CenterPanelInternal',
+  '.x-price-primary',
+  '#mainContent',
+];
+
+function detectSellingFormat(document: Document): ExtractionRecord['sellingFormat'] {
+  const scoped: string[] = [];
+  for (const selector of FORMAT_SCOPE_SELECTORS) {
+    for (const el of Array.from(document.querySelectorAll(selector))) {
+      const text = el.textContent ?? '';
+      if (text) scoped.push(text);
+    }
+  }
+  const scopedHit = scoped.length > 0;
+  const blob = (scopedHit ? scoped.join(' ') : (document.body?.textContent ?? '')).replace(/\s+/g, ' ');
+
+  let bidCount: number | null = null;
+  for (const selector of BID_COUNT_SELECTORS) {
+    const text = textOf(document, selector);
+    const match = text ? /(\d{1,5})\s*bids?\b/i.exec(text) : null;
+    if (match) {
+      bidCount = Number.parseInt(match[1]!, 10);
+      break;
+    }
+  }
+  if (bidCount === null) {
+    const match = /\b(\d{1,5})\s*bids?\b/i.exec(blob);
+    if (match) bidCount = Number.parseInt(match[1]!, 10);
+  }
+
+  const hasAuction = bidCount !== null || /\bplace\s+bid\b|\bcurrent\s+bid\b|\bstarting\s+bid\b/i.test(blob);
+  const hasBin =
+    BIN_SELECTORS.some((selector) => document.querySelector(selector) !== null) || /\bbuy\s+it\s+now\b/i.test(blob);
+
+  let kind: ExtractionRecord['sellingFormat']['kind'];
+  if (hasAuction && hasBin) kind = 'auction_with_bin';
+  else if (hasAuction) kind = 'auction';
+  else if (hasBin) kind = 'fixed_price';
+  else kind = 'unknown';
+
+  // A fixed-price page often renders no "Buy It Now" string at all -- the
+  // absence of any auction signal on a page that has a price is the tell.
+  if (kind === 'unknown' && PRICE_SELECTORS.some((selector) => textOf(document, selector) !== null)) {
+    kind = 'fixed_price';
+  }
+
+  return {
+    kind,
+    bidCount,
+    source: 'dom',
+    // Unscoped fallback saw the whole page, so trust it less.
+    confidence: kind === 'unknown' ? 0.3 : scopedHit ? 0.9 : 0.6,
+  };
+}
+
 function detectListingStatus(document: Document): ListingStatus {
-  const statusSelectors = ['.ux-message__title', '.ux-message', '.vi-status', '#vi-esc-cnt', '.statusMessage'];
   const chunks: string[] = [];
-  for (const selector of statusSelectors) {
+  for (const selector of STATUS_SELECTORS) {
     for (const el of Array.from(document.querySelectorAll(selector))) {
       const text = el.textContent?.toLowerCase() ?? '';
       if (text) chunks.push(text);
     }
   }
+  if (chunks.length === 0) {
+    // No banner element matched. Fall back to the first stretch of body text,
+    // where any such banner renders, rather than the whole document.
+    const body = (document.body?.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (body) chunks.push(body.slice(0, 2000));
+  }
   const blob = chunks.join(' ');
+  // Sold is checked first: a sold listing also says it ended.
+  if (SOLD_MARKERS.some((marker) => blob.includes(marker))) return 'sold';
   if (ENDED_MARKERS.some((marker) => blob.includes(marker))) return 'ended';
   if (UNAVAILABLE_MARKERS.some((marker) => blob.includes(marker))) return 'unavailable';
   const hasTitle = TITLE_SELECTORS.some((selector) => textOf(document, selector) !== null);
@@ -201,21 +305,34 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
           confidence: 1.0,
         };
 
+  // --- selling format (auction vs fixed price) ---
+  const sellingFormat = detectSellingFormat(document);
+  if (sellingFormat.kind === 'unknown') {
+    warnings.push('sellingFormat could not be resolved: a bid and a fixed price are not comparable quantities');
+  } else if (sellingFormat.kind !== 'fixed_price') {
+    warnings.push(
+      `AUCTION_PRICE: itemPrice is a live bid (${sellingFormat.kind}${sellingFormat.bidCount === null ? '' : `, ${sellingFormat.bidCount} bids`}), not a purchasable fixed price`,
+    );
+  }
+
   // --- title ---
   let title: ExtractionRecord['title'] = null;
   for (const selector of TITLE_SELECTORS) {
     const text = textOf(document, selector);
-    if (text) {
-      title = { value: text, source: 'dom', confidence: 0.99 };
+    // textContent pulls in badge spans and the screen-reader "Opens in a new
+    // window or tab" that live inside the title element.
+    const cleaned = text ? cleanTitle(text) : null;
+    if (cleaned) {
+      title = { value: cleaned, source: 'dom', confidence: 0.99 };
       break;
     }
   }
   if (title === null && jsonld?.name) {
-    title = { value: jsonld.name, source: 'jsonld', confidence: 0.98 };
+    title = { value: cleanTitle(jsonld.name), source: 'jsonld', confidence: 0.98 };
   }
   if (title === null) {
     const og = metaContent(document, 'og:title');
-    if (og) title = { value: og.replace(/\s*\|\s*eBay.*$/i, ''), source: 'meta', confidence: 0.9 };
+    if (og) title = { value: cleanTitle(og.replace(/\s*\|\s*eBay.*$/i, '')), source: 'meta', confidence: 0.9 };
   }
   if (title === null) warnings.push('title could not be resolved');
 
@@ -284,6 +401,11 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
     const parsed = parseMoney(text);
     if (parsed) {
       if (parsed.approximate) warnings.push(`shipping parsed from a range: "${text}"`);
+      if (parsed.ambiguousFree) {
+        warnings.push(
+          `shipping cell claims free shipping but also carries an amount; took free: "${text}"`,
+        );
+      }
       shipping = {
         value: parsed.value,
         currency: parsed.currency,
@@ -364,6 +486,7 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
     offer: { available: offerAvailable, sellerOfferPrice: null, expiresAt: null },
     variants,
     listingStatus: detectListingStatus(document),
+    sellingFormat,
     observedAt,
     pageRevision: context.pageRevision ?? 0,
   };
