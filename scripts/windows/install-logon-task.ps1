@@ -22,6 +22,10 @@ param(
     # use $PSScriptRoot in the BODY and were never affected.
     [string]$AgentCli = "",
 
+    # Resolved to an absolute path in the body. Task Scheduler does not search
+    # PATH for Execute the way a shell does, so a bare "node" registers fine
+    # and then fails every run with 0x80070002 (ERROR_FILE_NOT_FOUND) --
+    # visible only as LastTaskResult, long after the install said "Installed".
     [string]$NodeExe = "node"
 )
 
@@ -31,6 +35,18 @@ if ([string]::IsNullOrWhiteSpace($AgentCli)) {
         $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
     }
     $AgentCli = Join-Path $scriptDir "..\..\apps\windows-agent\dist\cli.js"
+}
+
+# Register an absolute path, never a bare command name: Task Scheduler resolves
+# Execute itself and does not use the shell's PATH lookup, so "node" installs
+# cleanly and then fails every run with 0x80070002.
+if (-not (Test-Path -LiteralPath $NodeExe)) {
+    $nodeCommand = Get-Command $NodeExe -CommandType Application -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($null -eq $nodeCommand) {
+        throw "Could not resolve '$NodeExe' to an executable. Install Node.js 22.12 or newer, or pass -NodeExe <full path to node.exe>."
+    }
+    $NodeExe = $nodeCommand.Source
 }
 
 # Resolve-Path throws a bare "Cannot find path" for a missing dist build, which
@@ -68,6 +84,7 @@ Register-ScheduledTask `
 [Environment]::SetEnvironmentVariable("AGENT_GATEWAY_URL", $GatewayUrl, "User")
 
 Write-Host "Installed logon task '$TaskName'."
+Write-Host "  node:  $NodeExe"
 Write-Host "AGENT_GATEWAY_URL set to $GatewayUrl (user environment)."
 Write-Host "Pair the device first:  node `"$AgentCliResolved`" pair --token <one-time-token>"
 Write-Host "Start now without re-logon:  Start-ScheduledTask -TaskName $TaskName"
