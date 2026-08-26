@@ -551,7 +551,8 @@
         "office:write",
         "deals:write",
         "jobs:write",
-        "vacation:write"
+        "vacation:write",
+        "offline_access"
       ]
     },
     {
@@ -592,7 +593,8 @@
         "office:write",
         "deals:write",
         "jobs:write",
-        "vacation:write"
+        "vacation:write",
+        "offline_access"
       ]
     }
   ]

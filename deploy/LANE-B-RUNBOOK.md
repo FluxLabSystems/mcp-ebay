@@ -637,6 +637,36 @@ capture the code.
 > `http://localhost:18800/callback`; add the observed one alongside if
 > needed. Path and port must match too.
 
+> **VERIFY LIVE — `offline_access` must be assigned to the client.** If the
+> browser shows `Authentication failed` and
+> `invalid_scope: Invalid scopes: browser:read … offline_access`, the realm is
+> fine and the client assignment is not. Claude Code appends `offline_access`
+> to the scopes it reads from the bridge's Protected Resource Metadata, in
+> order to obtain a refresh token; the bridge does not advertise it
+> (`apps/gateway/src/app.ts` `scopes_supported`) and never sees it. Keycloak
+> rejects the whole request if any single scope is unassigned, so the error
+> lists all nine and names none.
+>
+> The `offline_access` client scope **does exist** in the realm even though
+> `realm-fluxology.json` does not list it: Keycloak creates it, and its realm
+> role, whenever the imported representation omits it
+> (`RealmManager.setupOfflineTokens` → `DefaultClientScopes.createOfflineAccessClientScope`).
+> What it lacks is the per-client assignment — this file enumerates
+> `optionalClientScopes` explicitly, and an explicit list overrides the realm
+> default that `addDefaultClientScope(scope, false)` would otherwise supply.
+>
+> Fixed in the checked-in realm, but `--import-realm` is **first-boot only**,
+> so a realm that already booted needs the assignment made by hand — for
+> `claude-code` and `claude-ai` both:
+>
+> **Clients → <client> → Client scopes → Add client scope →** tick
+> `offline_access` **→ Add → Optional**. It applies immediately; no restart.
+> Confirm the scope exists first with:
+>
+> ```bash
+> kcadm.sh get client-scopes -r fluxology --fields name
+> ```
+
 Verify:
 
 ```bash
