@@ -2,9 +2,16 @@
 /**
  * Windows Browser Agent CLI — SDD v0.5 §11, §13, §32.
  *
- *   browser-bridge-agent pair --token <one-time-token> [--name <device-name>]
- *   browser-bridge-agent preflight
- *   browser-bridge-agent run
+ * Invoked from the repo checkout as
+ *   node apps\\windows-agent\\dist\\cli.js <command>
+ * (LANE-B-RUNBOOK.md [33]-[34], scripts/windows/lane-a-run.ps1). The
+ * `browser-bridge-agent` bin name in package.json resolves only under a global
+ * install, which nothing here performs, so the usage strings below spell out
+ * the checkout-relative form an operator can paste.
+ *
+ *   node apps\\windows-agent\\dist\\cli.js pair --token <one-time-token> [--name <device-name>]
+ *   node apps\\windows-agent\\dist\\cli.js preflight
+ *   node apps\\windows-agent\\dist\\cli.js run
  */
 import { buildChromeLaunchPlan, preflightBrowser } from '@browser-bridge/browser-core';
 import { loadAgentConfig } from '@browser-bridge/config';
@@ -53,7 +60,9 @@ async function main(): Promise<number> {
     case 'pair': {
       const token = flags.get('token');
       if (token === undefined) {
-        console.error('Usage: browser-bridge-agent pair --token <one-time-token> [--name <device-name>]');
+        console.error(
+          'Usage: node apps\\windows-agent\\dist\\cli.js pair --token <one-time-token> [--name <device-name>]',
+        );
         return 2;
       }
       const identityStore = new IdentityStore(config.stateDir);
@@ -86,7 +95,9 @@ async function main(): Promise<number> {
       const identityStore = new IdentityStore(config.stateDir);
       const identity = identityStore.loadOrCreate();
       if (identity.deviceId === null) {
-        console.error('Device is not paired. Run: browser-bridge-agent pair --token <one-time-token>');
+        console.error(
+          'Device is not paired. Run: node apps\\windows-agent\\dist\\cli.js pair --token <one-time-token>',
+        );
         return 2;
       }
       if (process.platform !== 'win32') {
@@ -128,7 +139,7 @@ async function main(): Promise<number> {
       return 0;
     }
     default:
-      console.error('Usage: browser-bridge-agent <pair|preflight|run> [flags]');
+      console.error('Usage: node apps\\windows-agent\\dist\\cli.js <pair|preflight|run> [flags]');
       return 2;
   }
 }

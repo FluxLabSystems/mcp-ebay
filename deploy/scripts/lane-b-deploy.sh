@@ -530,14 +530,33 @@ stage_verify() {
 
 stage_next_steps() {
   hdr "Remaining manual steps (cannot be done from the VPS)"
+  # Name the credentials file, never print its contents: it is 0600 and
+  # gitignored, and this block is routinely pasted into chats and issues.
+  local OPERATOR_CREDENTIALS_HINT="${AUTH_DIR#$REPO_ROOT/}/.env.operator-credentials"
+  if [[ ! -f "$AUTH_DIR/.env.operator-credentials" ]]; then
+    OPERATOR_CREDENTIALS_HINT="unchanged (the operator user pre-existed)"
+  fi
   cat <<EOF
 1. Windows pairing runs (section 5): execute the printed PowerShell blocks on
    each PC. On a PC that never ran Lane A: after [36], log into eBay once in
    the Chrome automation profile and set delivery destination M6H 2W9.
-2. Claude Code attach (6.1), on any workstation:
-     claude mcp add --transport http --client-id claude-code --callback-port 18800 \\
-       browser-bridge ${BRIDGE_BASE}/mcp
-   then /mcp -> browser-bridge -> Authenticate (login as the operator user).
+2. Claude Code attach (6.1), on any workstation. This is TWO steps -- the
+   command only writes config, it does not log anything in.
+   a) In a shell:
+        claude mcp add --transport http --client-id claude-code --callback-port 18800 \\
+          browser-bridge ${BRIDGE_BASE}/mcp
+   b) Start an interactive Claude Code session (run: claude) and type /mcp at
+      the prompt. /mcp is a slash command INSIDE the session, not a shell
+      command. Pick browser-bridge from the list, then choose Authenticate.
+      A browser opens on ${AUTH_HOST}. Sign in as the OPERATOR user -- the
+      realm user this script created, NOT the Keycloak admin and NOT your
+      claude.ai account:
+        username: ${OPERATOR_USER}
+        password: ${OPERATOR_CREDENTIALS_HINT}
+      Approve the scopes. The browser then lands on
+      http://localhost:18800/callback, which Claude Code is serving locally
+      to capture the code; back in the session, /mcp shows browser-bridge
+      authenticated with the browser.* tools.
    VERIFY LIVE: if Keycloak answers invalid_redirect_uri, register the EXACT
    redirect_uri from the failing URL on the claude-code client (localhost vs
    127.0.0.1 is the known variant).

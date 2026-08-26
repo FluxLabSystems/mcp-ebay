@@ -12,13 +12,34 @@ param(
 
     [string]$TaskName = "FluxologyBrowserBridgeAgent",
 
-    # Path to the built agent CLI (dist output).
-    [string]$AgentCli = (Join-Path $PSScriptRoot "..\..\apps\windows-agent\dist\cli.js"),
+    # Path to the built agent CLI (dist output). Left empty here and resolved
+    # in the body on purpose: Windows PowerShell 5.1 does not populate
+    # $PSScriptRoot while param() defaults are evaluated, so the default used
+    # to expand to (Join-Path '' ...) and the script died on
+    # "Cannot bind argument to parameter 'Path' because it is an empty string"
+    # before doing anything. PowerShell 7 does populate it, which is why this
+    # only failed on a real Windows box. lane-a-run.ps1 and lane-a-setup.ps1
+    # use $PSScriptRoot in the BODY and were never affected.
+    [string]$AgentCli = "",
 
     [string]$NodeExe = "node"
 )
 
-$AgentCliResolved = (Resolve-Path $AgentCli).Path
+if ([string]::IsNullOrWhiteSpace($AgentCli)) {
+    $scriptDir = $PSScriptRoot
+    if ([string]::IsNullOrWhiteSpace($scriptDir)) {
+        $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    }
+    $AgentCli = Join-Path $scriptDir "..\..\apps\windows-agent\dist\cli.js"
+}
+
+# Resolve-Path throws a bare "Cannot find path" for a missing dist build, which
+# is the most common state to run this in (the agent is built by `pnpm build`,
+# a separate step). Say what to do instead.
+if (-not (Test-Path -LiteralPath $AgentCli)) {
+    throw "Agent CLI not found at $AgentCli - run 'corepack enable; pnpm install --frozen-lockfile; pnpm build' in the repository root first, or pass -AgentCli <path to cli.js>."
+}
+$AgentCliResolved = (Resolve-Path -LiteralPath $AgentCli).Path
 
 $action = New-ScheduledTaskAction `
     -Execute $NodeExe `
