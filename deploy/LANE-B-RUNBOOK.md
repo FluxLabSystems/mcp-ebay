@@ -683,17 +683,31 @@ Prompt, laptop first:
 ```text
 Using the browser-bridge tools: call browser.session_open with deviceId
 "dev_a1b2..." (laptop), then browser.navigate that session's tab to
-https://www.ebay.ca/ , then browser.extract the current page.
+https://www.ebay.ca/sch/i.html?_nkw=lego+star+wars , then browser.extract the
+current page.
 ```
+
+**Navigate to a search URL, not the eBay homepage.** `ebay.ca.v1` dispatches
+on page kind (`packages/site-ebay/src/traversal.ts` `classifyEbayPage`) and
+only extracts `/itm/` (listing), `/sch/` (search) and `/str/` or `/usr/`
+(store). Everything else, the homepage included, classifies as `other` and
+extract answers `SITE_PROFILE_MISMATCH`, non-retryable. That is correct
+behaviour, but it makes the homepage useless as a smoke target — this step
+used to name it and could never pass. A `/sch/` query also exercises the same
+path the Deals routine takes in production.
 
 Expected behavior:
 
 1. `browser.session_open` returns a `browserSessionHandle`; Chrome visibly
    opens on the **laptop** with the `ebay-research` automation profile.
-2. `browser.navigate` returns the final `https://www.ebay.ca/` URL, title,
-   and a `pageRevision`.
-3. `browser.extract` returns structured listing/page data with prices in CAD
-   and shipping computed against destination M6H 2W9.
+2. `browser.navigate` returns the final URL, title, and a `pageRevision`.
+3. `browser.extract` returns listing candidates with prices in CAD and
+   shipping computed against destination M6H 2W9.
+
+If you do land on the homepage, `SITE_PROFILE_MISMATCH` there proves steps 1
+and 2 worked: the session opened, the tab navigated, and the profile
+classified the page. Navigate to a `/sch/` or `/itm/` URL in the same session
+and re-run extract — no need to reopen.
 
 Repeat with the desktop's `dev_…` id and confirm Chrome opens on the
 **desktop**. That proves per-device routing, not just connectivity.
