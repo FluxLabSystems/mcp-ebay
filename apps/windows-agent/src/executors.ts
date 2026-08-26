@@ -375,6 +375,7 @@ async function executeExtract(
             candidates: searchPage.results,
             hasNextPage: searchPage.hasNextPage,
             nextPageUrl: searchPage.nextPageUrl,
+            totalResults: searchPage.totalResults,
             note: 'Candidate snippets are traversal hints; open each ad URL and extract it for canonical evidence.',
           },
           warnings,

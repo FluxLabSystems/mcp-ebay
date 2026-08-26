@@ -93,6 +93,33 @@ function textOf(document: Document, selector: string): string | null {
   }
 }
 
+/**
+ * Text a reader can actually see. document.body.textContent includes the
+ * contents of <script>, and Kijiji is a Next.js app that ships its i18n
+ * bundle and __NEXT_DATA__ inline -- which carries EVERY banner string the
+ * app can render, including "this ad is no longer available", on pages that
+ * render none of them. Scanning that blob reported live ads as deleted.
+ */
+const NON_VISIBLE_TAGS = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT', 'HEAD']);
+
+function visibleText(root: Node | null): string {
+  if (root === null) return '';
+  const parts: string[] = [];
+  const walk = (node: Node): void => {
+    const element = node as Element;
+    if (element.tagName !== undefined && NON_VISIBLE_TAGS.has(element.tagName.toUpperCase())) return;
+    if (element.getAttribute?.('aria-hidden') === 'true') return;
+    if (node.nodeType === 3) {
+      const text = node.nodeValue ?? '';
+      if (text.trim().length > 0) parts.push(text);
+      return;
+    }
+    for (const child of Array.from(node.childNodes ?? [])) walk(child);
+  };
+  walk(root);
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
+
 function metaContent(document: Document, property: string): string | null {
   const el =
     document.querySelector(`meta[property="${property}"]`) ?? document.querySelector(`meta[name="${property}"]`);
@@ -113,10 +140,26 @@ const PRICE_SELECTORS = [
 ];
 const LOCATION_SELECTORS = [
   '[data-testid="listing-location"]',
+  '[data-testid="vip-location"]',
+  '[data-testid="map-location"]',
   '[itemprop="address"]',
+  '[itemprop="addressLocality"]',
   'span[class*="address"]',
   '[class*="locationContainer"]',
+  '[class*="mapLocation"]',
+  '[class*="locationText"]',
 ];
+/** Where the ad renders its map/address block; scanned for a postal code
+ *  when no selector above matched, rather than the whole page. */
+const LOCATION_SCOPE_SELECTORS = [
+  '[data-testid="vip-map"]',
+  '[class*="mapContainer"]',
+  '[class*="sidebar"]',
+  '[data-testid="vip-attributes"]',
+  'aside',
+];
+/** A9A 9A9 / A9A9A9, the shape a Kijiji ad sidebar shows. */
+const POSTAL_CODE_RE = /\b[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d\b/;
 const POSTED_TEXT_SELECTORS = [
   '[data-testid="listing-date"]',
   'time',
@@ -129,6 +172,20 @@ const SELLER_SELECTORS = [
   'a[href*="/u/"]',
   '[class*="sellerName"]',
 ];
+/**
+ * The profile anchor often wraps only the avatar, whose text is the seller's
+ * initial -- "J" for "junior". A single letter is never a username, so
+ * candidates are filtered rather than taken first-match, and the anchor's
+ * own title/aria-label is consulted before its text.
+ */
+function plausibleSellerName(raw: string | null | undefined): string | null {
+  const text = raw?.replace(/\s+/g, ' ').trim() ?? '';
+  if (text.length < 2) return null;
+  // "J", "J.", "JD" as an avatar monogram -- all caps and very short.
+  if (text.length <= 2 && text === text.toUpperCase()) return null;
+  if (/^[A-Za-z]\.?$/.test(text)) return null;
+  return text;
+}
 const DESCRIPTION_SELECTORS = [
   '[data-testid="listing-description"]',
   '[itemprop="description"]',
@@ -157,12 +214,29 @@ const DELETED_MARKERS = [
 ];
 const EXPIRED_MARKERS = ['ad expired', 'this ad has expired', 'listing has expired'];
 
+// '.message' used to be in this list and matched the "Message the seller"
+// contact panel on every live ad, so the fallback below fired constantly.
+// Every selector here must name a status banner and nothing else.
 const STATUS_SELECTORS = [
   '[data-testid="vip-removed-banner"]',
   '[data-testid="expired-ad"]',
-  '[class*="expired"]',
+  '[data-testid="vip-banner"]',
   '[class*="removedBanner"]',
-  '.message',
+  '[class*="expiredBanner"]',
+  '[class*="statusBanner"]',
+  '[role="alert"]',
+];
+
+/**
+ * A live ad answers all three. If a marker only turned up in the unscoped
+ * fallback while these hold, the marker came from markup the reader cannot
+ * see -- trust the page, not the string.
+ */
+const LIVE_AD_SELECTORS = [
+  '[data-testid="vip-reply-button"]',
+  '[data-testid="message-seller"]',
+  'button[class*="replyButton"]',
+  '[data-testid="listing-description"]',
 ];
 
 function detectKijijiListingStatus(document: Document): KijijiListingStatus {
@@ -175,15 +249,38 @@ function detectKijijiListingStatus(document: Document): KijijiListingStatus {
       continue;
     }
     for (const el of elements) {
-      const text = el.textContent?.toLowerCase() ?? '';
+      const text = visibleText(el).toLowerCase();
       if (text) chunks.push(text);
     }
   }
-  // Kijiji renders the removed/expired notice in varied containers, so fall
-  // back to body text when no known status container matched.
-  const blob = chunks.length > 0 ? chunks.join(' ') : (document.body?.textContent ?? '').toLowerCase();
-  if (DELETED_MARKERS.some((marker) => blob.includes(marker))) return 'deleted';
-  if (EXPIRED_MARKERS.some((marker) => blob.includes(marker))) return 'expired';
+
+  const scoped = chunks.length > 0;
+  // Kijiji moves these banners around, so a whole-page scan stays as the
+  // fallback -- but over VISIBLE text only, and bounded, and it is not
+  // allowed to overrule a page that is plainly a live ad.
+  const blob = scoped
+    ? chunks.join(' ')
+    : visibleText(document.body).slice(0, 4000).toLowerCase();
+
+  const looksLive =
+    LIVE_AD_SELECTORS.some((selector) => {
+      try {
+        return document.querySelector(selector) !== null;
+      } catch {
+        return false;
+      }
+    }) && PRICE_SELECTORS.some((selector) => textOf(document, selector) !== null);
+
+  const matched = DELETED_MARKERS.some((marker) => blob.includes(marker))
+    ? ('deleted' as const)
+    : EXPIRED_MARKERS.some((marker) => blob.includes(marker))
+      ? ('expired' as const)
+      : null;
+
+  // An unscoped match on a page that answers like a live ad is the false
+  // positive this guard exists for; a banner element saying so is believed.
+  if (matched !== null && (scoped || !looksLive)) return matched;
+
   const hasTitle = TITLE_SELECTORS.some((selector) => textOf(document, selector) !== null);
   const hasPrice = PRICE_SELECTORS.some((selector) => textOf(document, selector) !== null);
   if (hasTitle && hasPrice) return 'active';
@@ -375,6 +472,28 @@ export function extractKijijiListing(
       break;
     }
   }
+  if (location === null) {
+    // The ad sidebar renders a postal code even when no location element
+    // carries a name. A postal code IS the location, and null was throwing
+    // away the most precise form of it. Scoped to the map/sidebar blocks so
+    // a postal code inside the description is not mistaken for the ad's.
+    for (const selector of LOCATION_SCOPE_SELECTORS) {
+      let scope: Element | null;
+      try {
+        scope = document.querySelector(selector);
+      } catch {
+        continue;
+      }
+      if (!scope) continue;
+      const match = POSTAL_CODE_RE.exec(visibleText(scope));
+      if (match) {
+        location = { text: match[0].toUpperCase(), source: 'dom', confidence: 0.75 };
+        warnings.push(`location resolved from a postal code in the ad sidebar: "${match[0]}"`);
+        break;
+      }
+    }
+  }
+  if (location === null) warnings.push('location could not be resolved');
 
   // --- posted time (jsonld → dom time[datetime] → raw relative text) ---
   let postedAt: string | null = toIsoOrNull(jsonld?.datePosted) ?? toIsoOrNull(jsonld?.offers?.validFrom);
@@ -404,9 +523,21 @@ export function extractKijijiListing(
   }
   if (sellerName === null) {
     for (const selector of SELLER_SELECTORS) {
-      const text = textOf(document, selector);
-      if (text && text.length <= 64) {
-        sellerName = { value: text, source: 'dom', confidence: 0.9 };
+      let el: Element | null;
+      try {
+        el = document.querySelector(selector);
+      } catch {
+        continue;
+      }
+      if (!el) continue;
+      // title/aria-label carry the full username on an avatar-only anchor,
+      // whose text is just the initial.
+      const candidate =
+        plausibleSellerName(el.getAttribute('title')) ??
+        plausibleSellerName(el.getAttribute('aria-label')) ??
+        plausibleSellerName(el.textContent);
+      if (candidate && candidate.length <= 64) {
+        sellerName = { value: candidate, source: 'dom', confidence: 0.9 };
         break;
       }
     }

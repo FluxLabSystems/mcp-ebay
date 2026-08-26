@@ -28,8 +28,17 @@ export interface KijijiSearchResult {
 
 export interface KijijiSearchPage {
   results: KijijiSearchResult[];
+  /**
+   * Whether more results exist beyond this page. Deliberately NOT derived
+   * from nextPageUrl: a 73-result search rendering 40 reported false purely
+   * because no known "next" selector matched, silently truncating a
+   * traversal at page one. The stated result count settles it even when the
+   * link cannot be found; the link is best-effort on top.
+   */
   hasNextPage: boolean;
   nextPageUrl: string | null;
+  /** Total results the page claims, when it states one. */
+  totalResults: number | null;
 }
 
 // Card-enrichment selectors are secondary; the anchor-href VIP pattern is
@@ -40,6 +49,43 @@ const CARD_TITLE_SELECTOR = '[data-testid="listing-title"], h3, [class*="title"]
 const CARD_PRICE_SELECTOR = '[data-testid="listing-price"], [class*="price"]';
 const CARD_LOCATION_SELECTOR = '[data-testid="listing-location"], [class*="location"]';
 const CARD_POSTED_SELECTOR = '[data-testid="listing-date"], time, [class*="datePosted"]';
+
+/** "1 - 40 of 73 Ads", "73 results", "Showing 1-40 of 1,234". */
+const RESULT_COUNT_SELECTORS = [
+  '[data-testid="srp-results-count"]',
+  '[data-testid="results-count"]',
+  '[class*="resultsCount"]',
+  '[class*="showingResults"]',
+  'h1',
+  'header',
+];
+const COUNT_RANGE_RE = /\b([\d,]+)\s*[-\u2013]\s*([\d,]+)\s+of\s+([\d,]+)/i;
+const COUNT_TOTAL_RE = /\b([\d,]+)\s+(?:ads?|results?|listings?)\b/i;
+
+function toInt(raw: string): number {
+  return Number.parseInt(raw.replace(/,/g, ''), 10);
+}
+
+/** Increment /page-N/ in a Kijiji search URL, or insert /page-2/ before the
+ *  trailing category segment. Returns null when the shape is unrecognised --
+ *  hasNextPage still stands on the count alone. */
+function nextKijijiPageUrl(pageUrl: string): string | null {
+  try {
+    const url = new URL(pageUrl);
+    const paged = url.pathname.match(/\/page-(\d+)(\/|$)/);
+    if (paged) {
+      url.pathname = url.pathname.replace(/\/page-\d+(\/|$)/, `/page-${toInt(paged[1]!) + 1}$1`);
+      return url.toString();
+    }
+    const segments = url.pathname.split('/').filter((segment) => segment.length > 0);
+    if (segments.length < 2) return null;
+    segments.splice(segments.length - 1, 0, 'page-2');
+    url.pathname = `/${segments.join('/')}`;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
 
 const NEXT_PAGE_SELECTORS = [
   'link[rel="next"]',
@@ -117,7 +163,35 @@ export function extractSearchResults(document: Document, pageUrl: string): Kijij
     }
   }
 
-  return { results, hasNextPage: nextPageUrl !== null, nextPageUrl };
+  // Result count: the authoritative signal for "is there more".
+  let totalResults: number | null = null;
+  let shownThrough: number | null = null;
+  for (const selector of RESULT_COUNT_SELECTORS) {
+    let elements: Element[];
+    try {
+      elements = Array.from(document.querySelectorAll(selector));
+    } catch {
+      continue;
+    }
+    for (const el of elements) {
+      const text = (el.textContent ?? '').replace(/\s+/g, ' ');
+      const range = COUNT_RANGE_RE.exec(text);
+      if (range) {
+        shownThrough = toInt(range[2]!);
+        totalResults = toInt(range[3]!);
+        break;
+      }
+      const total = COUNT_TOTAL_RE.exec(text);
+      if (total && totalResults === null) totalResults = toInt(total[1]!);
+    }
+    if (totalResults !== null && shownThrough !== null) break;
+  }
+
+  const seenSoFar = shownThrough ?? results.length;
+  const moreByCount = totalResults !== null && Number.isFinite(totalResults) && seenSoFar < totalResults;
+  if (moreByCount && nextPageUrl === null) nextPageUrl = nextKijijiPageUrl(pageUrl);
+
+  return { results, hasNextPage: nextPageUrl !== null || moreByCount, nextPageUrl, totalResults };
 }
 
 export interface KijijiSearchUrlInput {
