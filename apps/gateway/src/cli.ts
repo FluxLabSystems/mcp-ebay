@@ -67,8 +67,17 @@ async function main(): Promise<number> {
         console.log('');
         console.log(`  ${token}`);
         console.log('');
-        console.log('On the Windows PC run:');
-        console.log(`  browser-bridge-agent pair --token ${token}${name === null ? '' : ` --name "${name}"`}`);
+        // Print the command that actually works. `browser-bridge-agent` is a
+        // bin entry in apps/windows-agent/package.json, so it resolves only if
+        // that package is installed globally -- nothing in Lane A or Lane B
+        // does that. Operators run the agent out of the repo checkout, which
+        // is what LANE-B-RUNBOOK.md [34] and scripts/windows/lane-a-run.ps1
+        // both do. Printing the global form sent an operator to a
+        // "not recognized as a name of a cmdlet" dead end.
+        console.log('On the Windows PC, from the repo checkout, run:');
+        console.log(
+          `  node apps\\windows-agent\\dist\\cli.js pair --token ${token}${name === null ? '' : ` --name "${name}"`}`,
+        );
       } finally {
         await store.close();
       }

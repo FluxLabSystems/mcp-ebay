@@ -523,8 +523,8 @@ One-time pairing token (valid 10 minutes, single use):
 
   <token>
 
-On the Windows PC run:
-  browser-bridge-agent pair --token <token> --name "laptop"
+On the Windows PC, from the repo checkout, run:
+  node apps\windows-agent\dist\cli.js pair --token <token> --name "laptop"
 ```
 
 **On the laptop** (PowerShell, in the repo checkout; [31] only on first setup
