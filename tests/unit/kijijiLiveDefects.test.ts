@@ -195,3 +195,37 @@ describe('live records still satisfy the canonical schema', () => {
     expect(KijijiExtractionRecordSchema.safeParse(contactAd().record).success).toBe(true);
   });
 });
+
+/**
+ * Two defects the live captures surfaced that were outside the reported
+ * list. Both affect every Kijiji ad, and both were stored rather than
+ * warned about, so nothing downstream could tell the value was wrong.
+ */
+describe('kijiji seller identity (live captures)', () => {
+  it('stores the seller name, not the profile link label', () => {
+    // The profile anchor is labelled "View Jessica's profile" and that label
+    // is read before the anchor's text, which is only the avatar monogram.
+    // Reading it verbatim put a sentence in a field the Deals dashboard
+    // renders as a seller.
+    expect(pricedAd().record.sellerName?.value).toBe('Jessica');
+    expect(contactAd().record.sellerName?.value).toBe('Inna');
+  });
+
+  it('resolves sellerType from the about-seller block', () => {
+    // The VIP never populates the attribute list sellerType was derived
+    // from, so every ad answered 'unknown' while the page plainly rendered
+    // "Owner" a few nodes away.
+    expect(pricedAd().record.sellerType).toBe('owner');
+    expect(contactAd().record.sellerType).toBe('owner');
+  });
+
+  it('leaves a name that is not a profile-link label untouched', () => {
+    // The unwrap keys on Kijiji's own wording; anything else passes through,
+    // so a seller genuinely called "View Ridge Salvage" keeps its name.
+    const { document } = parseHTML(
+      '<html><body><a href="/o-profile/1/1" aria-label="View Ridge Salvage">x</a></body></html>',
+    );
+    const { record } = extractKijijiListing(document as unknown as Document, PRICED_URL, { pageRevision: 1 });
+    expect(record.sellerName?.value).toBe('View Ridge Salvage');
+  });
+});

@@ -252,8 +252,17 @@ const SELLER_SELECTORS = [
  * candidates are filtered rather than taken first-match, and the anchor's
  * own title/aria-label is consulted before its text.
  */
+const PROFILE_LABEL_RE = /^view\s+(.+?)(?:['\u2019])s\s+profile$/i;
+
 function plausibleSellerName(raw: string | null | undefined): string | null {
-  const text = raw?.replace(/\s+/g, ' ').trim() ?? '';
+  const collapsed = raw?.replace(/\s+/g, ' ').trim() ?? '';
+  // Kijiji labels the profile anchor "View <name>'s profile" rather than
+  // naming the seller, and that label is consulted before the anchor's text
+  // (which is only the avatar monogram), so the record stored a whole
+  // sentence where the dashboard expects a name. The wording is the site's
+  // own; anything not matching it is left exactly as it was.
+  const labelled = PROFILE_LABEL_RE.exec(collapsed);
+  const text = labelled === null ? collapsed : labelled[1]!.trim();
   if (text.length < 2) return null;
   // "J", "J.", "JD" as an avatar monogram -- all caps and very short.
   if (text.length <= 2 && text === text.toUpperCase()) return null;
@@ -403,6 +412,49 @@ function extractAttributes(document: Document): { label: string; value: string }
     if (attributes.length > 0) return attributes;
   }
   return [];
+}
+
+const ABOUT_SELLER_SELECTORS = [
+  '[data-testid="vip-about-seller"]',
+  '[data-testid="about-seller"]',
+  '[class*="aboutSeller"]',
+];
+
+/**
+ * The VIP renders the seller-type badge in the about-seller block and never
+ * populates the attribute list, so deriving it from attributes alone always
+ * answered 'unknown'. Scoped to that block on purpose: "owner" and "dealer"
+ * are ordinary enough words that a whole-page scan would match a description
+ * ("selling for my father, the original owner").
+ */
+function sellerTypeFromAboutBlock(document: Document): KijijiExtractionRecord['sellerType'] {
+  for (const selector of ABOUT_SELLER_SELECTORS) {
+    let el: Element | null;
+    try {
+      el = document.querySelector(selector);
+    } catch {
+      continue;
+    }
+    if (!el) continue;
+    // The badge is matched on a leaf node's own text rather than the
+    // block's textContent: that concatenates its children without
+    // separators ("JessicaOwnerView all listings"), which destroys the word
+    // boundaries a text scan needs and would equally let "homeowner" in a
+    // neighbouring line answer for the badge.
+    let nodes: Element[];
+    try {
+      nodes = Array.from(el.querySelectorAll('*'));
+    } catch {
+      continue;
+    }
+    for (const node of [...nodes, el]) {
+      const own = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+      if (own.length === 0 || own.length > 24) continue;
+      if (/^(dealer|business|professional)$/i.test(own)) return 'dealer';
+      if (/^owner$/i.test(own)) return 'owner';
+    }
+  }
+  return 'unknown';
 }
 
 function sellerTypeFromAttributes(attributes: readonly { label: string; value: string }[]): KijijiExtractionRecord['sellerType'] {
@@ -680,7 +732,9 @@ export function extractKijijiListing(
 
   // --- attributes + seller type ---
   const attributes = extractAttributes(document);
-  const sellerType = sellerTypeFromAttributes(attributes);
+  const attributeSellerType = sellerTypeFromAttributes(attributes);
+  const sellerType =
+    attributeSellerType === 'unknown' ? sellerTypeFromAboutBlock(document) : attributeSellerType;
 
   // --- image count (jsonld image array → dom gallery) ---
   let imageCount: number | null = null;
