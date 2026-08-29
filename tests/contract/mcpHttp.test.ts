@@ -4,7 +4,7 @@
  * agreement, error catalog stability, and RFC 9728 discovery (§10.1).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { MCP_PROTOCOL_VERSION, BRIDGE_ERROR_CODES } from '@browser-bridge/protocol';
+import { MCP_PROTOCOL_VERSION, BRIDGE_ERROR_CODES, TOOL_CATALOG } from '@browser-bridge/protocol';
 import { buildGatewayHarness, type GatewayHarness } from '../helpers/gatewayHarness.js';
 import { ModernMcpClient, MODERN_META } from '../helpers/mcpClient.js';
 
@@ -20,11 +20,11 @@ afterAll(async () => {
 });
 
 describe('modern/stateless MCP profile (§9)', () => {
-  it('serves tools/list with all 15 tools and derived JSON schemas', async () => {
+  it('serves tools/list with every catalogued tool and derived JSON schemas', async () => {
     const response = await client.listTools();
     expect(response.status).toBe(200);
     const tools = response.body.result?.tools ?? [];
-    expect(tools).toHaveLength(15);
+    expect(tools).toHaveLength(TOOL_CATALOG.length);
     const names = tools.map((tool) => tool.name);
     expect(names).toContain('browser.extract');
     const screenshot = tools.find((tool) => tool.name === 'browser.screenshot');
@@ -80,7 +80,7 @@ describe('modern/stateless MCP profile (§9)', () => {
         { omitMeta: true, omitEnvelopeHeaders: true, headers: { 'MCP-Protocol-Version': '2025-06-18' } },
       );
       expect(response.status).toBe(200);
-      expect(response.body.result?.tools).toHaveLength(15);
+      expect(response.body.result?.tools).toHaveLength(TOOL_CATALOG.length);
     } finally {
       await compat.close();
     }

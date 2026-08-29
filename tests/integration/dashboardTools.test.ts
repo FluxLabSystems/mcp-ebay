@@ -140,6 +140,61 @@ describe('dashboard tools over the live MCP surface', () => {
     expect(JSON.stringify(response.body)).not.toContain('secret-vacation-token');
   });
 
+  it('touch-only upserts reach the upstream as {id,lastSeen} records', async () => {
+    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard.upsert', {
+      dashboard: 'deals',
+      touch: [{ id: 'kijiji-1111111', lastSeen: '2026-08-29T12:00:00Z' }],
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.result?.isError).not.toBe(true);
+    const structured = response.body.result?.structuredContent as {
+      ok: boolean;
+      summary: { sent: number; touched: number; upserted: number };
+    };
+    expect(structured.ok).toBe(true);
+    expect(structured.summary.touched).toBe(1);
+    expect(structured.summary.upserted).toBe(1);
+    const upstream = upstreamRequests.filter((request) => request.url.endsWith('/v1/deals/upsert')).at(-1);
+    expect(upstream?.body).toEqual({ listings: [{ id: 'kijiji-1111111', lastSeen: '2026-08-29T12:00:00Z' }] });
+  });
+
+  it('an upsert that names neither listings nor touch is refused at the schema', async () => {
+    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard.upsert', {
+      dashboard: 'deals',
+    });
+    expect(response.body.result?.isError).toBe(true);
+  });
+
+  it('feed filter and fields shrink what the caller has to read', async () => {
+    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard.feed', {
+      dashboard: 'deals',
+      filter: { marketplace: 'kijiji' },
+      fields: ['lastSeen'],
+    });
+    expect(response.status).toBe(200);
+    const structured = response.body.result?.structuredContent as {
+      listingCount: number;
+      totalListingCount: number;
+      root: { listings: unknown[] };
+    };
+    expect(structured.listingCount).toBe(1);
+    expect(structured.totalListingCount).toBe(1);
+    expect(structured.root.listings).toEqual([{ id: 'kijiji-1111111', lastSeen: '2026-08-17T00:00:00Z' }]);
+  });
+
+  it('a filter that matches nothing says so instead of returning the whole feed', async () => {
+    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard.feed', {
+      dashboard: 'deals',
+      filter: { marketplace: 'ebay' },
+    });
+    const structured = response.body.result?.structuredContent as {
+      listingCount: number;
+      totalListingCount: number;
+    };
+    expect(structured.listingCount).toBe(0);
+    expect(structured.totalListingCount).toBe(1);
+  });
+
   it('a vacation:write token cannot write the deals dashboard', async () => {
     const response = await clientWith(await mintToken('vacation:write')).callTool('dashboard.upsert', {
       dashboard: 'deals',

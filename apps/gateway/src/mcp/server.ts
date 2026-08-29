@@ -75,12 +75,15 @@ function registerDashboardTool(
           ? await (async () => {
               const input = DashboardFeedInput.parse(args);
               assertDashboardScope(authInfo, input.dashboard, entry.action);
-              return client.feed(input.dashboard, input.mode);
+              return client.feed(input.dashboard, input.mode, {
+                filter: input.filter,
+                fields: input.fields,
+              });
             })()
           : await (async () => {
               const input = DashboardUpsertInput.parse(args);
               assertDashboardScope(authInfo, input.dashboard, entry.action);
-              return client.upsert(input.dashboard, input.listings);
+              return client.upsert(input.dashboard, input.listings ?? [], input.touch ?? []);
             })();
       const payload = structured as unknown as Record<string, unknown>;
       return {

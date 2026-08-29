@@ -7,7 +7,11 @@ import { describe, expect, it } from 'vitest';
 import * as z from 'zod/v4';
 import {
   ArtifactDescriptorSchema,
+  DashboardFeedInput,
+  DashboardUpsertInput,
+  EXTRACT_MANY_MAX_URLS,
   ImageCandidateSchema,
+  SEARCH_TITLE_REGEX_MAX_LENGTH,
   SemanticNodeSchema,
   TabSchema,
   TOOL_CATALOG,
@@ -35,12 +39,25 @@ const VALID_INPUTS: Record<string, Record<string, unknown>> = {
   'browser.key': { browserSessionHandle: HANDLE, tabId: TAB, key: 'Enter' },
   'browser.wait': { browserSessionHandle: HANDLE, tabId: TAB, condition: { text: 'M6H 2W9' } },
   'browser.extract': { browserSessionHandle: HANDLE, tabId: TAB, siteProfile: 'ebay.ca.v1' },
+  'browser.open_and_extract': {
+    browserSessionHandle: HANDLE,
+    tabId: TAB,
+    url: 'https://www.ebay.ca/sch/i.html?_nkw=lego+lot',
+    siteProfile: 'ebay.ca.v1',
+  },
+  'browser.extract_many': {
+    browserSessionHandle: HANDLE,
+    tabId: TAB,
+    urls: ['https://www.ebay.ca/itm/226123456789'],
+    siteProfile: 'ebay.ca.v1',
+  },
+  'browser.job_status': { browserSessionHandle: HANDLE, jobId: 'job_01JABCDEF' },
   'browser.handoff': { browserSessionHandle: HANDLE, tabId: TAB, message: 'Please solve the challenge' },
 };
 
 describe('tool catalog completeness (§15)', () => {
-  it('exposes exactly the 15 normative tools with scopes and policy classes', () => {
-    expect(TOOL_CATALOG).toHaveLength(15);
+  it('exposes exactly the 18 normative tools with scopes and policy classes', () => {
+    expect(TOOL_CATALOG).toHaveLength(18);
     const expectations: Array<[string, string, string]> = [
       ['browser.session_open', SCOPE_INTERACT, 'reversible'],
       ['browser.tabs', SCOPE_READ, 'read'],
@@ -56,6 +73,12 @@ describe('tool catalog completeness (§15)', () => {
       ['browser.key', SCOPE_INTERACT, 'reversible'],
       ['browser.wait', SCOPE_READ, 'read'],
       ['browser.extract', SCOPE_READ, 'read'],
+      // The batch traversal tools navigate, so they carry browser.navigate's
+      // scope and policy class rather than browser.extract's. Reading them as
+      // browser:read would let a read-only token drive the browser.
+      ['browser.open_and_extract', SCOPE_INTERACT, 'reversible'],
+      ['browser.extract_many', SCOPE_INTERACT, 'reversible'],
+      ['browser.job_status', SCOPE_READ, 'read'],
       ['browser.handoff', SCOPE_INTERACT, 'control'],
     ];
     for (const [name, scope, policyClass] of expectations) {
@@ -139,6 +162,91 @@ describe('input schema contracts (Appendix A)', () => {
   it('browser.extract accepts only the versioned site profile', () => {
     const schema = getToolEntry('browser.extract')!.inputSchema;
     expect(schema.safeParse({ browserSessionHandle: HANDLE, tabId: TAB, siteProfile: 'amazon.v1' }).success).toBe(false);
+  });
+
+  it('browser.extract stays byte-compatible: search is optional and additive', () => {
+    const schema = getToolEntry('browser.extract')!.inputSchema;
+    const base = { browserSessionHandle: HANDLE, tabId: TAB, siteProfile: 'ebay.ca.v1' };
+    // The Phase 1 call shape parses to the Phase 1 value, with no search key.
+    expect(schema.parse(base)).toEqual(base);
+    expect(schema.safeParse({ ...base, search: { limit: 10, offset: 20 } }).success).toBe(true);
+  });
+
+  it('browser.extract_many bounds the batch and defaults to compact sequential auto', () => {
+    const entry = getToolEntry('browser.extract_many')!;
+    const parsed = entry.inputSchema.parse(VALID_INPUTS['browser.extract_many']) as {
+      compact: boolean;
+      concurrency: number;
+      mode: string;
+      waitUntil: string;
+    };
+    expect(parsed.compact).toBe(true);
+    expect(parsed.concurrency).toBe(1);
+    expect(parsed.mode).toBe('auto');
+    expect(parsed.waitUntil).toBe('domcontentloaded');
+    expect(EXTRACT_MANY_MAX_URLS).toBe(25);
+    const tooMany = Array.from({ length: EXTRACT_MANY_MAX_URLS + 1 }, (_, i) => `https://www.ebay.ca/itm/2261234567${i}`);
+    expect(
+      entry.inputSchema.safeParse({ ...VALID_INPUTS['browser.extract_many'], urls: tooMany }).success,
+    ).toBe(false);
+    expect(entry.inputSchema.safeParse({ ...VALID_INPUTS['browser.extract_many'], urls: [] }).success).toBe(false);
+    expect(
+      entry.inputSchema.safeParse({ ...VALID_INPUTS['browser.extract_many'], concurrency: 9 }).success,
+    ).toBe(false);
+  });
+
+  it('a search titleRegex that could backtrack exponentially is a validation error', () => {
+    const schema = getToolEntry('browser.open_and_extract')!.inputSchema;
+    const withRegex = (titleRegex: string): boolean =>
+      schema.safeParse({
+        ...VALID_INPUTS['browser.open_and_extract'],
+        search: { include: { titleRegex } },
+      }).success;
+    // Ordinary filters compile.
+    expect(withRegex('lego.*(bulk|lot)')).toBe(true);
+    expect(withRegex('\\bminifig(ure)?s?\\b')).toBe(true);
+    // Nested quantifiers, overlapping alternation, backreferences, absurd
+    // repetition counts, and syntactically invalid patterns are all refused
+    // at the schema boundary rather than on the device.
+    expect(withRegex('(a+)+$')).toBe(false);
+    expect(withRegex('(a|a)*b')).toBe(false);
+    expect(withRegex('(lego)\\1')).toBe(false);
+    expect(withRegex('a{500}')).toBe(false);
+    expect(withRegex('lego(')).toBe(false);
+    expect(withRegex('a'.repeat(SEARCH_TITLE_REGEX_MAX_LENGTH + 1))).toBe(false);
+  });
+
+  it('dashboard.upsert accepts listings, touch, or both — but not neither', () => {
+    const schema = DashboardUpsertInput;
+    // The Phase 1 call shape is untouched.
+    expect(schema.safeParse({ dashboard: 'deals', listings: [{ id: 'ebay-1' }] }).success).toBe(true);
+    expect(
+      schema.safeParse({ dashboard: 'deals', touch: [{ id: 'ebay-1', lastSeen: '2026-08-29T12:00:00Z' }] }).success,
+    ).toBe(true);
+    expect(
+      schema.safeParse({
+        dashboard: 'deals',
+        listings: [{ id: 'ebay-1' }],
+        touch: [{ id: 'kijiji-2', lastSeen: '2026-08-29T12:00:00Z' }],
+      }).success,
+    ).toBe(true);
+    expect(schema.safeParse({ dashboard: 'deals' }).success).toBe(false);
+    // A touch still has to say when it saw the record, in a parseable form.
+    expect(schema.safeParse({ dashboard: 'deals', touch: [{ id: 'ebay-1', lastSeen: 'yesterday' }] }).success).toBe(
+      false,
+    );
+  });
+
+  it('dashboard.feed filter and fields are optional additions', () => {
+    expect(DashboardFeedInput.parse({ dashboard: 'deals' })).toEqual({ dashboard: 'deals', mode: 'full' });
+    expect(
+      DashboardFeedInput.safeParse({
+        dashboard: 'deals',
+        mode: 'ids',
+        filter: { active: true, status: ['active'], marketplace: 'ebay' },
+        fields: ['title', 'priceCad'],
+      }).success,
+    ).toBe(true);
   });
 });
 

@@ -9,6 +9,7 @@ import {
   BROWSER_SESSION_HANDLE_PATTERN,
   isAllowedArtifactMime,
   isBridgeErrorCode,
+  EXTRACT_FAMILY_COMMANDS,
   MCP_INLINE_ARTIFACT_MAX_BYTES,
   PENDING_SESSION_HANDLE,
   getToolEntry,
@@ -21,6 +22,30 @@ import type { ArtifactStore } from './artifacts/store.js';
 import type { DeviceRegistry } from './devices/registry.js';
 import type { Store } from './store/types.js';
 
+/**
+ * Per-call instrumentation sink, satisfied by @browser-bridge/telemetry's
+ * CallRecorder. Declared structurally rather than imported so the gateway
+ * takes no dependency on the telemetry package: a deployment that leaves
+ * callRecorder unset runs the same code it ran before, and nothing is
+ * serialized. Arguments and results are handed over whole and measured
+ * there — the sink writes sizes, never values (§26).
+ */
+export interface ToolCallRecorderHook {
+  record(observation: {
+    toolName: string;
+    args: unknown;
+    response: unknown;
+    durationMs: number;
+    outcome: 'ok' | 'error' | 'denied';
+    // Optional to match what a recorder is required to accept, not what the
+    // broker happens to send: the broker always supplies all three, but a
+    // sink that treats them as optional still satisfies this hook.
+    errorCode?: string | null;
+    sessionId?: string | null;
+    requestId?: string | null;
+  }): void;
+}
+
 export interface BrokerDeps {
   registry: DeviceRegistry;
   store: Store;
@@ -28,6 +53,8 @@ export interface BrokerDeps {
   logger: Logger;
   /** §25: deployment-authoritative destination for ebay.ca.v1 extraction. */
   ebayDestinationPostalCode: string;
+  /** Opt-in call-budget instrumentation; absent in every default path. */
+  callRecorder?: ToolCallRecorderHook;
 }
 
 export interface CallerContext {
@@ -97,7 +124,7 @@ export class CommandBroker {
     // §25/§20.1: the gateway is the single source of truth for the
     // required shipping destination; it rides the wire envelope, never
     // the public tool schema (audit F-09).
-    if (entry.command === 'extract') {
+    if (EXTRACT_FAMILY_COMMANDS.has(entry.command)) {
       commandArgs.destinationPostalCode = this.deps.ebayDestinationPostalCode;
     }
 
@@ -130,7 +157,10 @@ export class CommandBroker {
         typeof bridgeError.details.requestId === 'string' ? bridgeError.details.requestId : null;
       await this.auditCommand(auditBase, entry.command, requestId, 'error', bridgeError.code, null);
       await this.audit({ ...auditBase, outcome: 'error', errorCode: bridgeError.code, requestId });
-      this.logToolCall(auditBase, requestId, 'error', bridgeError.code, Date.now() - startedAt, null);
+      this.logToolCall(auditBase, requestId, 'error', bridgeError.code, Date.now() - startedAt, null, {
+        args,
+        response: bridgeError.toPayload(),
+      });
       throw bridgeError;
     }
 
@@ -151,7 +181,10 @@ export class CommandBroker {
       const outcome =
         bridgeError.code === 'ACTION_BLOCKED' || bridgeError.code === 'SECRET_FIELD_BLOCKED' ? 'denied' : 'error';
       await this.audit({ ...auditBase, outcome, errorCode: bridgeError.code, requestId: result.requestId });
-      this.logToolCall(auditBase, result.requestId, outcome, bridgeError.code, Date.now() - startedAt, result.durationMs);
+      this.logToolCall(auditBase, result.requestId, outcome, bridgeError.code, Date.now() - startedAt, result.durationMs, {
+        args,
+        response: result.error,
+      });
       throw bridgeError;
     }
 
@@ -178,18 +211,32 @@ export class CommandBroker {
 
     await this.audit({ ...auditBase, outcome: 'ok', errorCode: null, requestId: result.requestId });
     // §26 counters/timers in structured logs (audit F-08).
-    this.logToolCall(auditBase, result.requestId, 'ok', null, Date.now() - startedAt, result.durationMs);
+    this.logToolCall(auditBase, result.requestId, 'ok', null, Date.now() - startedAt, result.durationMs, {
+      args,
+      response: structured,
+    });
     return { structured, artifacts };
   }
 
   private logToolCall(
     base: { toolName: string; deviceId: string; browserSessionHandle: string; tabId: string | null },
     requestId: string | null,
-    outcome: string,
+    outcome: 'ok' | 'error' | 'denied',
     errorCode: string | null,
     durationMs: number,
     agentDurationMs: number | null,
+    payload: { args: unknown; response: unknown },
   ): void {
+    this.deps.callRecorder?.record({
+      toolName: base.toolName,
+      args: payload.args,
+      response: payload.response,
+      durationMs,
+      outcome,
+      errorCode,
+      sessionId: base.browserSessionHandle,
+      requestId,
+    });
     this.deps.logger.info(
       {
         metric: 'tool_call',

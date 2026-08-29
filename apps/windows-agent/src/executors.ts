@@ -20,16 +20,24 @@ import {
   type GalleryHints,
 } from '@browser-bridge/browser-core';
 import {
+  BATCH_ITEM_BUDGET_MS,
+  BATCH_JOB_DEADLINE_MS,
   BridgeError,
   ClickInput,
+  DEFAULT_SEARCH_COMPACTION,
   ExtractInput,
+  ExtractManyInput,
   FillInput,
   HandoffInput,
+  IDEMPOTENCY_WINDOW_SECONDS,
   ImageGetInput,
   ImagesInput,
+  JobStatusInput,
   KeyInput,
+  MAX_INLINE_BATCH_ITEMS,
   NavigateInput,
   newArtifactId,
+  OpenAndExtractInput,
   ScreenshotInput,
   ScrollInput,
   SelectInput,
@@ -37,7 +45,9 @@ import {
   SnapshotInput,
   TabsInput,
   WaitInput,
+  type BatchExtractItem,
   type CommandEnvelope,
+  type SearchCompaction,
 } from '@browser-bridge/protocol';
 import {
   classifyEbayPage,
@@ -55,7 +65,9 @@ import {
   KIJIJI_SITE_PROFILE_ID,
 } from '@browser-bridge/site-kijiji';
 import type { BrowserSessionRuntime } from '@browser-bridge/browser-core';
+import { compactItemRecord, compactSearchPage } from './compact.js';
 import { ensureDestination } from './destinationFlow.js';
+import { BatchJobStore, jobProgress, type BatchJob } from './jobs.js';
 import type { Logger } from './logger.js';
 import type { SessionOpenResult } from './sessionManager.js';
 
@@ -88,6 +100,21 @@ export interface ExecutorHost {
   expectedPostalCode: string;
   /** Gallery hints; eBay hints by default, injectable for tests. */
   galleryHints?: GalleryHints;
+  /** Batch job store; a process-wide one is used when the host supplies none. */
+  jobs?: BatchJobStore;
+}
+
+/**
+ * One store per agent process, because one agent process owns one browser.
+ * Jobs are retained for the same window the gateway deduplicates command
+ * submissions over (§18) — long enough that every legitimate poll lands,
+ * short enough that a device does not accumulate finished traversals.
+ */
+let processJobStore: BatchJobStore | null = null;
+function resolveJobStore(host: ExecutorHost): BatchJobStore {
+  if (host.jobs !== undefined) return host.jobs;
+  processJobStore ??= new BatchJobStore({ retentionMs: IDEMPOTENCY_WINDOW_SECONDS * 1000 });
+  return processJobStore;
 }
 
 function remainingBudgetMs(envelope: CommandEnvelope, floorMs = 1000): number {
@@ -152,6 +179,26 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
       const session = host.sessions.resolve(envelope.browserSessionHandle);
       return { result: { tabs: await session.listTabs() }, pageRevision: null, artifacts: [] };
     }
+    case 'job_status': {
+      // Answered here, above the session queue, on purpose: a poll that
+      // enqueued would wait behind the very traversal it is polling and the
+      // job would only ever report itself finished. It touches no tab, so
+      // it also needs no tabId.
+      const input = JobStatusInput.parse({
+        browserSessionHandle: envelope.browserSessionHandle,
+        ...(args as object),
+      });
+      host.sessions.resolve(envelope.browserSessionHandle);
+      const job = resolveJobStore(host).get(input.jobId, envelope.browserSessionHandle);
+      if (job === undefined) {
+        throw new BridgeError(
+          'ARTIFACT_EXPIRED',
+          `Batch job ${input.jobId} is unknown to this session, or its results have aged out.`,
+          { jobId: input.jobId },
+        );
+      }
+      return { result: jobProgress(job, input.sinceIndex), pageRevision: null, artifacts: [] };
+    }
     default:
       break;
   }
@@ -160,6 +207,13 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
   const tabId = envelope.tabId;
   if (tabId === null) {
     throw new BridgeError('TAB_NOT_FOUND', 'Command requires a tabId.', { command: envelope.command });
+  }
+
+  // A promoted batch has to answer before its own traversal starts, so it
+  // cannot be written as the body of an enqueue() the way every other
+  // tab command is. It still runs THROUGH the queue — see executeExtractMany.
+  if (envelope.command === 'extract_many') {
+    return executeExtractMany(host, session, tabId, envelope, budget);
   }
 
   return session.enqueue(async (): Promise<ExecutionOutcome> => {
@@ -301,7 +355,45 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
           typeof destinationPostalCode === 'string' && destinationPostalCode.length > 0
             ? destinationPostalCode
             : host.expectedPostalCode;
-        return executeExtract(host, session, tabId, expectedPostal, input.siteProfile);
+        return executeExtract(host, session, tabId, expectedPostal, input.siteProfile, input.search);
+      }
+      case 'open_and_extract': {
+        // Same F-09 treatment as extract: the destination rides the
+        // envelope, never the public schema.
+        const { destinationPostalCode, ...toolArgs } = args as Record<string, unknown>;
+        const input = OpenAndExtractInput.parse({
+          browserSessionHandle: envelope.browserSessionHandle,
+          tabId,
+          ...toolArgs,
+        });
+        const expectedPostal =
+          typeof destinationPostalCode === 'string' && destinationPostalCode.length > 0
+            ? destinationPostalCode
+            : host.expectedPostalCode;
+        // The one and only navigation primitive: the local URL allowlist,
+        // the private-network rules and the redirect revalidation all live
+        // behind it (packages/browser-core/src/session.ts navigate()).
+        const nav = await navigate(session, tabId, input.url, input.waitUntil, budget);
+        // Unlike browser.extract, an omitted `search` here means "compact
+        // with the defaults": this tool exists to stop a results page
+        // arriving as a hundred kilobytes of candidate rows.
+        const outcome = await executeExtract(
+          host,
+          session,
+          tabId,
+          expectedPostal,
+          input.siteProfile,
+          input.search ?? DEFAULT_SEARCH_COMPACTION,
+        );
+        return {
+          result: {
+            ...outcome.result,
+            finalUrl: nav.finalUrl,
+            navigationStatus: nav.navigationStatus,
+          },
+          pageRevision: outcome.pageRevision,
+          artifacts: [],
+        };
       }
       case 'handoff': {
         const input = HandoffInput.parse({
@@ -326,6 +418,8 @@ async function executeExtract(
   tabId: string,
   expectedPostalCode: string = host.expectedPostalCode,
   declaredSiteProfile: string = EBAY_SITE_PROFILE_ID,
+  /** Present only when the caller asked for a reduced candidate list. */
+  searchOptions?: SearchCompaction,
 ): Promise<ExecutionOutcome> {
   const tab = session.getTab(tabId);
   const pageUrl = tab.page.url();
@@ -363,22 +457,27 @@ async function executeExtract(
           'NO_LISTING_CANDIDATES: no ad links found — an empty results page, or the result-card selectors need updating.',
         );
       }
+      const kijijiPage = applySearchCompaction(
+        {
+          siteProfile: KIJIJI_SITE_PROFILE_ID,
+          pageKind: kind,
+          pageUrl,
+          candidateCount: searchPage.results.length,
+          candidates: searchPage.results,
+          hasNextPage: searchPage.hasNextPage,
+          nextPageUrl: searchPage.nextPageUrl,
+          totalResults: searchPage.totalResults,
+          note: 'Candidate snippets are traversal hints; open each ad URL and extract it for canonical evidence.',
+        },
+        searchOptions,
+        warnings,
+      );
       return {
         result: {
           siteProfile: KIJIJI_SITE_PROFILE_ID,
           pageRevision: tab.revision,
-          record: {
-            siteProfile: KIJIJI_SITE_PROFILE_ID,
-            pageKind: kind,
-            pageUrl,
-            candidateCount: searchPage.results.length,
-            candidates: searchPage.results,
-            hasNextPage: searchPage.hasNextPage,
-            nextPageUrl: searchPage.nextPageUrl,
-            totalResults: searchPage.totalResults,
-            note: 'Candidate snippets are traversal hints; open each ad URL and extract it for canonical evidence.',
-          },
-          warnings,
+          record: kijijiPage.record,
+          warnings: kijijiPage.warnings,
         },
         pageRevision: tab.revision,
         artifacts: [],
@@ -419,19 +518,24 @@ async function executeExtract(
         'NO_LISTING_CANDIDATES: no /itm/ links found — an empty results page, or the result-card selectors need updating.',
       );
     }
+    const ebayPage = applySearchCompaction(
+      {
+        siteProfile: EBAY_SITE_PROFILE_ID,
+        pageKind: kind,
+        pageUrl,
+        candidateCount: candidates.length,
+        candidates,
+        note: 'Candidate snippets are traversal hints; open each /itm/ URL and extract it for canonical evidence.',
+      },
+      searchOptions,
+      warnings,
+    );
     return {
       result: {
         siteProfile: EBAY_SITE_PROFILE_ID,
         pageRevision: tab.revision,
-        record: {
-          siteProfile: EBAY_SITE_PROFILE_ID,
-          pageKind: kind,
-          pageUrl,
-          candidateCount: candidates.length,
-          candidates,
-          note: 'Candidate snippets are traversal hints; open each /itm/ URL and extract it for canonical evidence.',
-        },
-        warnings,
+        record: ebayPage.record,
+        warnings: ebayPage.warnings,
       },
       pageRevision: tab.revision,
       artifacts: [],
@@ -470,4 +574,252 @@ async function executeExtract(
     pageRevision: tab.revision,
     artifacts: [],
   };
+}
+
+/**
+ * Apply the caller's candidate reduction, or leave the record exactly as
+ * Phase 1 produced it when no reduction was asked for. The absent case is
+ * load-bearing: browser.extract with no `search` must keep returning the
+ * bytes it always returned.
+ */
+function applySearchCompaction(
+  record: Record<string, unknown>,
+  searchOptions: SearchCompaction | undefined,
+  warnings: string[],
+): { record: Record<string, unknown>; warnings: string[] } {
+  if (searchOptions === undefined) return { record, warnings };
+  const compacted = compactSearchPage(record, searchOptions);
+  return { record: compacted.record, warnings: [...warnings, ...compacted.warnings] };
+}
+
+/**
+ * Traverse one URL: navigate, then extract, and turn any failure into this
+ * URL's own result slot instead of the batch's.
+ *
+ * The navigation goes through browser-core's navigate() — the same call
+ * browser.navigate makes — so `session.policy.assertUrlAllowed(url,
+ * 'navigation')` runs for every URL in the batch, and the context-level
+ * route interception revalidates every redirect hop and aborts protected
+ * endpoints underneath it. There is deliberately no second navigation path
+ * in this file: a batch tool that reimplemented navigation would be a way
+ * to reach a URL that browser.navigate refuses.
+ */
+async function traverseOne(
+  host: ExecutorHost,
+  session: BrowserSessionRuntime,
+  tabId: string,
+  url: string,
+  waitUntil: 'domcontentloaded' | 'load',
+  siteProfile: string,
+  expectedPostalCode: string,
+  compact: boolean,
+  budgetMs: number,
+): Promise<BatchExtractItem> {
+  try {
+    const nav = await navigate(session, tabId, url, waitUntil, budgetMs);
+    const outcome = await executeExtract(host, session, tabId, expectedPostalCode, siteProfile);
+    const result = outcome.result;
+    const warnings = Array.isArray(result.warnings) ? (result.warnings as string[]) : [];
+    const profile = typeof result.siteProfile === 'string' ? result.siteProfile : siteProfile;
+    const record = (result.record ?? null) as Record<string, unknown> | null;
+    return {
+      url,
+      finalUrl: nav.finalUrl,
+      ok: true,
+      siteProfile: profile,
+      pageRevision: outcome.pageRevision,
+      record: record === null ? null : compact ? compactItemRecord(profile, record, warnings) : record,
+      warnings,
+      error: null,
+    };
+  } catch (err) {
+    const bridgeError = BridgeError.from(err);
+    host.logger.warn({ url, code: bridgeError.code }, 'Batch traversal item failed');
+    return {
+      url,
+      finalUrl: null,
+      ok: false,
+      siteProfile: null,
+      pageRevision: null,
+      record: null,
+      warnings: [],
+      error: {
+        code: bridgeError.code,
+        message: bridgeError.message,
+        retryable: bridgeError.retryable,
+      },
+    };
+  }
+}
+
+interface BatchPlan {
+  urls: string[];
+  waitUntil: 'domcontentloaded' | 'load';
+  siteProfile: string;
+  expectedPostalCode: string;
+  compact: boolean;
+}
+
+/**
+ * Walk a batch to completion, or until `deadlineAt` passes. Stopping early
+ * is reported as 'partial' rather than as an error: the slots already
+ * produced are real evidence and throwing them away to raise a timeout
+ * would be the Phase 1 failure mode in a new costume.
+ */
+async function runBatch(
+  host: ExecutorHost,
+  session: BrowserSessionRuntime,
+  tabId: string,
+  plan: BatchPlan,
+  deadlineAt: number,
+  onItem: (item: BatchExtractItem) => void,
+): Promise<'completed' | 'partial'> {
+  for (const url of plan.urls) {
+    const remaining = deadlineAt - Date.now();
+    if (remaining <= 0) return 'partial';
+    const item = await traverseOne(
+      host,
+      session,
+      tabId,
+      url,
+      plan.waitUntil,
+      plan.siteProfile,
+      plan.expectedPostalCode,
+      plan.compact,
+      Math.min(BATCH_ITEM_BUDGET_MS, remaining),
+    );
+    onItem(item);
+  }
+  return 'completed';
+}
+
+function inlineProgress(
+  status: 'completed' | 'partial',
+  requested: number,
+  compact: boolean,
+  results: BatchExtractItem[],
+  warnings: string[],
+): Record<string, unknown> {
+  return {
+    mode: 'inline',
+    jobId: null,
+    status,
+    requested,
+    completed: results.length,
+    succeeded: results.filter((item) => item.ok).length,
+    failed: results.filter((item) => !item.ok).length,
+    compact,
+    resultsFrom: 0,
+    results,
+    warnings,
+  };
+}
+
+async function executeExtractMany(
+  host: ExecutorHost,
+  session: BrowserSessionRuntime,
+  tabId: string,
+  envelope: CommandEnvelope,
+  budget: number,
+): Promise<ExecutionOutcome> {
+  const { destinationPostalCode, ...toolArgs } = envelope.arguments as Record<string, unknown>;
+  const input = ExtractManyInput.parse({
+    browserSessionHandle: envelope.browserSessionHandle,
+    tabId,
+    ...toolArgs,
+  });
+  const expectedPostalCode =
+    typeof destinationPostalCode === 'string' && destinationPostalCode.length > 0
+      ? destinationPostalCode
+      : host.expectedPostalCode;
+
+  const warnings: string[] = [];
+  if (input.concurrency > 1) {
+    // Honest refusal rather than silent compliance: a session executes its
+    // commands through one FIFO queue (packages/browser-core/src/session.ts
+    // enqueue()) and a batch drives one tab, so parallel traversal would
+    // mean opening tabs outside the queue's knowledge.
+    warnings.push(
+      `CONCURRENCY_COERCED: concurrency ${input.concurrency} was requested; this session executes commands serially through one tab, so the batch ran sequentially.`,
+    );
+  }
+
+  const plan: BatchPlan = {
+    urls: input.urls,
+    waitUntil: input.waitUntil,
+    siteProfile: input.siteProfile,
+    expectedPostalCode,
+    compact: input.compact,
+  };
+
+  // §18 promotion rule: 'auto' answers inline only for a batch that fits
+  // this tool's own catalog deadline at the catalog's per-item charge
+  // (MAX_INLINE_BATCH_ITEMS, derived in packages/protocol/src/catalog.ts).
+  const resolvedMode =
+    input.mode === 'auto' ? (input.urls.length <= MAX_INLINE_BATCH_ITEMS ? 'inline' : 'job') : input.mode;
+
+  if (resolvedMode === 'inline') {
+    return session.enqueue(async (): Promise<ExecutionOutcome> => {
+      if (Date.parse(envelope.expiresAt) <= Date.now()) {
+        throw new BridgeError('REQUEST_EXPIRED', undefined, { requestId: envelope.requestId });
+      }
+      const results: BatchExtractItem[] = [];
+      const status = await runBatch(host, session, tabId, plan, Date.now() + budget, (item) => {
+        results.push(item);
+      });
+      if (status === 'partial') {
+        warnings.push(
+          `BATCH_DEADLINE_REACHED: ${results.length} of ${input.urls.length} URLs were traversed before the call's deadline; re-issue the remainder, or use mode "job".`,
+        );
+      }
+      return {
+        result: inlineProgress(status, input.urls.length, input.compact, results, warnings),
+        pageRevision: results.at(-1)?.pageRevision ?? null,
+        artifacts: [],
+      };
+    });
+  }
+
+  const store = resolveJobStore(host);
+  const job: BatchJob = store.create(
+    envelope.browserSessionHandle,
+    input.urls.length,
+    input.compact,
+    warnings,
+  );
+  // Queued, not detached: the traversal still takes its turn behind
+  // whatever the session is already doing, so a job never races another
+  // command for the tab. What the job does NOT do is hold this response
+  // open — that is the whole point of promoting it.
+  void session
+    .enqueue(async () => {
+      const status = await runBatch(
+        host,
+        session,
+        tabId,
+        plan,
+        job.startedAt + BATCH_JOB_DEADLINE_MS,
+        (item) => {
+          store.append(job.jobId, item);
+        },
+      );
+      store.finish(
+        job.jobId,
+        status,
+        status === 'partial'
+          ? [
+              `BATCH_DEADLINE_REACHED: the job stopped after ${job.results.length} of ${job.requested} URLs; re-issue the remainder.`,
+            ]
+          : [],
+      );
+    })
+    .catch((err: unknown) => {
+      // A whole-batch failure (the session died, the tab closed) still has
+      // to reach the poller, so it is recorded as the job's outcome.
+      const bridgeError = BridgeError.from(err);
+      host.logger.error({ jobId: job.jobId, code: bridgeError.code }, 'Batch job failed');
+      store.finish(job.jobId, 'partial', [`BATCH_FAILED: ${bridgeError.code}: ${bridgeError.message}`]);
+    });
+
+  return { result: jobProgress(job), pageRevision: null, artifacts: [] };
 }

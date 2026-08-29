@@ -11,7 +11,10 @@ import {
   DashboardFeedOutput,
   DashboardUpsertInput,
   DashboardUpsertOutput,
+  EXTRACT_MANY_MAX_URLS,
   ExtractInput,
+  ExtractManyInput,
+  ExtractManyOutput,
   ExtractOutput,
   FillInput,
   FillOutput,
@@ -21,10 +24,14 @@ import {
   ImageGetOutput,
   ImagesInput,
   ImagesOutput,
+  JobStatusInput,
+  JobStatusOutput,
   KeyInput,
   KeyOutput,
   NavigateInput,
   NavigateOutput,
+  OpenAndExtractInput,
+  OpenAndExtractOutput,
   ScreenshotInput,
   ScreenshotOutput,
   ScrollInput,
@@ -66,10 +73,66 @@ export interface ToolCatalogEntry {
   outputSchema: z.ZodType;
 }
 
-const DEFAULT_TIMEOUT_MS = 45_000;
+export const DEFAULT_TIMEOUT_MS = 45_000;
 const SCREENSHOT_TIMEOUT_MS = 60_000;
-const INTERACTION_TIMEOUT_MS = 15_000;
-const SNAPSHOT_TIMEOUT_MS = 15_000;
+export const INTERACTION_TIMEOUT_MS = 15_000;
+export const SNAPSHOT_TIMEOUT_MS = 15_000;
+
+/* ------------------------------------------------------------------------- *
+ * Batch response-time ceiling (§18)
+ *
+ * browser.extract_many has to decide, before it starts, whether a batch can
+ * finish inside the gateway's deadline for the call or has to become a job.
+ * Both numbers it needs come from this file rather than from a guess:
+ *
+ *   - The deadline is this tool's own catalog timeoutMs. extract_many is
+ *     given DEFAULT_TIMEOUT_MS, the tier browser.navigate and browser.extract
+ *     already sit in, because one batch item is exactly one navigate plus one
+ *     extract and inventing a new tier for the pair would only hide that.
+ *
+ *   - The per-item charge is SNAPSHOT_TIMEOUT_MS. A tool's timeoutMs is a
+ *     worst case, not an expected cost, so charging navigate+extract their
+ *     own deadlines (90 s) would promote every batch to a job and tell us
+ *     nothing. SNAPSHOT_TIMEOUT_MS is the only figure the catalog states for
+ *     "one operation against one already-addressed page", which is what an
+ *     item page costs once the tab is pointed at it, and it is a ceiling —
+ *     which is the direction a promotion rule must err in.
+ *
+ *   - The reserve covers what the call owes outside the traversal: the
+ *     agent's ACK deadline plus the 250 ms expiry guard the executor keeps
+ *     in remainingBudgetMs().
+ *
+ * The arithmetic today is floor((45_000 - 2_250) / 15_000) = 2 items inline.
+ * That is deliberately conservative: a 25-page traversal cannot honestly fit
+ * in 45 s, and the job path costs one extra poll, not one call per page.
+ * ------------------------------------------------------------------------- */
+export const BATCH_ITEM_BUDGET_MS = SNAPSHOT_TIMEOUT_MS;
+export const BATCH_INLINE_RESERVE_MS = 2_250;
+export const EXTRACT_MANY_TIMEOUT_MS = DEFAULT_TIMEOUT_MS;
+
+/** Largest batch `mode: "auto"` will answer inline instead of promoting to a job. */
+export const MAX_INLINE_BATCH_ITEMS = Math.max(
+  1,
+  Math.floor((EXTRACT_MANY_TIMEOUT_MS - BATCH_INLINE_RESERVE_MS) / BATCH_ITEM_BUDGET_MS),
+);
+
+/**
+ * Wall-clock ceiling for a whole batch job, once promoted. A job outlives the
+ * envelope that started it by design, so it needs its own bound: the largest
+ * batch the schema allows, at the same per-item charge.
+ */
+export const BATCH_JOB_DEADLINE_MS = EXTRACT_MANY_MAX_URLS * BATCH_ITEM_BUDGET_MS;
+
+/**
+ * Extract-family agent commands. The gateway stamps the deployment's
+ * shipping destination onto every one of these (audit F-09); it rides the
+ * wire envelope and never the public tool schema.
+ */
+export const EXTRACT_FAMILY_COMMANDS: ReadonlySet<string> = new Set([
+  'extract',
+  'open_and_extract',
+  'extract_many',
+]);
 
 export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
   {
@@ -219,6 +282,51 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
       'Run versioned site-profile extraction on the current page, dispatched by page kind. eBay (ebay.ca.v1): item /itm/ pages return the full listing record with provenance and confidence; search /sch/ and seller store /str/ or /usr/ pages return an ordered listing-candidate list for traversal. Kijiji (kijiji.ca.v1): ad (VIP) pages return the full record; search /b-* pages return candidates plus next-page pagination. Candidate snippets are traversal hints - follow each candidate URL and extract the item page for canonical evidence.',
     inputSchema: ExtractInput,
     outputSchema: ExtractOutput,
+  },
+  {
+    name: 'browser.open_and_extract',
+    command: 'open_and_extract',
+    // Classified with browser.navigate, not with browser.extract: this tool
+    // moves the tab. Reading it as browser:read/read because "it only
+    // extracts afterwards" would let a browser:read token drive navigation,
+    // which is precisely the widening §10.2 exists to prevent.
+    scope: SCOPE_INTERACT,
+    policyClass: 'reversible',
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+    description:
+      'Navigate a tab to an allowed HTTPS URL and run site-profile extraction on the page it lands on, in one call. Returns exactly what browser.extract returns plus finalUrl and navigationStatus. On a search or store page the optional search object reduces the candidate list server-side (canonical URLs, limit/offset, a field allow-list, and title/price/format filters) and is applied with its defaults when omitted, so a full results page arrives compact rather than as a hundred-kilobyte candidate dump.',
+    inputSchema: OpenAndExtractInput,
+    outputSchema: OpenAndExtractOutput,
+  },
+  {
+    name: 'browser.extract_many',
+    command: 'extract_many',
+    // Same reasoning as open_and_extract: a batch navigates, so it carries
+    // navigate's scope and policy class. Every URL in the batch goes through
+    // the same local URL policy, private-network and protected-endpoint
+    // checks a single browser.navigate does; batching is a call-count
+    // optimisation and never a policy shortcut.
+    scope: SCOPE_INTERACT,
+    policyClass: 'reversible',
+    timeoutMs: EXTRACT_MANY_TIMEOUT_MS,
+    description:
+      `Traverse up to ${EXTRACT_MANY_MAX_URLS} item or ad URLs in one call and return one compact record per URL. Read and traversal only: it navigates and extracts, nothing else. Each URL gets its own result slot with its own error, so one dead or blocked page never fails the batch. mode "auto" answers inline for a batch that fits this tool's deadline and otherwise returns a jobId to poll with browser.job_status.`,
+    inputSchema: ExtractManyInput,
+    outputSchema: ExtractManyOutput,
+  },
+  {
+    name: 'browser.job_status',
+    command: 'job_status',
+    // A poll reads agent-local job state and touches no page, so it is a
+    // read tool — the traversal it reports was already authorised by the
+    // browser:interact call that started the job.
+    scope: SCOPE_READ,
+    policyClass: 'read',
+    timeoutMs: INTERACTION_TIMEOUT_MS,
+    description:
+      'Progress and completed records for a browser.extract_many job: how many URLs are done, how many succeeded, and every result slot finished so far. Pass sinceIndex to receive only slots you have not already read. Answered outside the session command queue so a poll never waits behind the job it is polling.',
+    inputSchema: JobStatusInput,
+    outputSchema: JobStatusOutput,
   },
   {
     name: 'browser.handoff',
