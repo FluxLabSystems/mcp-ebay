@@ -14,6 +14,18 @@ const stringField = z.strictObject({
   confidence: z.number().min(0).max(1),
 });
 
+const countField = z.strictObject({
+  value: z.int().min(0),
+  source: FieldSourceSchema,
+  confidence: z.number().min(0).max(1),
+});
+
+const instantField = z.strictObject({
+  value: z.iso.datetime({ offset: true }),
+  source: FieldSourceSchema,
+  confidence: z.number().min(0).max(1),
+});
+
 /**
  * 'sold' is distinct from 'ended': an auction that closed with no winner and
  * a listing that sold are both "over", but only one of them is a comparable
@@ -81,8 +93,38 @@ export const ExtractionRecordSchema = z.strictObject({
     source: FieldSourceSchema,
     confidence: z.number().min(0).max(1),
   }),
+  /**
+   * When the listing closes. A deals run that cannot see this has to open
+   * every auction just to learn which ones are about to end, and pays for
+   * that in tool calls. Null when the page exposes no end time at all --
+   * a fixed-price listing with no duration shown, or a template that renders
+   * neither a timestamp nor a countdown. Never inferred from a bare date:
+   * "ends Sep 3" does not say which minute.
+   */
+  endsAt: instantField.nullable(),
+  /**
+   * The countdown exactly as rendered ("5d 04h left"). Kept beside endsAt
+   * because it is the value that is certainly true: an endsAt computed from
+   * this text is no finer than the text was.
+   */
+  timeLeftText: stringField.nullable(),
+  itemLocationText: stringField.nullable(),
+  watcherCount: countField.nullable(),
+  /**
+   * "More than 10 available" is a floor, not a count -- the number is stored
+   * with reduced confidence rather than dropped, since a floor still ranks.
+   */
+  quantityAvailable: countField.nullable(),
+  quantitySold: countField.nullable(),
   observedAt: z.iso.datetime({ offset: true }),
   pageRevision: z.int(),
+  /**
+   * Which additive revision of this shape produced the record. The profile
+   * id cannot carry it: 'ebay.ca.v1' is a wire enum value pinned by the
+   * protocol schema, the agent executor and the dashboards, so it may not
+   * move when the record only gains fields.
+   */
+  profileRevision: z.int(),
 });
 
 export type ExtractionRecord = z.infer<typeof ExtractionRecordSchema>;

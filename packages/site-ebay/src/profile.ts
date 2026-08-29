@@ -6,6 +6,20 @@ import type { SitePolicyProfile } from '@browser-bridge/policy';
 
 export const EBAY_SITE_PROFILE_ID = 'ebay.ca.v1';
 
+/**
+ * Additive revision of the extraction record inside ebay.ca.v1. The id above
+ * is a wire enum value -- the protocol schema, the agent executor, the
+ * security tests and the dashboards all pin the literal 'ebay.ca.v1' -- so it
+ * cannot move when the record only gains fields. Bump this instead; a
+ * consumer reading record.profileRevision can tell which shape it got without
+ * anything downstream having to be redeployed in lockstep.
+ *
+ * 1 = the shape shipped with the first live run.
+ * 2 = adds endsAt, timeLeftText, itemLocationText, watcherCount,
+ *     quantityAvailable, quantitySold.
+ */
+export const EBAY_PROFILE_REVISION = 2;
+
 export const EBAY_DESTINATION_POSTAL_CODE = 'M6H 2W9';
 
 /**

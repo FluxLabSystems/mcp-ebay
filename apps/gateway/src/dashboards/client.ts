@@ -20,13 +20,31 @@ export interface DashboardClientOptions {
 
 export interface DashboardFeedResult {
   dashboard: DashboardId;
+  /** Listings in the returned root — after filtering, when a filter ran. */
   listingCount: number;
+  /** Listings the dashboard holds; equal to listingCount when unfiltered. */
+  totalListingCount: number;
   root: Record<string, unknown>;
+}
+
+export interface DashboardFeedOptions {
+  filter?: {
+    active?: boolean;
+    status?: readonly string[];
+    marketplace?: string;
+  };
+  fields?: readonly string[];
+}
+
+export interface DashboardTouch {
+  id: string;
+  lastSeen: string;
 }
 
 export interface DashboardUpsertResult {
   dashboard: DashboardId;
   ok: boolean;
+  summary: Record<string, unknown>;
   result: Record<string, unknown>;
 }
 
@@ -39,6 +57,84 @@ function toIdentity(listing: Record<string, unknown>): Record<string, unknown> {
     if (listing[field] !== undefined) out[field] = listing[field];
   }
   return out;
+}
+
+/**
+ * Project a listing onto a caller-named field allow-list. `id` survives
+ * whether or not it was asked for: a record the caller cannot identify can
+ * be neither diffed against nor written back, so dropping it would turn a
+ * saving into a loss.
+ */
+function toProjection(listing: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (listing.id !== undefined) out.id = listing.id;
+  for (const field of fields) {
+    if (listing[field] !== undefined) out[field] = listing[field];
+  }
+  return out;
+}
+
+function statusOf(listing: Record<string, unknown>): string | null {
+  return typeof listing.status === 'string' ? listing.status.toLowerCase() : null;
+}
+
+/**
+ * A listing's marketplace: its own field when it has one, and otherwise the
+ * `ebay-`/`kijiji-` prefix of its stable id. The id convention is the only
+ * marketplace signal a v3 record is guaranteed to carry.
+ */
+function marketplaceOf(listing: Record<string, unknown>): string | null {
+  if (typeof listing.marketplace === 'string' && listing.marketplace.length > 0) {
+    return listing.marketplace.toLowerCase();
+  }
+  if (typeof listing.id === 'string') {
+    const dash = listing.id.indexOf('-');
+    if (dash > 0) return listing.id.slice(0, dash).toLowerCase();
+  }
+  return null;
+}
+
+/**
+ * Filtering happens here rather than upstream because the dashboard API
+ * serves the whole feed and has no query surface. It still earns its keep:
+ * the budget a deals run actually exhausts is the model's context, not the
+ * gateway's bandwidth.
+ */
+function matchesFilter(
+  listing: Record<string, unknown>,
+  filter: NonNullable<DashboardFeedOptions['filter']>,
+): boolean {
+  if (filter.active !== undefined) {
+    // A record with no status never claimed to be active, so it is not.
+    const isActive = statusOf(listing) === 'active';
+    if (isActive !== filter.active) return false;
+  }
+  if (filter.status !== undefined) {
+    const status = statusOf(listing);
+    if (status === null) return false;
+    if (!filter.status.some((wanted) => wanted.toLowerCase() === status)) return false;
+  }
+  if (filter.marketplace !== undefined) {
+    const marketplace = marketplaceOf(listing);
+    if (marketplace === null || marketplace !== filter.marketplace.toLowerCase()) return false;
+  }
+  return true;
+}
+
+/**
+ * The diff the dashboard API computed, lifted out of the upstream body so a
+ * run can read what its write changed without parsing the whole response.
+ * Only counts the upstream actually sent appear: zero-filling would make
+ * "nothing changed" indistinguishable from "the API did not say".
+ */
+const SUMMARY_FIELDS = ['upserted', 'unchanged', 'created', 'updated', 'skipped', 'removed', 'total'] as const;
+
+function toSummary(result: Record<string, unknown>, sent: number, touched: number): Record<string, unknown> {
+  const summary: Record<string, unknown> = { sent, touched };
+  for (const field of SUMMARY_FIELDS) {
+    if (typeof result[field] === 'number') summary[field] = result[field];
+  }
+  return summary;
 }
 
 function upstreamError(status: number, bodyText: string, context: Record<string, unknown>): BridgeError {
@@ -73,15 +169,41 @@ export class DashboardClient {
     return typeof this.tokens[dashboard] === 'string';
   }
 
-  async feed(dashboard: DashboardId, mode: 'full' | 'ids'): Promise<DashboardFeedResult> {
+  async feed(
+    dashboard: DashboardId,
+    mode: 'full' | 'ids',
+    options: DashboardFeedOptions = {},
+  ): Promise<DashboardFeedResult> {
     const root = await this.request('GET', `/v1/${dashboard}/feed`, undefined, undefined, { dashboard });
     const listings = Array.isArray(root.listings) ? (root.listings as Record<string, unknown>[]) : [];
+    const filter = options.filter;
+    const kept =
+      filter === undefined ? listings : listings.filter((listing) => matchesFilter(listing, filter));
+
+    // With neither a filter nor `fields`, this is the pre-Phase-2 path
+    // exactly: `full` returns the upstream root untouched, object identity
+    // and all.
+    const projected =
+      options.fields !== undefined
+        ? kept.map((listing) => toProjection(listing, options.fields!))
+        : mode === 'ids'
+          ? kept.map((listing) => toIdentity(listing))
+          : kept;
     const shaped =
-      mode === 'ids' ? { ...root, listings: listings.map((listing) => toIdentity(listing)) } : root;
-    return { dashboard, listingCount: listings.length, root: shaped };
+      projected === listings ? root : { ...root, listings: projected };
+    return {
+      dashboard,
+      listingCount: projected.length,
+      totalListingCount: listings.length,
+      root: shaped,
+    };
   }
 
-  async upsert(dashboard: DashboardId, listings: Record<string, unknown>[]): Promise<DashboardUpsertResult> {
+  async upsert(
+    dashboard: DashboardId,
+    listings: Record<string, unknown>[] = [],
+    touch: readonly DashboardTouch[] = [],
+  ): Promise<DashboardUpsertResult> {
     const token = this.tokens[dashboard];
     if (token === undefined) {
       throw new BridgeError(
@@ -90,11 +212,31 @@ export class DashboardClient {
         { dashboard },
       );
     }
-    const result = await this.request('POST', `/v1/${dashboard}/upsert`, { listings }, token, {
+    // A touch is an ordinary upsert of a two-field record: the dashboard
+    // API merges by stable id and preserves every field it is not sent, so
+    // "still there" costs one {id, lastSeen} instead of the whole record.
+    // An id that also arrives as a full listing keeps its full listing —
+    // that record carries its own lastSeen and it is the fresher statement.
+    const fullIds = new Set(listings.map((listing) => String(listing.id)));
+    const touchRecords = touch
+      .filter((entry) => !fullIds.has(entry.id))
+      .map((entry) => ({ id: entry.id, lastSeen: entry.lastSeen }));
+    const payload = [...listings, ...touchRecords];
+    if (payload.length === 0) {
+      throw new BridgeError('ACTION_BLOCKED', 'An upsert must carry at least one listing or touch.', {
+        dashboard,
+      });
+    }
+    const result = await this.request('POST', `/v1/${dashboard}/upsert`, { listings: payload }, token, {
       dashboard,
-      listingCount: listings.length,
+      listingCount: payload.length,
     });
-    return { dashboard, ok: result.ok === true, result };
+    return {
+      dashboard,
+      ok: result.ok === true,
+      summary: toSummary(result, payload.length, touchRecords.length),
+      result,
+    };
   }
 
   private async request(

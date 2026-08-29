@@ -10,7 +10,8 @@
  * URLs and parses result pages; pass orchestration, dedupe across passes,
  * and search-run audit records live with the caller.
  */
-import { adIdFromUrl, parseKijijiPrice } from './normalize.js';
+import { apolloActivationDate, readKijijiApolloCache } from './extract.js';
+import { adIdFromUrl, parseKijijiPostedText, parseKijijiPrice } from './normalize.js';
 import type { ParsedKijijiPrice } from './normalize.js';
 
 export interface KijijiSearchResult {
@@ -23,7 +24,15 @@ export interface KijijiSearchResult {
   /** Snippet price: traversal hint only, never canonical evidence. */
   price: ParsedKijijiPrice | null;
   locationText: string | null;
+  /** Raw rendered posted time from the card ("2 hrs ago"), when present. */
   postedText: string | null;
+  /** ISO instant the posted time resolves to; null when nothing states one. */
+  postedAt: string | null;
+}
+
+export interface KijijiSearchContext {
+  /** Instant a relative posted time is measured back from. Defaults to now. */
+  observedAt?: Date;
 }
 
 export interface KijijiSearchPage {
@@ -39,6 +48,13 @@ export interface KijijiSearchPage {
   nextPageUrl: string | null;
   /** Total results the page claims, when it states one. */
   totalResults: number | null;
+  /**
+   * The ad Kijiji redirected away from to land here, when it did. A removed
+   * ad renders no banner and keeps no VIP: the ad URL 302s to its category
+   * search page carrying ?adRemoved=<id>. That parameter is the removed-ad
+   * marker, and this is a search page precisely because the ad is gone.
+   */
+  removedAdId: string | null;
 }
 
 // Card-enrichment selectors are secondary; the anchor-href VIP pattern is
@@ -48,7 +64,11 @@ const CARD_CONTAINER_SELECTOR = '[data-testid^="listing-card"], li, article, sec
 const CARD_TITLE_SELECTOR = '[data-testid="listing-title"], h3, [class*="title"]';
 const CARD_PRICE_SELECTOR = '[data-testid="listing-price"], [class*="price"]';
 const CARD_LOCATION_SELECTOR = '[data-testid="listing-location"], [class*="location"]';
-const CARD_POSTED_SELECTOR = '[data-testid="listing-date"], time, [class*="datePosted"]';
+const CARD_POSTED_SELECTOR =
+  '[data-testid="listing-date"], [aria-label^="Published"], time, [class*="datePosted"]';
+/** The card's location and posted time share one block, and only the
+ *  location half carries a name of its own. */
+const CARD_DETAILS_SELECTOR = '[data-testid="listing-details"]';
 
 /** "1 - 40 of 73 Ads", "73 results", "Showing 1-40 of 1,234". */
 const RESULT_COUNT_SELECTORS = [
@@ -58,12 +78,22 @@ const RESULT_COUNT_SELECTORS = [
   '[class*="showingResults"]',
   'h1',
   'header',
+  // Live search pages state the count in the document title
+  // ("3,386 ads for lego in Toys & Games in City of Toronto") and in no
+  // rendered element at all; the h1 above names the query, not a number.
+  'title',
 ];
 const COUNT_RANGE_RE = /\b([\d,]+)\s*[-\u2013]\s*([\d,]+)\s+of\s+([\d,]+)/i;
 const COUNT_TOTAL_RE = /\b([\d,]+)\s+(?:ads?|results?|listings?)\b/i;
 
 function toInt(raw: string): number {
   return Number.parseInt(raw.replace(/,/g, ''), 10);
+}
+
+function toIsoOrNull(raw: string | null): string | null {
+  if (raw === null) return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 /** Increment /page-N/ in a Kijiji search URL, or insert /page-2/ before the
@@ -106,11 +136,81 @@ function cardText(card: Element, selector: string): string | null {
 }
 
 /**
+ * The card's posted time. Kijiji hydrates it client-side into the same
+ * listing-details block as the location, with no name of its own, so when no
+ * named element matches it is read as whatever is left of that block after
+ * the location text and the bullet separator. Server HTML ships the location
+ * and the bullet and nothing else, so this is empty on a raw fetch and
+ * populated in the browser the agent drives.
+ */
+function cardPostedText(card: Element, locationText: string | null, observedAt: Date): string | null {
+  const named = cardText(card, CARD_POSTED_SELECTOR);
+  if (named !== null) return named;
+  const details = cardText(card, CARD_DETAILS_SELECTOR);
+  if (details === null) return null;
+  const rest = (locationText !== null && details.startsWith(locationText) ? details.slice(locationText.length) : details)
+    .replace(/^[\s\u2022\u00b7|,\u2013\u2014-]+/, '')
+    .trim();
+  // Unlike the named elements above, this text is only positionally the
+  // posted time: some card layouts trail a distance and a seller rating in
+  // the same block. Anonymous text has to read as a time to be taken as one.
+  return rest.length > 0 && parseKijijiPostedText(rest, observedAt) !== null ? rest : null;
+}
+
+/** The removed-ad marker: see KijijiSearchPage.removedAdId. */
+function removedAdIdFromUrl(pageUrl: string): string | null {
+  try {
+    const value = new URL(pageUrl).searchParams.get('adRemoved');
+    return value !== null && /^\d{7,12}$/.test(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * offset/totalCount for this page out of the hydration cache. The entry is
+ * keyed by the path it was rendered for, and only that path is read: a cache
+ * left behind by a client-side route change must not be reported as this
+ * page's count.
+ */
+function apolloPagination(
+  cache: Record<string, unknown> | null,
+  pageUrl: string,
+): { offset: number; totalCount: number } | null {
+  if (cache === null) return null;
+  const root = cache.ROOT_QUERY;
+  if (typeof root !== 'object' || root === null) return null;
+  let path: string;
+  try {
+    path = new URL(pageUrl).pathname;
+  } catch {
+    return null;
+  }
+  const prefix = 'searchResultsPageByUrl:';
+  for (const [key, page] of Object.entries(root as Record<string, unknown>)) {
+    if (!key.startsWith(prefix) || key.slice(prefix.length) !== path) continue;
+    if (typeof page !== 'object' || page === null) continue;
+    const pagination = (page as Record<string, unknown>).pagination;
+    if (typeof pagination !== 'object' || pagination === null) continue;
+    const { offset, totalCount } = pagination as Record<string, unknown>;
+    if (typeof offset !== 'number' || typeof totalCount !== 'number') continue;
+    return { offset, totalCount };
+  }
+  return null;
+}
+
+/**
  * Anchor-href-based primary extraction: every link whose href matches the
  * VIP pattern becomes a candidate, deduplicated by ad id in DOM order;
  * card selectors only enrich the snippet fields.
  */
-export function extractSearchResults(document: Document, pageUrl: string): KijijiSearchPage {
+export function extractSearchResults(
+  document: Document,
+  pageUrl: string,
+  context: KijijiSearchContext = {},
+): KijijiSearchPage {
+  const apollo = readKijijiApolloCache(document);
+  const observedAt = context.observedAt ?? new Date();
   const seen = new Set<string>();
   const results: KijijiSearchResult[] = [];
   for (const anchor of Array.from(document.querySelectorAll('a[href]'))) {
@@ -133,6 +233,8 @@ export function extractSearchResults(document: Document, pageUrl: string): Kijij
     const anchorText = anchor.textContent?.replace(/\s+/g, ' ').trim();
     const title = cardText(card, CARD_TITLE_SELECTOR) ?? (anchorText && anchorText.length > 0 ? anchorText : null);
     const priceText = cardText(card, CARD_PRICE_SELECTOR);
+    const locationText = cardText(card, CARD_LOCATION_SELECTOR);
+    const postedText = cardPostedText(card, locationText, observedAt);
 
     results.push({
       adId,
@@ -140,8 +242,14 @@ export function extractSearchResults(document: Document, pageUrl: string): Kijij
       title,
       priceText,
       price: priceText === null ? null : parseKijijiPrice(priceText),
-      locationText: cardText(card, CARD_LOCATION_SELECTOR),
-      postedText: cardText(card, CARD_POSTED_SELECTOR),
+      locationText,
+      postedText,
+      // The rendered relative time when it parses; otherwise the activation
+      // date the page states for this exact ad, which is the only statement
+      // of it in server HTML.
+      postedAt:
+        (postedText === null ? null : parseKijijiPostedText(postedText, observedAt)) ??
+        toIsoOrNull(apolloActivationDate(apollo, adId)),
     });
   }
 
@@ -187,11 +295,25 @@ export function extractSearchResults(document: Document, pageUrl: string): Kijij
     if (totalResults !== null && shownThrough !== null) break;
   }
 
+  // Live pages render no count element and no pagination link at all; both
+  // are hydrated. What the page ships is a title stating the total and a
+  // hydration cache stating offset/limit/totalCount, so the cache fills
+  // whatever the rendered scan above could not.
+  const pagination = apolloPagination(apollo, pageUrl);
+  if (totalResults === null && pagination !== null) totalResults = pagination.totalCount;
+  if (shownThrough === null && pagination !== null) shownThrough = pagination.offset + results.length;
+
   const seenSoFar = shownThrough ?? results.length;
   const moreByCount = totalResults !== null && Number.isFinite(totalResults) && seenSoFar < totalResults;
   if (moreByCount && nextPageUrl === null) nextPageUrl = nextKijijiPageUrl(pageUrl);
 
-  return { results, hasNextPage: nextPageUrl !== null || moreByCount, nextPageUrl, totalResults };
+  return {
+    results,
+    hasNextPage: nextPageUrl !== null || moreByCount,
+    nextPageUrl,
+    totalResults,
+    removedAdId: removedAdIdFromUrl(pageUrl),
+  };
 }
 
 export interface KijijiSearchUrlInput {

@@ -1,0 +1,78 @@
+<!doctype html>
+<!-- Synthetic live-auction fixture. Carries the four item-page signals a
+     deals run otherwise has to guess at: an auction end time (both as the
+     epoch the timer element hangs off and as the rendered countdown),
+     watchers, quantity sold, and item location. It also reproduces the
+     offer.available false positive: the ONLY "Best Offer" text on the page
+     is a similar-items card about a different listing plus the inline JSON
+     the page ships -- this auction takes no offers. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>LEGO Star Wars 75192 Millennium Falcon UCS | eBay</title>
+  <link rel="canonical" href="https://www.ebay.ca/itm/366630546269">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "LEGO Star Wars 75192 Millennium Falcon UCS",
+    "sku": "366630546269",
+    "offers": {
+      "@type": "Offer",
+      "price": "612.00",
+      "priceCurrency": "CAD",
+      "availability": "https://schema.org/InStock",
+      "url": "https://www.ebay.ca/itm/366630546269"
+    }
+  }
+  </script>
+  <script>
+    window.__EBAY_I18N__ = { "makeOfferCta": "Make offer", "bestOfferLabel": "or Best Offer" };
+  </script>
+</head>
+<body>
+  <div id="mainContent">
+    <div class="x-buybox" data-testid="x-buybox">
+      <h1 class="x-item-title__mainTitle"><span class="ux-textspans">LEGO Star Wars 75192 Millennium Falcon UCS</span></h1>
+      <div class="x-price-primary"><span class="ux-textspans">C $612.00</span></div>
+      <div class="x-bid-count" data-testid="x-bid-count"><span>23 bids</span></div>
+      <div class="x-timer" data-testid="x-timer">
+        <span class="ux-timer__text timeMs" timems="1788460200000">5d 04h left (Thu, 02:30 PM)</span>
+      </div>
+      <div class="x-bid-action">
+        <a href="https://www.ebay.ca/bidflow?item=366630546269" role="button">Place bid</a>
+      </div>
+      <div class="x-quantity__watchcount"><span class="ux-textspans">48 watchers</span></div>
+      <div class="x-quantity__availability"><span class="ux-textspans">1 available / 12 sold</span></div>
+    </div>
+
+    <div class="x-sellercard-atf">
+      <div class="x-sellercard-atf__info__about-seller">
+        <a href="https://www.ebay.ca/usr/falconbricks"><span class="ux-textspans">falconbricks</span></a>
+      </div>
+    </div>
+
+    <div class="ux-labels-values ux-labels-values--shipping">
+      <div class="ux-labels-values__labels">Shipping:</div>
+      <div class="ux-labels-values__values"><span class="ux-textspans">C $24.10 Canada Post Expedited Parcel to M6H 2W9</span></div>
+    </div>
+
+    <div class="ux-labels-values ux-labels-values--itemLocation">
+      <div class="ux-labels-values__labels">Located in:</div>
+      <div class="ux-labels-values__values"><span class="ux-textspans">Mississauga, Ontario, Canada</span></div>
+    </div>
+
+    <div class="vim x-similar-items">
+      <h2>Similar items</h2>
+      <ul class="srp-results">
+        <li class="s-item">
+          <a class="s-item__link" href="https://www.ebay.ca/itm/555666777888"><h3 class="s-item__title">LEGO Star Wars 75192 sealed</h3></a>
+          <span class="s-item__price">C $899.99</span>
+          <span class="s-item__purchase-options-with-icon">Buy It Now</span>
+          <span class="s-item__dynamic">or Best Offer</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

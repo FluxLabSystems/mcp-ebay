@@ -7,6 +7,7 @@
 import { exportJWK, generateKeyPair, SignJWT, type JWK } from 'jose';
 import { createLocalJWKSet } from 'jose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { TOOL_CATALOG } from '@browser-bridge/protocol';
 import { JwtTokenVerifier } from '@browser-bridge/gateway';
 import { buildGatewayHarness, type GatewayHarness } from '../helpers/gatewayHarness.js';
 import { ModernMcpClient } from '../helpers/mcpClient.js';
@@ -86,7 +87,7 @@ describe('bearer authentication (§10.1)', () => {
   it('accepts a valid token end to end', async () => {
     const response = await clientWith(await mintToken({})).listTools();
     expect(response.status).toBe(200);
-    expect(response.body.result?.tools).toHaveLength(15);
+    expect(response.body.result?.tools).toHaveLength(TOOL_CATALOG.length);
   });
 
   it.each([

@@ -7,6 +7,7 @@ import {
   adIdFromUrl,
   canonicalAdUrl,
   dealsFeedId,
+  parseKijijiPostedText,
   parseKijijiPrice,
 } from '../../packages/site-kijiji/src/index.js';
 
@@ -105,5 +106,43 @@ describe('kijiji canonical ad URL', () => {
 describe('fluxology deals feed id', () => {
   it('uses the kijiji-<marketplaceListingId> convention', () => {
     expect(dealsFeedId('1712345678')).toBe('kijiji-1712345678');
+  });
+});
+
+describe('kijiji relative posted-time parsing', () => {
+  // Wording taken from the site's own listing:activation_time.* strings,
+  // shipped inline on every search page.
+  const now = new Date('2026-08-29T12:00:00.000Z');
+
+  it('parses the short units a result card renders', () => {
+    expect(parseKijijiPostedText('45 seconds ago', now)).toBe('2026-08-29T11:59:15.000Z');
+    expect(parseKijijiPostedText('1 min ago', now)).toBe('2026-08-29T11:59:00.000Z');
+    expect(parseKijijiPostedText('30 min ago', now)).toBe('2026-08-29T11:30:00.000Z');
+    expect(parseKijijiPostedText('1 hr ago', now)).toBe('2026-08-29T11:00:00.000Z');
+    expect(parseKijijiPostedText('2 hrs ago', now)).toBe('2026-08-29T10:00:00.000Z');
+    expect(parseKijijiPostedText('1 day ago', now)).toBe('2026-08-28T12:00:00.000Z');
+    expect(parseKijijiPostedText('3 days ago', now)).toBe('2026-08-26T12:00:00.000Z');
+    expect(parseKijijiPostedText('1 wk ago', now)).toBe('2026-08-22T12:00:00.000Z');
+    expect(parseKijijiPostedText('3 wks ago', now)).toBe('2026-08-08T12:00:00.000Z');
+    expect(parseKijijiPostedText('1 mo ago', now)).toBe('2026-07-30T12:00:00.000Z');
+  });
+
+  it('tolerates the longer wording and the aria-label prefix', () => {
+    expect(parseKijijiPostedText('Published 2 hours ago', now)).toBe('2026-08-29T10:00:00.000Z');
+    expect(parseKijijiPostedText('Posted 2 minutes ago', now)).toBe('2026-08-29T11:58:00.000Z');
+    expect(parseKijijiPostedText('Yesterday', now)).toBe('2026-08-28T12:00:00.000Z');
+    // NEEDS-LIVE-VERIFICATION: fr_CA activation_time wording is carried
+    // defensively; only the en_CA strings have been seen on a live page.
+    expect(parseKijijiPostedText('il y a 2 heures', now)).toBe('2026-08-29T10:00:00.000Z');
+    expect(parseKijijiPostedText('hier', now)).toBe('2026-08-28T12:00:00.000Z');
+  });
+
+  it('refuses open-ended and unrecognized text rather than guessing an instant', () => {
+    // "30+ d" and "over a month ago" state a bound, not a time.
+    expect(parseKijijiPostedText('30+ d', now)).toBeNull();
+    expect(parseKijijiPostedText('over a month ago', now)).toBeNull();
+    expect(parseKijijiPostedText('', now)).toBeNull();
+    expect(parseKijijiPostedText('Old Toronto', now)).toBeNull();
+    expect(parseKijijiPostedText('$45.00', now)).toBeNull();
   });
 });

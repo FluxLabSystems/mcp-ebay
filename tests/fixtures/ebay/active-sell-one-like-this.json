@@ -1,0 +1,6 @@
+{
+  "represents": "https://www.ebay.ca/itm/227489965462",
+  "capturedAt": "2026-08-29",
+  "synthetic": true,
+  "note": "Hand-built from the documented eBay item-page template. Live capture was blocked: www.ebay.ca returns HTTP 403 to this box (bot wall), verified by curl on 2026-08-29. Exists as the counter-example to ended-see-original-listing.html: a live listing that also renders 'Sell one like this'. It must stay listingStatus 'active', which is what forces the ended rule to require the phrase AND an absent bid/buy control rather than the phrase alone. Also carries a text-only countdown ('Ends in 2d 03h 15m') and a 'More than 10 available' quantity row, both deliberately without any machine-readable attribute."
+}

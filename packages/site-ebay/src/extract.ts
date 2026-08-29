@@ -6,7 +6,7 @@
  * accepted as canonical listing evidence.
  */
 import { canonicalListingUrl, cleanTitle, itemIdFromUrl, normalizePostalCode, parseMoney, postalCodesMatch } from './normalize.js';
-import { EBAY_DESTINATION_POSTAL_CODE } from './profile.js';
+import { EBAY_DESTINATION_POSTAL_CODE, EBAY_PROFILE_REVISION } from './profile.js';
 import type { ExtractionRecord, FieldSource, ListingStatus } from './record.js';
 
 export interface ExtractContext {
@@ -34,6 +34,7 @@ interface JsonLdProduct {
   offers?: {
     price?: string | number;
     priceCurrency?: string;
+    priceValidUntil?: string;
     availability?: string;
     url?: string;
     seller?: { name?: string };
@@ -113,6 +114,45 @@ const DELIVERY_SELECTORS = [
   '[data-testid="ux-labels-values--delivery"] .ux-labels-values__values',
   '.vim-delivery-module',
 ];
+const ITEM_LOCATION_SELECTORS = [
+  '.ux-labels-values--itemLocation .ux-labels-values__values',
+  '[data-testid="ux-labels-values--itemLocation"] .ux-labels-values__values',
+  '.ux-labels-values--location .ux-labels-values__values',
+  '#itemLocation',
+  '.vi-acc-del-range',
+];
+const WATCHER_SELECTORS = [
+  '.x-quantity__watchcount',
+  '[data-testid="x-watch-count"]',
+  '.ux-watchcount',
+  '.vi-notify-new-bg-vi',
+  '#vi-notify-new-bg-vi',
+];
+const QUANTITY_SELECTORS = [
+  '.x-quantity__availability',
+  '[data-testid="x-quantity"]',
+  '.d-quantity__availability',
+  '#qtySubTxt',
+  '.vi-quantity-wrapper',
+];
+const TIMER_SELECTORS = [
+  '.ux-timer__text',
+  '[data-testid="x-timer"]',
+  '.ux-timer',
+  '.x-timer',
+  '#vi-cdown_timeLeft',
+  '.vi-tm-left',
+  '.timeMs',
+];
+/** Epoch-ms (or epoch-s) attributes eBay hangs a live countdown off. */
+const END_TIME_ATTRIBUTES = [
+  'timems',
+  'data-enddate',
+  'data-end-date',
+  'data-endtime',
+  'data-end-time',
+  'data-time-end',
+];
 
 const SOLD_MARKERS = ['this listing sold', 'item sold', 'sold for', 'winning bid', 'sold on '];
 const ENDED_MARKERS = [
@@ -175,6 +215,35 @@ const FORMAT_SCOPE_SELECTORS = [
   '#mainContent',
 ];
 
+/**
+ * Narrower than FORMAT_SCOPE_SELECTORS on purpose. #mainContent holds the
+ * similar-items strip, and every card in it says "Buy It Now" about some
+ * other listing -- deciding whether THIS listing can still be bought has to
+ * look only where its own controls render.
+ */
+const BUYBOX_SCOPE_SELECTORS = [
+  '.x-buybox',
+  '[data-testid="x-buybox"]',
+  '.vim-buybox',
+  '.x-buybox-cta',
+  '.x-bin-action',
+];
+
+function scopedText(document: Document, selectors: readonly string[]): string {
+  const chunks: string[] = [];
+  for (const selector of selectors) {
+    try {
+      for (const el of Array.from(document.querySelectorAll(selector))) {
+        const text = el.textContent;
+        if (text) chunks.push(text);
+      }
+    } catch {
+      continue;
+    }
+  }
+  return chunks.join(' ').replace(/\s+/g, ' ');
+}
+
 function detectSellingFormat(document: Document): ExtractionRecord['sellingFormat'] {
   const scoped: string[] = [];
   for (const selector of FORMAT_SCOPE_SELECTORS) {
@@ -225,6 +294,58 @@ function detectSellingFormat(document: Document): ExtractionRecord['sellingForma
   };
 }
 
+const PURCHASE_CONTROL_SELECTORS = [
+  ...BIN_SELECTORS,
+  '#bidBtn_btn',
+  '[data-testid="x-bid-action"]',
+  '.x-bid-action',
+  '[data-testid="x-atc-action"]',
+  '.x-atc-action',
+];
+const PURCHASE_TEXT_RE = /\bplace\s+bid\b|\bbuy\s+it\s+now\b|\badd\s+to\s+cart\b|\bconfirm\s+and\s+pay\b/i;
+
+/** Whether the page still offers a way to bid on or buy this listing. */
+function hasPurchaseAffordance(document: Document): boolean {
+  for (const selector of PURCHASE_CONTROL_SELECTORS) {
+    try {
+      if (document.querySelector(selector) !== null) return true;
+    } catch {
+      continue;
+    }
+  }
+  return PURCHASE_TEXT_RE.test(scopedText(document, BUYBOX_SCOPE_SELECTORS));
+}
+
+/**
+ * The ended-item template carries no banner sentence ENDED_MARKERS matches:
+ * it swaps the buybox for a link back to the original listing and an offer to
+ * relist, and nothing else says the listing is over. Neither phrase is
+ * trusted on its own -- eBay shows "Sell one like this" to a seller on their
+ * own running listing -- so the rule is the affordance TOGETHER WITH a buybox
+ * that offers no way to bid or buy. Both halves are needed: the phrase alone
+ * ends live listings, and missing controls alone would end every page whose
+ * buybox markup we failed to recognize.
+ */
+const ENDED_TEMPLATE_PHRASES = ['see original listing', 'sell one like this'];
+
+function hasEndedTemplateAffordance(document: Document): boolean {
+  try {
+    for (const control of Array.from(document.querySelectorAll('a[href], button'))) {
+      // eBay only builds an orig_cvip link for a listing that is over, so the
+      // href carries the signal structurally even where the label is localized.
+      if (/[?&]orig_cvip=true\b/i.test(control.getAttribute('href') ?? '')) return true;
+      const label = (control.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+      // A wrapper anchor's textContent is the whole card it wraps; only a
+      // short label is the affordance itself.
+      if (label.length === 0 || label.length > 64) continue;
+      if (ENDED_TEMPLATE_PHRASES.some((phrase) => label.includes(phrase))) return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 function detectListingStatus(document: Document): ListingStatus {
   const chunks: string[] = [];
   for (const selector of STATUS_SELECTORS) {
@@ -244,6 +365,9 @@ function detectListingStatus(document: Document): ListingStatus {
   if (SOLD_MARKERS.some((marker) => blob.includes(marker))) return 'sold';
   if (ENDED_MARKERS.some((marker) => blob.includes(marker))) return 'ended';
   if (UNAVAILABLE_MARKERS.some((marker) => blob.includes(marker))) return 'unavailable';
+  // No banner sentence anywhere. Read the template's shape instead, before
+  // falling through to "it has a title and a price, so it must be live".
+  if (hasEndedTemplateAffordance(document) && !hasPurchaseAffordance(document)) return 'ended';
   const hasTitle = TITLE_SELECTORS.some((selector) => textOf(document, selector) !== null);
   const hasPrice = PRICE_SELECTORS.some((selector) => textOf(document, selector) !== null);
   if (hasTitle && hasPrice) return 'active';
@@ -268,6 +392,223 @@ export function readDestinationPostal(document: Document): string | null {
     if (toMatch) return normalizePostalCode(toMatch[1]!);
   }
   return null;
+}
+
+const OFFER_CONTROL_SELECTORS = ['.x-offer-action', '[data-testid="x-offer-action"]', '#boBtn_btn', '.vi-bo-btn'];
+const OFFER_TEXT_RE = /\b(?:make\s+offer|best\s+offer)\b/i;
+
+/**
+ * Best Offer availability, read from the offer control or the buybox around
+ * it. It used to be a regex over document.body.textContent, which answered
+ * true for every listing including plain auctions: body text on an item page
+ * also carries the similar-items strip -- whose cards each say "or Best
+ * Offer" about some other listing -- and, because textContent includes
+ * <script>, the page's own inline i18n bundle, which ships the phrase whether
+ * or not anything renders it. Same failure mode body-text scanning produced
+ * for listing status. A template whose offer control we do not recognize now
+ * reads false rather than true, which is the cheaper error: a missed offer
+ * costs a negotiation, a phantom one costs a listing opened for nothing.
+ */
+function detectOfferAvailable(document: Document): boolean {
+  for (const selector of OFFER_CONTROL_SELECTORS) {
+    try {
+      if (document.querySelector(selector) !== null) return true;
+    } catch {
+      continue;
+    }
+  }
+  return OFFER_TEXT_RE.test(scopedText(document, BUYBOX_SCOPE_SELECTORS));
+}
+
+function isoFromEpoch(raw: string): string | null {
+  const digits = raw.trim();
+  if (!/^\d{10,14}$/.test(digits)) return null;
+  // 10-digit values are seconds, 13-digit milliseconds. Anything landing
+  // outside a plausible window is a different number wearing the same
+  // attribute name.
+  const parsed = Number.parseInt(digits, 10);
+  const date = new Date(digits.length <= 11 ? parsed * 1000 : parsed);
+  if (Number.isNaN(date.getTime())) return null;
+  const year = date.getUTCFullYear();
+  return year >= 2000 && year <= 2100 ? date.toISOString() : null;
+}
+
+/**
+ * Only a timestamp that names its own zone is usable. A bare "2026-09-03"
+ * has no minute in it, and a zoneless "2026-09-03 18:30" would be read in
+ * whatever timezone the agent happens to run in -- an end time that moves
+ * with the reader is worse than no end time at all.
+ */
+function isoFromTimestamp(raw: string): string | null {
+  const text = raw.trim();
+  if (!/(?:Z|[+-]\d{2}:?\d{2})$/.test(text)) return null;
+  const ms = Date.parse(text);
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+}
+
+/** "5d 04h left", "Ends in 2d 03h 15m", "Time left: 1h 12m 30s". */
+const COUNTDOWN_CONTEXT_RE = /\bleft\b|\bends?\s+in\b|\btime\s+left\b|\bending\s+in\b/i;
+
+function countdownMs(text: string): number | null {
+  // Without a countdown phrase the digits are a clock time or a date, not a
+  // duration, and adding them to now would invent an end.
+  if (!COUNTDOWN_CONTEXT_RE.test(text)) return null;
+  const days = /(\d+)\s*d(?:ays?)?\b/i.exec(text);
+  const hours = /(\d+)\s*h(?:ours?|rs?)?\b/i.exec(text);
+  const minutes = /(\d+)\s*m(?:in(?:ute)?s?)?\b/i.exec(text);
+  const seconds = /(\d+)\s*s(?:ec(?:ond)?s?)?\b/i.exec(text);
+  if (days === null && hours === null && minutes === null && seconds === null) return null;
+  const unit = (match: RegExpExecArray | null): number => (match === null ? 0 : Number.parseInt(match[1]!, 10));
+  return ((unit(days) * 24 + unit(hours)) * 60 + unit(minutes)) * 60_000 + unit(seconds) * 1000;
+}
+
+function timerElements(document: Document): Element[] {
+  const found: Element[] = [];
+  for (const selector of TIMER_SELECTORS) {
+    try {
+      for (const el of Array.from(document.querySelectorAll(selector))) {
+        if (!found.includes(el)) found.push(el);
+      }
+    } catch {
+      continue;
+    }
+  }
+  return found;
+}
+
+/**
+ * When the listing closes, in the order the value can be trusted: a timestamp
+ * the page states outright, then schema.org, then the rendered countdown.
+ * The countdown is a derivation and says so -- "5d 04h left" is an hour wide,
+ * so a value computed from it is 'computed' and carries less confidence than
+ * anything read directly.
+ */
+function readEndTime(
+  document: Document,
+  jsonld: JsonLdProduct | null,
+  observedAt: string,
+): { endsAt: ExtractionRecord['endsAt']; timeLeftText: ExtractionRecord['timeLeftText'] } {
+  const timers = timerElements(document);
+
+  let timeLeftText: ExtractionRecord['timeLeftText'] = null;
+  for (const el of timers) {
+    const text = el.textContent?.replace(/\s+/g, ' ').trim();
+    // A timer wrapper's textContent is the countdown plus whatever sits
+    // beside it; a string that long is a module, not a countdown.
+    if (text !== undefined && text.length > 0 && text.length <= 120) {
+      timeLeftText = { value: text, source: 'dom', confidence: 0.95 };
+      break;
+    }
+  }
+
+  for (const el of timers) {
+    for (const attribute of END_TIME_ATTRIBUTES) {
+      const raw = el.getAttribute(attribute);
+      const iso = raw === null ? null : (isoFromEpoch(raw) ?? isoFromTimestamp(raw));
+      if (iso !== null) return { endsAt: { value: iso, source: 'dom', confidence: 0.97 }, timeLeftText };
+    }
+    let time: Element | null = null;
+    try {
+      time = el.matches('time[datetime]') ? el : el.querySelector('time[datetime]');
+    } catch {
+      time = null;
+    }
+    const iso = time === null ? null : isoFromTimestamp(time.getAttribute('datetime') ?? '');
+    if (iso !== null) return { endsAt: { value: iso, source: 'dom', confidence: 0.97 }, timeLeftText };
+  }
+
+  // priceValidUntil is the closest thing schema.org gives an auction close,
+  // and only counts when it carries a time of day.
+  const validUntil = jsonld?.offers?.priceValidUntil;
+  const fromJsonLd = validUntil === undefined ? null : isoFromTimestamp(validUntil);
+  if (fromJsonLd !== null) return { endsAt: { value: fromJsonLd, source: 'jsonld', confidence: 0.85 }, timeLeftText };
+
+  const delta = timeLeftText === null ? null : countdownMs(timeLeftText.value);
+  if (delta !== null) {
+    return {
+      endsAt: {
+        value: new Date(Date.parse(observedAt) + delta).toISOString(),
+        source: 'computed',
+        confidence: 0.6,
+      },
+      timeLeftText,
+    };
+  }
+  return { endsAt: null, timeLeftText };
+}
+
+function readItemLocation(document: Document): ExtractionRecord['itemLocationText'] {
+  for (const selector of ITEM_LOCATION_SELECTORS) {
+    const text = textOf(document, selector);
+    if (text !== null) return { value: text.replace(/^located\s+in:?\s*/i, ''), source: 'dom', confidence: 0.95 };
+  }
+  // Some templates fold the location into the shipping or delivery row
+  // instead of giving it a row of its own.
+  for (const selector of [...SHIPPING_SELECTORS, ...DELIVERY_SELECTORS]) {
+    const text = textOf(document, selector);
+    const match = text === null ? null : /\blocated\s+in:?\s*([^.|]{2,80})/i.exec(text);
+    if (match !== null) return { value: match[1]!.trim(), source: 'dom', confidence: 0.8 };
+  }
+  return null;
+}
+
+const WATCHER_RE = /(\d[\d,]*)\s*(?:watchers?|watching|people\s+are\s+watching)/i;
+
+function readWatcherCount(document: Document): ExtractionRecord['watcherCount'] {
+  const sources = [...WATCHER_SELECTORS.map((selector) => textOf(document, selector))];
+  // The watch count moves between containers often enough to be worth a
+  // buybox-scoped fallback: "N watchers" is specific enough that nothing else
+  // in a buybox can produce it.
+  sources.push(scopedText(document, BUYBOX_SCOPE_SELECTORS));
+  for (const text of sources) {
+    const match = text === null ? null : WATCHER_RE.exec(text);
+    if (match !== null) {
+      return { value: Number.parseInt(match[1]!.replace(/,/g, ''), 10), source: 'dom', confidence: 0.9 };
+    }
+  }
+  return null;
+}
+
+const QUANTITY_MORE_THAN_RE = /more\s+than\s+(\d[\d,]*)\s+available/i;
+const QUANTITY_AVAILABLE_RE = /(\d[\d,]*)\s+available/i;
+const QUANTITY_LAST_ONE_RE = /\blast\s+one\b/i;
+const QUANTITY_SOLD_RE = /(\d[\d,]*)\s+sold\b/i;
+
+/**
+ * Quantity is read only from the availability module, never from a wider
+ * scope: a listing title is free to contain "2 sold separately", and a wrong
+ * count reads as fact where a null reads as "go look".
+ */
+function readQuantities(document: Document): {
+  quantityAvailable: ExtractionRecord['quantityAvailable'];
+  quantitySold: ExtractionRecord['quantitySold'];
+} {
+  let quantityAvailable: ExtractionRecord['quantityAvailable'] = null;
+  let quantitySold: ExtractionRecord['quantitySold'] = null;
+  for (const selector of QUANTITY_SELECTORS) {
+    const text = textOf(document, selector);
+    if (text === null) continue;
+    if (quantityAvailable === null) {
+      // "More than 10 available" is a floor, not a count -- kept, because a
+      // floor still ranks, but at a confidence that says so.
+      const moreThan = QUANTITY_MORE_THAN_RE.exec(text);
+      const exact = QUANTITY_AVAILABLE_RE.exec(text);
+      if (moreThan !== null) {
+        quantityAvailable = { value: Number.parseInt(moreThan[1]!.replace(/,/g, ''), 10), source: 'dom', confidence: 0.6 };
+      } else if (exact !== null) {
+        quantityAvailable = { value: Number.parseInt(exact[1]!.replace(/,/g, ''), 10), source: 'dom', confidence: 0.95 };
+      } else if (QUANTITY_LAST_ONE_RE.test(text)) {
+        quantityAvailable = { value: 1, source: 'dom', confidence: 0.9 };
+      }
+    }
+    if (quantitySold === null) {
+      const sold = QUANTITY_SOLD_RE.exec(text);
+      if (sold !== null) {
+        quantitySold = { value: Number.parseInt(sold[1]!.replace(/,/g, ''), 10), source: 'dom', confidence: 0.95 };
+      }
+    }
+  }
+  return { quantityAvailable, quantitySold };
 }
 
 export function extractListing(document: Document, pageUrl: string, context: ExtractContext = {}): ExtractOutcome {
@@ -437,8 +778,11 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
   }
 
   // --- best offer availability (read-only observation) ---
-  const bodyText = (document.body?.textContent ?? '').replace(/\s+/g, ' ').toLowerCase();
-  const offerAvailable = /\b(make offer|best offer)\b/.test(bodyText);
+  const offerAvailable = detectOfferAvailable(document);
+
+  // --- close time, location, watchers, quantity ---
+  const { endsAt, timeLeftText } = readEndTime(document, jsonld, observedAt);
+  const { quantityAvailable, quantitySold } = readQuantities(document);
 
   // --- variants (msku) ---
   let variants: ExtractionRecord['variants'] = null;
@@ -487,8 +831,15 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
     variants,
     listingStatus: detectListingStatus(document),
     sellingFormat,
+    endsAt,
+    timeLeftText,
+    itemLocationText: readItemLocation(document),
+    watcherCount: readWatcherCount(document),
+    quantityAvailable,
+    quantitySold,
     observedAt,
     pageRevision: context.pageRevision ?? 0,
+    profileRevision: EBAY_PROFILE_REVISION,
   };
 
   return { record, warnings };

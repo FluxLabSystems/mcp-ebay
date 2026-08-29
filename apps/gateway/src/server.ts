@@ -93,12 +93,16 @@ async function main(): Promise<void> {
     });
   });
 
-  // §16/§21: cleanup expired artifacts and pairing tokens every 5 minutes.
+  // §16/§21: cleanup expired artifacts, pairing tokens and run checkpoints
+  // every 5 minutes. Run checkpoints already read as absent once expired;
+  // this is the retention half of the same rule — a run that is never
+  // completed does not leave a row behind forever.
   const cleanupTimer = setInterval(() => {
     void artifacts.cleanupExpired().then((count) => {
       if (count > 0) logger.info({ count }, 'Expired artifacts deleted');
     });
     void store.pairingTokens.purgeExpired(new Date());
+    void store.runCheckpoints.purgeExpired(new Date());
   }, ARTIFACT_CLEANUP_INTERVAL_SECONDS * 1000);
   cleanupTimer.unref?.();
 

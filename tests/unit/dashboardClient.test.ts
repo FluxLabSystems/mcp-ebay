@@ -44,6 +44,53 @@ describe('DashboardClient', () => {
     expect((result.root as { schemaVersion: number }).schemaVersion).toBe(3);
   });
 
+  it('feed filters by status, active and marketplace after fetching', async () => {
+    const root = {
+      schemaVersion: 3,
+      listings: [
+        { id: 'ebay-1', status: 'active', title: 'a' },
+        { id: 'ebay-2', status: 'ended', title: 'b' },
+        { id: 'kijiji-3', status: 'active', title: 'c' },
+        { id: 'kijiji-4', title: 'no status' },
+        { id: 'ebay-5', status: 'active', marketplace: 'kijiji', title: 'e' },
+      ],
+    };
+    const client = clientWith(async () => jsonResponse(200, root));
+
+    const active = await client.feed('deals', 'full', { filter: { active: true } });
+    expect(active.listingCount).toBe(3);
+    expect(active.totalListingCount).toBe(5);
+    // A record with no status never claimed to be active, so it is not.
+    expect((active.root.listings as { id: string }[]).map((l) => l.id)).toEqual(['ebay-1', 'kijiji-3', 'ebay-5']);
+
+    const ended = await client.feed('deals', 'full', { filter: { status: ['ENDED'] } });
+    expect((ended.root.listings as { id: string }[]).map((l) => l.id)).toEqual(['ebay-2']);
+
+    // Marketplace falls back to the stable-id prefix, and a record's own
+    // marketplace field wins over its id when it has one.
+    const kijiji = await client.feed('deals', 'full', { filter: { marketplace: 'kijiji' } });
+    expect((kijiji.root.listings as { id: string }[]).map((l) => l.id)).toEqual(['kijiji-3', 'kijiji-4', 'ebay-5']);
+  });
+
+  it('feed fields projects listings and always keeps the id', async () => {
+    const root = {
+      schemaVersion: 3,
+      listings: [{ id: 'ebay-1', title: 'a', priceCad: 5, description: 'long', status: 'active' }],
+    };
+    const client = clientWith(async () => jsonResponse(200, root));
+    const projected = await client.feed('deals', 'full', { fields: ['priceCad'] });
+    expect(projected.root.listings).toEqual([{ id: 'ebay-1', priceCad: 5 }]);
+  });
+
+  it('feed with neither filter nor fields is byte-for-byte the pre-Phase-2 response', async () => {
+    const root = { schemaVersion: 3, listings: [{ id: 'a', title: 'x' }] };
+    const client = clientWith(async () => jsonResponse(200, root));
+    const result = await client.feed('deals', 'full');
+    expect(result.root).toEqual(root);
+    expect(result.listingCount).toBe(1);
+    expect(result.totalListingCount).toBe(1);
+  });
+
   it('upsert posts the bearer token and listing payload', async () => {
     const client = clientWith(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe('http://dashboard-api:8082/v1/deals/upsert');
@@ -54,6 +101,55 @@ describe('DashboardClient', () => {
     const result = await client.upsert('deals', [{ id: 'ebay-1' }]);
     expect(result.ok).toBe(true);
     expect(result.result.upserted).toBe(1);
+  });
+
+  it('touch entries ride the same upsert as two-field records', async () => {
+    let sent: unknown;
+    const client = clientWith(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      sent = JSON.parse(String(init?.body));
+      return jsonResponse(200, { ok: true, scope: 'deals', upserted: 1, unchanged: 2 });
+    });
+    const result = await client.upsert(
+      'deals',
+      [{ id: 'ebay-1', title: 'new find' }],
+      [
+        { id: 'kijiji-2', lastSeen: '2026-08-29T12:00:00Z' },
+        // Same id as the full listing: the full record carries its own
+        // lastSeen and must not be overwritten by a two-field touch.
+        { id: 'ebay-1', lastSeen: '2026-08-29T12:00:00Z' },
+      ],
+    );
+    expect(sent).toEqual({
+      listings: [{ id: 'ebay-1', title: 'new find' }, { id: 'kijiji-2', lastSeen: '2026-08-29T12:00:00Z' }],
+    });
+    expect(result.summary).toEqual({ sent: 2, touched: 1, upserted: 1, unchanged: 2 });
+  });
+
+  it('a touch-only upsert is a valid write', async () => {
+    let sent: unknown;
+    const client = clientWith(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      sent = JSON.parse(String(init?.body));
+      return jsonResponse(200, { ok: true, upserted: 0, unchanged: 1 });
+    });
+    const result = await client.upsert('deals', [], [{ id: 'ebay-1', lastSeen: '2026-08-29T12:00:00Z' }]);
+    expect(sent).toEqual({ listings: [{ id: 'ebay-1', lastSeen: '2026-08-29T12:00:00Z' }] });
+    expect(result.ok).toBe(true);
+    expect(result.summary.touched).toBe(1);
+  });
+
+  it('the diff summary carries only the counts the upstream actually sent', async () => {
+    const client = clientWith(async () => jsonResponse(200, { ok: true, scope: 'deals', upserted: 3 }));
+    const result = await client.upsert('deals', [{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+    // "unchanged" is absent, not zero: the API did not say.
+    expect(result.summary).toEqual({ sent: 3, touched: 0, upserted: 3 });
+    expect(result.result.scope).toBe('deals');
+  });
+
+  it('an upsert with nothing to say never reaches the network', async () => {
+    const client = clientWith(async () => {
+      throw new Error('must not reach the network');
+    });
+    await expect(client.upsert('deals', [], [])).rejects.toMatchObject({ code: 'ACTION_BLOCKED' });
   });
 
   it('upsert without a configured token for that dashboard refuses locally', async () => {

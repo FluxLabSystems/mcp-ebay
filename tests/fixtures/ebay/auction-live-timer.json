@@ -1,0 +1,7 @@
+{
+  "represents": "https://www.ebay.ca/itm/366630546269",
+  "alsoReportedFor": ["https://www.ebay.ca/itm/227489965462"],
+  "capturedAt": "2026-08-29",
+  "synthetic": true,
+  "note": "Hand-built from the documented eBay item-page template. Live capture was blocked: www.ebay.ca returns HTTP 403 to this box (bot wall), verified by curl on 2026-08-29. Reconstructs (a) the auction countdown in both forms eBay is documented to render -- an epoch-ms attribute on the timer element (timems=1788460200000 => 2026-09-03T18:30:00.000Z) and the rendered '5d 04h left' text; (b) watchers / quantity / item-location rows; (c) the offer.available false positive, where the only 'Best Offer' text on the page belongs to a similar-items card for a different listing and to an inline script bundle. Whether a real 366630546269 page carries the timems attribute specifically was NOT verifiable from here; the extractor therefore also computes endsAt from the rendered countdown, pinned separately in active-sell-one-like-this.html."
+}

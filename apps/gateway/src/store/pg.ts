@@ -13,6 +13,8 @@ import type {
   DeviceRow,
   DeviceStore,
   PairingTokenStore,
+  RunCheckpointRow,
+  RunCheckpointStore,
   Store,
 } from './types.js';
 
@@ -253,12 +255,110 @@ class PgAudit implements AuditStore {
   }
 }
 
+/** jsonb text[] columns come back as arrays already; guard the shape anyway. */
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
+function toRunRow(row: Record<string, unknown>): RunCheckpointRow {
+  return {
+    runId: row.run_id as string,
+    dashboard: row.dashboard as string,
+    ownerSubject: row.owner_subject as string | null,
+    status: row.status as RunCheckpointRow['status'],
+    searched: toStringArray(row.searched),
+    verifiedIds: toStringArray(row.verified_ids),
+    pendingIds: toStringArray(row.pending_ids),
+    notes: row.notes as string | null,
+    checkpointCount: Number(row.checkpoint_count),
+    startedAt: row.started_at as Date,
+    updatedAt: row.updated_at as Date,
+    expiresAt: row.expires_at as Date,
+  };
+}
+
+const RUN_COLUMNS =
+  'run_id, dashboard, owner_subject, status, searched, verified_ids, pending_ids, notes, checkpoint_count, started_at, updated_at, expires_at';
+
+class PgRunCheckpoints implements RunCheckpointStore {
+  constructor(private readonly pool: pg.Pool) {}
+
+  async put(row: RunCheckpointRow): Promise<void> {
+    // Every column takes EXCLUDED, started_at included. The service reads
+    // the run first and hands down the authoritative started_at — the
+    // existing one for a continuing run, `now` for a new run reusing the id
+    // of an expired one. Preserving started_at here instead would make this
+    // layer disagree with the in-memory store, whose put replaces the row
+    // wholesale, on exactly the case the read predicate calls absent.
+    await this.pool.query(
+      `INSERT INTO run_checkpoints (${RUN_COLUMNS})
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, $9, $10, $11, $12)
+       ON CONFLICT (run_id)
+       DO UPDATE SET dashboard = EXCLUDED.dashboard,
+                     owner_subject = EXCLUDED.owner_subject,
+                     status = EXCLUDED.status,
+                     searched = EXCLUDED.searched,
+                     verified_ids = EXCLUDED.verified_ids,
+                     pending_ids = EXCLUDED.pending_ids,
+                     notes = EXCLUDED.notes,
+                     checkpoint_count = EXCLUDED.checkpoint_count,
+                     started_at = EXCLUDED.started_at,
+                     updated_at = EXCLUDED.updated_at,
+                     expires_at = EXCLUDED.expires_at`,
+      [
+        row.runId,
+        row.dashboard,
+        row.ownerSubject,
+        row.status,
+        JSON.stringify(row.searched),
+        JSON.stringify(row.verifiedIds),
+        JSON.stringify(row.pendingIds),
+        row.notes,
+        row.checkpointCount,
+        row.startedAt,
+        row.updatedAt,
+        row.expiresAt,
+      ],
+    );
+  }
+
+  async get(runId: string, now: Date): Promise<RunCheckpointRow | null> {
+    const result = await this.pool.query(
+      `SELECT ${RUN_COLUMNS} FROM run_checkpoints WHERE run_id = $1 AND expires_at > $2`,
+      [runId, now],
+    );
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    return row === undefined ? null : toRunRow(row);
+  }
+
+  async latestResumable(dashboard: string, ownerSubject: string | null, now: Date): Promise<RunCheckpointRow | null> {
+    // `owner_subject IS NOT DISTINCT FROM $2` rather than `=`: an
+    // OAuth-disabled deployment stores null owners, and null = null is not
+    // true in SQL, so `=` would make every such run unresumable.
+    const result = await this.pool.query(
+      `SELECT ${RUN_COLUMNS} FROM run_checkpoints
+       WHERE dashboard = $1 AND owner_subject IS NOT DISTINCT FROM $2 AND status = 'running' AND expires_at > $3
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [dashboard, ownerSubject, now],
+    );
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    return row === undefined ? null : toRunRow(row);
+  }
+
+  async purgeExpired(now: Date): Promise<number> {
+    const result = await this.pool.query(`DELETE FROM run_checkpoints WHERE expires_at <= $1`, [now]);
+    return result.rowCount ?? 0;
+  }
+}
+
 export class PgStore implements Store {
   readonly devices: DeviceStore;
   readonly pairingTokens: PairingTokenStore;
   readonly browserSessions: BrowserSessionStore;
   readonly artifacts: ArtifactMetaStore;
   readonly audit: AuditStore;
+  readonly runCheckpoints: RunCheckpointStore;
   private readonly pool: pg.Pool;
 
   constructor(databaseUrl: string) {
@@ -268,6 +368,7 @@ export class PgStore implements Store {
     this.browserSessions = new PgBrowserSessions(this.pool);
     this.artifacts = new PgArtifacts(this.pool);
     this.audit = new PgAudit(this.pool);
+    this.runCheckpoints = new PgRunCheckpoints(this.pool);
   }
 
   async ready(): Promise<boolean> {

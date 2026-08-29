@@ -4,6 +4,10 @@
  * DOM selectors (source "dom") second, Open Graph metadata (source
  * "meta") third, computed normalizations (source "computed") last.
  * Search-results snippets are never accepted as canonical ad evidence.
+ *
+ * One field, postedAt, has a fourth layer under all of those: it carries no
+ * provenance of its own, and on an ad with a non-amount price it is stated
+ * nowhere but the page's hydration cache. See readKijijiApolloCache.
  */
 import { adIdFromUrl, canonicalAdUrl, parseKijijiPrice } from './normalize.js';
 import type { KijijiExtractionRecord, KijijiFieldSource, KijijiListingStatus } from './record.js';
@@ -19,9 +23,16 @@ export interface KijijiExtractOutcome {
 }
 
 /**
- * NEEDS-LIVE-VERIFICATION: Kijiji embeds schema.org Product/Offer JSON-LD
- * on VIP pages; the exact shape (top-level vs "@graph"-wrapped, seller
- * placement, datePosted presence) must be confirmed against live pages.
+ * Confirmed against live VIP pages on 2026-08-29 (see the live-vip-*
+ * fixtures): the Product is a bare top-level object, not "@graph"-wrapped;
+ * there is no datePosted and no seller, the posted date arrives as
+ * offers.validFrom, and offers.availableAtOrFrom carries the address in the
+ * words the page renders. image is an array of ImageObject, not of strings,
+ * so only its length is read.
+ *
+ * The block is served EMPTY -- no Product at all -- for any ad whose price
+ * is not an amount, which is why nothing here may be the sole source of a
+ * field. NEEDS-LIVE-VERIFICATION: seller.name has not been seen populated.
  */
 interface JsonLdProduct {
   name?: string;
@@ -36,6 +47,13 @@ interface JsonLdProduct {
     url?: string;
     validFrom?: string;
     seller?: { name?: string };
+    availableAtOrFrom?: {
+      name?: string;
+      address?: {
+        streetAddress?: string;
+        addressLocality?: string;
+      };
+    };
   };
 }
 
@@ -83,6 +101,52 @@ function readJsonLdProduct(document: Document): JsonLdProduct | null {
   return null;
 }
 
+/**
+ * The Apollo cache Kijiji ships inside <script id="__NEXT_DATA__">, or null.
+ * It is a pages-router Next.js app: the cache that rendered the page is
+ * serialized there and left in the DOM afterwards.
+ *
+ * Reading an addressed path out of parsed JSON is not the mistake
+ * visibleText guards against -- that was matching banner STRINGS anywhere in
+ * script text. This looks up one named key and reads one named field. It is
+ * also the only place some fields exist at all: Kijiji renders the posted
+ * time and the pagination controls client-side, and serves an EMPTY
+ * schema.org Product block for any ad whose price is not an amount.
+ *
+ * Lives here rather than in traversal.ts because both the VIP and the search
+ * extractor need it and extract.ts is the module that already owns DOM
+ * reading; traversal.ts imports it.
+ */
+export function readKijijiApolloCache(document: Document): Record<string, unknown> | null {
+  let script: Element | null;
+  try {
+    script = document.querySelector('script#__NEXT_DATA__');
+  } catch {
+    return null;
+  }
+  const rawText = script?.textContent ?? '';
+  if (!rawText.trim()) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    return null;
+  }
+  const props = (parsed as Record<string, unknown> | null)?.props;
+  const pageProps = (props as Record<string, unknown> | null)?.pageProps;
+  const cache = (pageProps as Record<string, unknown> | null)?.__APOLLO_STATE__;
+  return typeof cache === 'object' && cache !== null ? (cache as Record<string, unknown>) : null;
+}
+
+/** The activation date the cache states for one ad, in the "StandardListing:<id>" entry. */
+export function apolloActivationDate(cache: Record<string, unknown> | null, adId: string | null): string | null {
+  if (cache === null || adId === null) return null;
+  const entry = cache[`StandardListing:${adId}`];
+  if (typeof entry !== 'object' || entry === null) return null;
+  const activationDate = (entry as Record<string, unknown>).activationDate;
+  return typeof activationDate === 'string' && activationDate.length > 0 ? activationDate : null;
+}
+
 function textOf(document: Document, selector: string): string | null {
   try {
     const el = document.querySelector(selector);
@@ -128,11 +192,15 @@ function metaContent(document: Document, property: string): string | null {
 }
 
 // Every selector group below targets the current Kijiji React VIP layout.
-// NEEDS-LIVE-VERIFICATION (F-24 posture, like the ebay extractor): Kijiji
-// churns generated class names; data-testid/itemprop hooks are the most
-// stable candidates but must be re-checked against live VIP pages.
+// The vip-* names were read off live pages on 2026-08-29 and lead their
+// groups; the listing-* names below them were guesses that matched no live
+// ad page and are kept only as fallbacks. NEEDS-LIVE-VERIFICATION (F-24
+// posture, like the ebay extractor): Kijiji churns generated class names, so
+// the class*= entries and anything not marked live-read still need checking.
 const TITLE_SELECTORS = ['h1[itemprop="name"]', 'h1[data-testid="listing-title"]', 'h1'];
 const PRICE_SELECTORS = [
+  // The name the live VIP actually uses; "listing-price" is the SEARCH card.
+  '[data-testid="vip-price"]',
   '[data-testid="listing-price"]',
   '[itemprop="price"]',
   'span[class*="currentPrice"]',
@@ -149,9 +217,11 @@ const LOCATION_SELECTORS = [
   '[class*="mapLocation"]',
   '[class*="locationText"]',
 ];
-/** Where the ad renders its map/address block; scanned for a postal code
- *  when no selector above matched, rather than the whole page. */
+/** Where the ad renders its map/address block; scanned for the address line
+ *  or a bare postal code when no selector above matched, rather than the
+ *  whole page. */
 const LOCATION_SCOPE_SELECTORS = [
+  '[data-testid="vip-about-seller"]',
   '[data-testid="vip-map"]',
   '[class*="mapContainer"]',
   '[class*="sidebar"]',
@@ -160,6 +230,10 @@ const LOCATION_SCOPE_SELECTORS = [
 ];
 /** A9A 9A9 / A9A9A9, the shape a Kijiji ad sidebar shows. */
 const POSTAL_CODE_RE = /\b[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d\b/;
+/** The whole line the sidebar renders around it: "Thornhill, ON L4J 5M9".
+ *  Preferred over the bare code -- it is the same evidence, said in full. */
+const ADDRESS_LINE_RE =
+  /\b[A-Z][A-Za-z\u00c0-\u00ff'\u2019.\- ]{1,40},\s*[A-Z]{2}\s+[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d\b/;
 const POSTED_TEXT_SELECTORS = [
   '[data-testid="listing-date"]',
   'time',
@@ -178,8 +252,17 @@ const SELLER_SELECTORS = [
  * candidates are filtered rather than taken first-match, and the anchor's
  * own title/aria-label is consulted before its text.
  */
+const PROFILE_LABEL_RE = /^view\s+(.+?)(?:['\u2019])s\s+profile$/i;
+
 function plausibleSellerName(raw: string | null | undefined): string | null {
-  const text = raw?.replace(/\s+/g, ' ').trim() ?? '';
+  const collapsed = raw?.replace(/\s+/g, ' ').trim() ?? '';
+  // Kijiji labels the profile anchor "View <name>'s profile" rather than
+  // naming the seller, and that label is consulted before the anchor's text
+  // (which is only the avatar monogram), so the record stored a whole
+  // sentence where the dashboard expects a name. The wording is the site's
+  // own; anything not matching it is left exactly as it was.
+  const labelled = PROFILE_LABEL_RE.exec(collapsed);
+  const text = labelled === null ? collapsed : labelled[1]!.trim();
   if (text.length < 2) return null;
   // "J", "J.", "JD" as an avatar monogram -- all caps and very short.
   if (text.length <= 2 && text === text.toUpperCase()) return null;
@@ -187,6 +270,7 @@ function plausibleSellerName(raw: string | null | undefined): string | null {
   return text;
 }
 const DESCRIPTION_SELECTORS = [
+  '[data-testid="vip-description-wrapper"]',
   '[data-testid="listing-description"]',
   '[itemprop="description"]',
   '#vip-body',
@@ -233,6 +317,14 @@ const STATUS_SELECTORS = [
  * see -- trust the page, not the string.
  */
 const LIVE_AD_SELECTORS = [
+  // NOT guesses: every name below was read off a live VIP. The first pass
+  // listed listing-*/message-seller names that appear on no Kijiji ad page,
+  // so this test answered false on every live ad and the status fell through
+  // to "unknown" -- confidently wrong replaced by uselessly vague.
+  '[data-testid="r2s-form"]',
+  '[data-testid="r2s"]',
+  '[data-testid="vip-description-wrapper"]',
+  '[data-testid="vip-gallery"]',
   '[data-testid="vip-reply-button"]',
   '[data-testid="message-seller"]',
   'button[class*="replyButton"]',
@@ -322,6 +414,49 @@ function extractAttributes(document: Document): { label: string; value: string }
   return [];
 }
 
+const ABOUT_SELLER_SELECTORS = [
+  '[data-testid="vip-about-seller"]',
+  '[data-testid="about-seller"]',
+  '[class*="aboutSeller"]',
+];
+
+/**
+ * The VIP renders the seller-type badge in the about-seller block and never
+ * populates the attribute list, so deriving it from attributes alone always
+ * answered 'unknown'. Scoped to that block on purpose: "owner" and "dealer"
+ * are ordinary enough words that a whole-page scan would match a description
+ * ("selling for my father, the original owner").
+ */
+function sellerTypeFromAboutBlock(document: Document): KijijiExtractionRecord['sellerType'] {
+  for (const selector of ABOUT_SELLER_SELECTORS) {
+    let el: Element | null;
+    try {
+      el = document.querySelector(selector);
+    } catch {
+      continue;
+    }
+    if (!el) continue;
+    // The badge is matched on a leaf node's own text rather than the
+    // block's textContent: that concatenates its children without
+    // separators ("JessicaOwnerView all listings"), which destroys the word
+    // boundaries a text scan needs and would equally let "homeowner" in a
+    // neighbouring line answer for the badge.
+    let nodes: Element[];
+    try {
+      nodes = Array.from(el.querySelectorAll('*'));
+    } catch {
+      continue;
+    }
+    for (const node of [...nodes, el]) {
+      const own = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+      if (own.length === 0 || own.length > 24) continue;
+      if (/^(dealer|business|professional)$/i.test(own)) return 'dealer';
+      if (/^owner$/i.test(own)) return 'owner';
+    }
+  }
+  return 'unknown';
+}
+
 function sellerTypeFromAttributes(attributes: readonly { label: string; value: string }[]): KijijiExtractionRecord['sellerType'] {
   for (const attribute of attributes) {
     if (!/for sale by/i.test(attribute.label)) continue;
@@ -349,6 +484,7 @@ export function extractKijijiListing(
 ): KijijiExtractOutcome {
   const warnings: string[] = [];
   const jsonld = readJsonLdProduct(document);
+  const apollo = readKijijiApolloCache(document);
   const observedAt = (context.observedAt ?? new Date()).toISOString();
 
   // --- ad id + canonical URL (identity, then computed canonical) ---
@@ -463,13 +599,25 @@ export function extractKijijiListing(
   }
   if (price === null) warnings.push('price could not be resolved');
 
-  // --- location (dom only; never inferred) ---
+  // --- location (jsonld → dom → meta; never inferred) ---
+  // The offer states where the item can be collected, and states it in the
+  // same words the page renders ("Oakville, ON L6K 3R9"), so it leads.
   let location: KijijiExtractionRecord['location'] = null;
-  for (const selector of LOCATION_SELECTORS) {
-    const text = textOf(document, selector);
-    if (text) {
-      location = { text, source: 'dom', confidence: 0.95 };
-      break;
+  const place = jsonld?.offers?.availableAtOrFrom;
+  for (const candidate of [place?.address?.streetAddress, place?.address?.addressLocality, place?.name]) {
+    if (typeof candidate !== 'string') continue;
+    const text = candidate.replace(/\s+/g, ' ').trim();
+    if (text.length === 0) continue;
+    location = { text, source: 'jsonld', confidence: 0.97 };
+    break;
+  }
+  if (location === null) {
+    for (const selector of LOCATION_SELECTORS) {
+      const text = textOf(document, selector);
+      if (text) {
+        location = { text, source: 'dom', confidence: 0.95 };
+        break;
+      }
     }
   }
   if (location === null) {
@@ -485,12 +633,29 @@ export function extractKijijiListing(
         continue;
       }
       if (!scope) continue;
-      const match = POSTAL_CODE_RE.exec(visibleText(scope));
+      const scopeText = visibleText(scope);
+      const line = ADDRESS_LINE_RE.exec(scopeText);
+      if (line) {
+        location = { text: line[0].trim(), source: 'dom', confidence: 0.9 };
+        warnings.push(`location resolved from a postal code line in the ad sidebar: "${line[0].trim()}"`);
+        break;
+      }
+      const match = POSTAL_CODE_RE.exec(scopeText);
       if (match) {
         location = { text: match[0].toUpperCase(), source: 'dom', confidence: 0.75 };
         warnings.push(`location resolved from a postal code in the ad sidebar: "${match[0]}"`);
         break;
       }
+    }
+  }
+  if (location === null) {
+    // og:locality names the ad's region rather than its address, so it is
+    // the last resort -- but it is present on every VIP, which "null" was
+    // not an improvement on.
+    const locality = metaContent(document, 'og:locality');
+    if (locality) {
+      location = { text: locality, source: 'meta', confidence: 0.7 };
+      warnings.push(`location resolved from og:locality, which names a region rather than an address: "${locality}"`);
     }
   }
   if (location === null) warnings.push('location could not be resolved');
@@ -511,6 +676,12 @@ export function extractKijijiListing(
         break;
       }
     }
+  }
+  if (postedAt === null) {
+    // An ad with a non-amount price is served with no Product JSON-LD at
+    // all, and the VIP renders no posted date, so the hydration cache is the
+    // only statement of when it went up.
+    postedAt = toIsoOrNull(apolloActivationDate(apollo, adId));
   }
   if (postedAt === null && postedText !== null) {
     warnings.push(`postedAt not machine-parseable; raw text preserved in postedText: "${postedText}"`);
@@ -561,7 +732,9 @@ export function extractKijijiListing(
 
   // --- attributes + seller type ---
   const attributes = extractAttributes(document);
-  const sellerType = sellerTypeFromAttributes(attributes);
+  const attributeSellerType = sellerTypeFromAttributes(attributes);
+  const sellerType =
+    attributeSellerType === 'unknown' ? sellerTypeFromAboutBlock(document) : attributeSellerType;
 
   // --- image count (jsonld image array → dom gallery) ---
   let imageCount: number | null = null;
