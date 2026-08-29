@@ -1,0 +1,10 @@
+{
+  "represents": "https://www.ebay.ca/itm/198589141532",
+  "alsoReportedFor": [
+    "https://www.ebay.ca/itm/800523282681",
+    "https://www.ebay.ca/itm/206468265940"
+  ],
+  "capturedAt": "2026-08-29",
+  "synthetic": true,
+  "note": "Hand-built from the documented eBay ended-item template. Live capture was blocked: www.ebay.ca returns HTTP 403 to this box (bot wall), verified by curl on 2026-08-29 for both /itm/198589141532 and /sch/i.html. No byte of this file came off a live page; it reproduces the reported SHAPE (no ended/sold banner sentence, a 'See original listing' link carrying orig_cvip=true, a 'Sell one like this' link, a buybox with no bid/buy control, and a similar-items strip that does say 'Buy It Now') so the detection rule can be pinned. Class names are eBay's documented/observed ones where known; the wrapper class on the original-listing block is a plausible reconstruction and detection deliberately does not depend on it."
+}

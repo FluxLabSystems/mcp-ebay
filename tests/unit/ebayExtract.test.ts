@@ -165,3 +165,132 @@ describe('defects found on the first live extraction run', () => {
     expect(ExtractionRecordSchema.safeParse(soldAuction().record).success).toBe(true);
   });
 });
+
+// Defects a LEGO deals run surfaced on 2026-08-29. Each one cost the run an
+// extra browser.snapshot call to work around, which is what exhausted the
+// per-turn tool budget. Fixtures are synthetic reconstructions -- www.ebay.ca
+// answers this box with HTTP 403 -- and each carries a sidecar .json saying so.
+describe('defects the 2026-08-29 deals run surfaced', () => {
+  // --- defect 1: ended/sold false negative on the "See original listing" template ---
+  it('reads the ended-item template as ended even with no banner sentence', () => {
+    // The page carries none of the ENDED_MARKERS sentences. What says it is
+    // over is the combination: an original-listing/relist affordance on a
+    // buybox that offers no way to bid or buy.
+    const { record } = extractListing(
+      loadFixture('ended-see-original-listing.html'),
+      'https://www.ebay.ca/itm/198589141532',
+    );
+    expect(record.listingStatus).toBe('ended');
+  });
+
+  it('does not end a live listing that merely offers "Sell one like this"', () => {
+    // eBay shows that link to a seller on their own running listing, so the
+    // phrase alone must never be the whole rule -- here the Buy It Now is
+    // still there and the listing is still active.
+    const { record } = extractListing(
+      loadFixture('active-sell-one-like-this.html'),
+      'https://www.ebay.ca/itm/227489965462',
+    );
+    expect(record.listingStatus).toBe('active');
+  });
+
+  it('does not let a similar-items strip end a live auction', () => {
+    // The strip on the live-auction fixture is the same markup the ended page
+    // carries below the fold; only the buybox decides.
+    expect(
+      extractListing(loadFixture('auction-live-timer.html'), 'https://www.ebay.ca/itm/366630546269').record
+        .listingStatus,
+    ).toBe('active');
+  });
+
+  // --- defect 2: no auction end time anywhere on the record ---
+  it('reads the auction end time off the timer element', () => {
+    const { record } = extractListing(
+      loadFixture('auction-live-timer.html'),
+      'https://www.ebay.ca/itm/366630546269',
+    );
+    expect(record.endsAt).toMatchObject({ value: '2026-09-03T18:30:00.000Z', source: 'dom' });
+    expect(record.timeLeftText?.value).toBe('5d 04h left (Thu, 02:30 PM)');
+  });
+
+  it('computes an end time from the rendered countdown when no attribute carries it', () => {
+    const { record } = extractListing(
+      loadFixture('active-sell-one-like-this.html'),
+      'https://www.ebay.ca/itm/227489965462',
+      { observedAt: new Date('2026-08-29T12:00:00.000Z') },
+    );
+    // "Ends in 2d 03h 15m" is only as precise as the minute it renders, so the
+    // derived value is 'computed' and carries less confidence than a read one.
+    expect(record.endsAt).toMatchObject({ value: '2026-08-31T15:15:00.000Z', source: 'computed' });
+    expect(record.endsAt!.confidence).toBeLessThan(0.9);
+    expect(record.timeLeftText?.value).toBe('Ends in 2d 03h 15m');
+  });
+
+  it('leaves the end time null rather than inventing one when the page shows no countdown', () => {
+    const { record } = extractListing(
+      loadFixture('fixed-price-listing.html'),
+      'https://www.ebay.ca/itm/421150000002',
+    );
+    expect(record.endsAt).toBeNull();
+    expect(record.timeLeftText).toBeNull();
+  });
+
+  // --- defect 5: offer.available true on every listing ---
+  it('does not read a similar-items strip as a Best Offer on this listing', () => {
+    // The auction fixture's only "Best Offer" text is a card about a different
+    // item plus the inline script bundle -- and linkedom's body.textContent
+    // includes script text, so the old whole-body test answered true here.
+    const { record } = extractListing(
+      loadFixture('auction-live-timer.html'),
+      'https://www.ebay.ca/itm/366630546269',
+    );
+    expect(record.offer.available).toBe(false);
+  });
+
+  it('still sees a Make offer control that is actually on the listing', () => {
+    const { record } = extractListing(loadFixture('active-listing.html'), 'https://www.ebay.ca/itm/123456789012');
+    expect(record.offer.available).toBe(true);
+  });
+
+  // --- defect 6: additive item fields ---
+  it('reads watchers, quantity sold and item location when the page shows them', () => {
+    const { record } = extractListing(
+      loadFixture('auction-live-timer.html'),
+      'https://www.ebay.ca/itm/366630546269',
+    );
+    expect(record.watcherCount?.value).toBe(48);
+    expect(record.quantityAvailable?.value).toBe(1);
+    expect(record.quantitySold?.value).toBe(12);
+    expect(record.itemLocationText?.value).toBe('Mississauga, Ontario, Canada');
+  });
+
+  it('records "More than 10 available" as a floor rather than a count', () => {
+    const { record } = extractListing(
+      loadFixture('active-sell-one-like-this.html'),
+      'https://www.ebay.ca/itm/227489965462',
+    );
+    expect(record.quantityAvailable?.value).toBe(10);
+    // The page says more than ten, not ten; the number is a lower bound.
+    expect(record.quantityAvailable!.confidence).toBeLessThan(0.8);
+  });
+
+  it('leaves the added fields null on a page that shows none of them', () => {
+    const { record } = extractListing(
+      loadFixture('fixed-price-listing.html'),
+      'https://www.ebay.ca/itm/421150000002',
+    );
+    expect(record.watcherCount).toBeNull();
+    expect(record.quantitySold).toBeNull();
+    expect(record.itemLocationText).toBeNull();
+  });
+
+  it('keeps every widened record validating against the canonical schema', () => {
+    for (const [fixture, url] of [
+      ['auction-live-timer.html', 'https://www.ebay.ca/itm/366630546269'],
+      ['active-sell-one-like-this.html', 'https://www.ebay.ca/itm/227489965462'],
+      ['ended-see-original-listing.html', 'https://www.ebay.ca/itm/198589141532'],
+    ] as const) {
+      expect(ExtractionRecordSchema.safeParse(extractListing(loadFixture(fixture), url).record).success).toBe(true);
+    }
+  });
+});

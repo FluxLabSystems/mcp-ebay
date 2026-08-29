@@ -1,0 +1,6 @@
+{
+  "represents": "https://www.ebay.ca/sch/i.html?_nkw=lego+bulk+lot&_sop=10 (and the seller-filtered _ssn= form, which the report says renders the same cards)",
+  "capturedAt": "2026-08-29",
+  "synthetic": true,
+  "note": "Hand-built from the documented eBay search-card templates. Live capture was blocked: www.ebay.ca returns HTTP 403 to this box (bot wall), verified by curl on 2026-08-29 for /sch/i.html. The exact wrapper class eBay ships for the carousel card could NOT be confirmed from here; 'su-card-container' is a plausible reconstruction, and the fix deliberately does not depend on that name -- what the fixture pins is the structural condition that produced the reported nulls (a card root that is not .s-item / .str-item-card / li / article, with the item link wrapping only <img> elements). Item ids are the ones named in the defect report so the rows are traceable; every price, bid count, shipping and location string is fabricated. The trailing legacy .s-item row is there so a page mixing both templates is covered."
+}
