@@ -12,6 +12,8 @@ import type {
   DeviceRow,
   DeviceStore,
   PairingTokenStore,
+  RunCheckpointRow,
+  RunCheckpointStore,
   Store,
 } from './types.js';
 
@@ -149,12 +151,55 @@ class MemoryAudit implements AuditStore {
   }
 }
 
+function cloneRun(row: RunCheckpointRow): RunCheckpointRow {
+  return { ...row, searched: [...row.searched], verifiedIds: [...row.verifiedIds], pendingIds: [...row.pendingIds] };
+}
+
+class MemoryRunCheckpoints implements RunCheckpointStore {
+  readonly rows = new Map<string, RunCheckpointRow>();
+
+  put(row: RunCheckpointRow): Promise<void> {
+    this.rows.set(row.runId, cloneRun(row));
+    return Promise.resolve();
+  }
+  get(runId: string, now: Date): Promise<RunCheckpointRow | null> {
+    const row = this.rows.get(runId);
+    // Mirror the PG predicate rather than the sweeper: an expired row is
+    // gone from a reader's point of view the moment it expires, not when
+    // the next cleanup tick happens to run.
+    if (row === undefined || row.expiresAt.getTime() <= now.getTime()) return Promise.resolve(null);
+    return Promise.resolve(cloneRun(row));
+  }
+  latestResumable(dashboard: string, ownerSubject: string | null, now: Date): Promise<RunCheckpointRow | null> {
+    let best: RunCheckpointRow | null = null;
+    for (const row of this.rows.values()) {
+      if (row.dashboard !== dashboard) continue;
+      if (row.ownerSubject !== ownerSubject) continue;
+      if (row.status !== 'running') continue;
+      if (row.expiresAt.getTime() <= now.getTime()) continue;
+      if (best === null || row.updatedAt.getTime() > best.updatedAt.getTime()) best = row;
+    }
+    return Promise.resolve(best === null ? null : cloneRun(best));
+  }
+  purgeExpired(now: Date): Promise<number> {
+    let purged = 0;
+    for (const [key, row] of this.rows) {
+      if (row.expiresAt.getTime() <= now.getTime()) {
+        this.rows.delete(key);
+        purged += 1;
+      }
+    }
+    return Promise.resolve(purged);
+  }
+}
+
 export class MemoryStore implements Store {
   readonly devices = new MemoryDevices();
   readonly pairingTokens = new MemoryPairingTokens();
   readonly browserSessions = new MemoryBrowserSessions();
   readonly artifacts = new MemoryArtifacts();
   readonly audit = new MemoryAudit();
+  readonly runCheckpoints = new MemoryRunCheckpoints();
 
   ready(): Promise<boolean> {
     return Promise.resolve(true);

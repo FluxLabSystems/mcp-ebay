@@ -11,21 +11,29 @@ import {
   DashboardUpsertInput,
   dashboardScopeSatisfies,
   requiredDashboardScope,
+  RUN_TOOL_CATALOG,
+  RunCheckpointInput,
+  RunResumeInput,
+  runToolDashboardAction,
   scopeSatisfies,
   TOOL_CATALOG,
   type DashboardToolCatalogEntry,
   type DashboardId,
   type DashboardToolAction,
+  type RunToolCatalogEntry,
   type ToolCatalogEntry,
 } from '@browser-bridge/protocol';
 import type { CommandBroker } from '../broker.js';
 import type { DashboardClient } from '../dashboards/client.js';
+import type { RunCheckpointService } from '../runs/checkpoints.js';
 
 export interface McpFactoryDeps {
   broker: CommandBroker;
   serverVersion: string;
   /** Present only when the deployment configures the dashboard write-path. */
   dashboards?: DashboardClient | null;
+  /** Run bookkeeping for the deals.* tools; registered with the dashboards. */
+  runs?: RunCheckpointService | null;
 }
 
 interface ToolResultShape {
@@ -57,7 +65,70 @@ export function buildMcpServer(deps: McpFactoryDeps, authInfo: { scopes: string[
       registerDashboardTool(server, deps.dashboards, entry, authInfo);
     }
   }
+  if (deps.runs !== undefined && deps.runs !== null) {
+    for (const entry of RUN_TOOL_CATALOG) {
+      registerRunTool(server, deps.runs, entry, authInfo);
+    }
+  }
   return server;
+}
+
+/**
+ * `deals.*` run bookkeeping. Gateway-served like the dashboard tools, and
+ * authorised through the same scope machinery: the catalog entry names the
+ * dashboard, runToolDashboardAction maps checkpoint→upsert and
+ * resume→feed, and dashboardScopeSatisfies stays the only place the rule
+ * lives (§10.2 — Phase 4 introduces no new scope).
+ */
+function registerRunTool(
+  server: McpServer,
+  runs: RunCheckpointService,
+  entry: RunToolCatalogEntry,
+  authInfo: { scopes: string[]; clientId: string; extra?: Record<string, unknown> } | undefined,
+): void {
+  const scopeAction = runToolDashboardAction(entry.action);
+  const handler = async (args: Record<string, unknown>): Promise<ToolResultShape> => {
+    try {
+      assertDashboardScope(authInfo, entry.dashboard, scopeAction);
+      // A run belongs to the OAuth subject that wrote it, so one caller can
+      // never resume another's run. Falls back to clientId, and to null
+      // when OAuth is disabled — the same identity ladder the broker uses.
+      const subject =
+        typeof authInfo?.extra?.subject === 'string'
+          ? (authInfo.extra.subject as string)
+          : (authInfo?.clientId ?? null);
+      const structured =
+        entry.action === 'checkpoint'
+          ? await runs.checkpoint(RunCheckpointInput.parse(args), subject)
+          : await runs.resume(RunResumeInput.parse(args).runId, subject);
+      const payload = structured as unknown as Record<string, unknown>;
+      return {
+        content: [{ type: 'text', text: JSON.stringify(payload) }],
+        structuredContent: payload,
+      };
+    } catch (err) {
+      return errorResult(BridgeError.from(err));
+    }
+  };
+  server.registerTool(
+    entry.name,
+    {
+      description: `${entry.description} Requires scope ${requiredDashboardScope(entry.dashboard, scopeAction)}${
+        scopeAction === 'feed' ? ' or any dashboard write scope' : ''
+      }.`,
+      inputSchema: entry.inputSchema,
+      outputSchema: entry.outputSchema,
+      annotations: {
+        readOnlyHint: entry.action === 'resume',
+        // A checkpoint only ever replaces its own run row; it writes no
+        // listing, touches no dashboard, and drives no browser.
+        destructiveHint: false,
+        idempotentHint: entry.action === 'resume',
+        openWorldHint: false,
+      },
+    } as never,
+    handler as never,
+  );
 }
 
 function registerDashboardTool(

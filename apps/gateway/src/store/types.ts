@@ -72,12 +72,57 @@ export interface AuditStore {
   insert(event: AuditEvent): Promise<void>;
 }
 
+/**
+ * One scheduled research run's checkpoint (Phase 4). audit_events answers
+ * "what calls happened" and is insert-only by design, so it can never
+ * answer "what has this run already verified"; this row is the run's own
+ * state, written explicitly by the run and read back by the next turn.
+ *
+ * Rows hold identifiers and counts only — never scraped page content — and
+ * expire, so a run that is never completed cleans itself up.
+ */
+export interface RunCheckpointRow {
+  runId: string;
+  /** Dashboard the run feeds; also what its OAuth scopes are keyed on. */
+  dashboard: string;
+  /** OAuth subject that owns the run; null when OAuth is disabled. */
+  ownerSubject: string | null;
+  status: 'running' | 'completed' | 'abandoned';
+  searched: string[];
+  verifiedIds: string[];
+  pendingIds: string[];
+  notes: string | null;
+  checkpointCount: number;
+  startedAt: Date;
+  updatedAt: Date;
+  expiresAt: Date;
+}
+
+/**
+ * Row CRUD only. Merge, bounds and the resumable rule live one layer up in
+ * apps/gateway/src/runs/checkpoints.ts so the in-memory and PostgreSQL
+ * implementations cannot drift apart on the semantics that matter.
+ */
+export interface RunCheckpointStore {
+  put(row: RunCheckpointRow): Promise<void>;
+  /** Expired rows read as absent, whether or not the sweeper has run. */
+  get(runId: string, now: Date): Promise<RunCheckpointRow | null>;
+  /**
+   * Most recently updated unexpired run with status 'running' for this
+   * dashboard and owner. Ownership is matched exactly, null included, so
+   * one caller can never resume another caller's run.
+   */
+  latestResumable(dashboard: string, ownerSubject: string | null, now: Date): Promise<RunCheckpointRow | null>;
+  purgeExpired(now: Date): Promise<number>;
+}
+
 export interface Store {
   devices: DeviceStore;
   pairingTokens: PairingTokenStore;
   browserSessions: BrowserSessionStore;
   artifacts: ArtifactMetaStore;
   audit: AuditStore;
+  runCheckpoints: RunCheckpointStore;
   /** Readiness probe (§26 /readyz). */
   ready(): Promise<boolean>;
   close(): Promise<void>;

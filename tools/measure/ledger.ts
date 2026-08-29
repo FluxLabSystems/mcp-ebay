@@ -17,7 +17,6 @@
  * way the broker would and then reads its own NDJSON back, so the ledger
  * exercises the instrumentation it is meant to justify.
  */
-import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -33,11 +32,14 @@ import {
   fixture,
   itemExtractEnvelope,
   jsonBytes,
+  kib,
   loadBuilt,
   loadParseHtml,
   modelDealsFeed,
   probeReachability,
   searchExtractEnvelope,
+  sourceState,
+  table,
   timed,
   type Basis,
   type Probe,
@@ -163,45 +165,6 @@ const UNMEASURABLE = [
 function arg(name: string, fallback: string | null = null): string | null {
   const index = process.argv.indexOf(name);
   return index === -1 || index === process.argv.length - 1 ? fallback : process.argv[index + 1]!;
-}
-
-/**
- * A ledger is only diffable against a later one if both say what tree they
- * measured. A dirty tree is not an error here — the harness measures the
- * built packages, whatever is in them — but a capture taken mid-change is
- * not a capture of HEAD, and the file has to admit which it is.
- */
-function sourceState(): { repoHead: string | null; dirtyPaths: string[] } {
-  const git = (args: string[]): string | null => {
-    try {
-      // trimEnd, not trim: a porcelain status line begins with two status
-      // columns, and the first of them is a space for an unstaged change.
-      return execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' }).trimEnd();
-    } catch {
-      return null;
-    }
-  };
-  // --no-optional-locks: a measurement harness has no business writing to
-  // the repository it is measuring, not even an index stat refresh.
-  const status = git(['--no-optional-locks', 'status', '--porcelain', '--untracked-files=no']);
-  return {
-    repoHead: git(['--no-optional-locks', 'rev-parse', 'HEAD'])?.trim() ?? null,
-    dirtyPaths:
-      status === null || status.length === 0 ? [] : status.split('\n').map((line) => line.slice(3).trim()),
-  };
-}
-
-function kib(bytes: number | null): string {
-  return bytes === null ? '—' : `${(bytes / 1024).toFixed(1)} KiB`;
-}
-
-function table(headers: string[], rows: string[][]): string {
-  const widths = headers.map((header, column) =>
-    Math.max(header.length, ...rows.map((row) => (row[column] ?? '').length)),
-  );
-  const line = (cells: string[]): string =>
-    cells.map((cell, column) => cell.padEnd(widths[column]!)).join('  ').trimEnd();
-  return [line(headers), widths.map((width) => '-'.repeat(width)).join('  '), ...rows.map(line)].join('\n');
 }
 
 async function main(): Promise<void> {
@@ -654,4 +617,13 @@ async function main(): Promise<void> {
   }
 }
 
-await main();
+// `--after` belongs to the sibling entry point, which costs the same
+// routine against the Phase 2 tool surface and diffs the two. Dispatching
+// here rather than duplicating the flag parsing means both spellings —
+// `node tools/measure/after.ts` and `node tools/measure/ledger.ts --after` —
+// run the same code. The default path below is untouched.
+if (process.argv.includes('--after')) {
+  await import('./after.ts');
+} else {
+  await main();
+}

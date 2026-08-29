@@ -9,6 +9,7 @@
  * Windows agent with Chrome, or the chat client's own inline-response
  * limit — and the reason is carried in place of a number.
  */
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -83,6 +84,28 @@ export function fixture(...parts: string[]): Promise<string> {
  * Playwright page, and there is no Chrome on this box.
  * ---------------------------------------------------------------------- */
 
+/**
+ * The candidate record executeExtract() assembles for a search/store page,
+ * before any compaction runs over it. Split out of the envelope below
+ * because the Phase 2 surface needs exactly this object to hand to
+ * compactSearchPage(): the compactor takes the record, not the envelope,
+ * and building a second copy of it here would let the two drift.
+ */
+export function searchExtractRecord(
+  siteProfile: string,
+  pageUrl: string,
+  candidates: unknown[],
+): Record<string, unknown> {
+  return {
+    siteProfile,
+    pageKind: 'search',
+    pageUrl,
+    candidateCount: candidates.length,
+    candidates,
+    note: 'Candidate snippets are traversal hints; open each /itm/ URL and extract it for canonical evidence.',
+  };
+}
+
 export function searchExtractEnvelope(
   siteProfile: string,
   pageUrl: string,
@@ -91,14 +114,7 @@ export function searchExtractEnvelope(
   return {
     siteProfile,
     pageRevision: 1,
-    record: {
-      siteProfile,
-      pageKind: 'search',
-      pageUrl,
-      candidateCount: candidates.length,
-      candidates,
-      note: 'Candidate snippets are traversal hints; open each /itm/ URL and extract it for canonical evidence.',
-    },
+    record: searchExtractRecord(siteProfile, pageUrl, candidates),
     warnings: [],
   };
 }
@@ -181,3 +197,56 @@ export function modelDealsFeed(records: number, targetBytesPerRecord: number): R
 }
 
 export { MODELLED_ITMPRP_LENGTH, MODELLED_ROWS_PER_PAGE, MODELLED_TITLE_LENGTH, buildSearchResultsPage };
+
+/* -------------------------------------------------------------------------
+ * Capture provenance and table rendering
+ *
+ * Shared by both entry points rather than copied into each: a before and an
+ * after capture that describe their tree by different rules, or round their
+ * numbers differently, are not diffable, and two copies of this is how that
+ * happens.
+ * ---------------------------------------------------------------------- */
+
+export interface SourceState {
+  repoHead: string | null;
+  dirtyPaths: string[];
+}
+
+/**
+ * A ledger is only diffable against a later one if both say what tree they
+ * measured. A dirty tree is not an error here — the harness measures the
+ * built packages, whatever is in them — but a capture taken mid-change is
+ * not a capture of HEAD, and the file has to admit which it is.
+ */
+export function sourceState(): SourceState {
+  const git = (args: string[]): string | null => {
+    try {
+      // trimEnd, not trim: a porcelain status line begins with two status
+      // columns, and the first of them is a space for an unstaged change.
+      return execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' }).trimEnd();
+    } catch {
+      return null;
+    }
+  };
+  // --no-optional-locks: a measurement harness has no business writing to
+  // the repository it is measuring, not even an index stat refresh.
+  const status = git(['--no-optional-locks', 'status', '--porcelain', '--untracked-files=no']);
+  return {
+    repoHead: git(['--no-optional-locks', 'rev-parse', 'HEAD'])?.trim() ?? null,
+    dirtyPaths:
+      status === null || status.length === 0 ? [] : status.split('\n').map((line) => line.slice(3).trim()),
+  };
+}
+
+export function kib(bytes: number | null): string {
+  return bytes === null ? '—' : `${(bytes / 1024).toFixed(1)} KiB`;
+}
+
+export function table(headers: string[], rows: string[][]): string {
+  const widths = headers.map((header, column) =>
+    Math.max(header.length, ...rows.map((row) => (row[column] ?? '').length)),
+  );
+  const line = (cells: string[]): string =>
+    cells.map((cell, column) => cell.padEnd(widths[column]!)).join('  ').trimEnd();
+  return [line(headers), widths.map((width) => '-'.repeat(width)).join('  '), ...rows.map(line)].join('\n');
+}

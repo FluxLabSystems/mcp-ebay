@@ -22,6 +22,7 @@ import {
   ERROR_CATALOG,
   getToolEntry,
   JSON_BODY_MAX_BYTES,
+  RUN_TOOL_DASHBOARD,
   SCOPE_ADMIN,
   SCOPE_INTERACT,
   SCOPE_READ,
@@ -35,6 +36,7 @@ import type { DeviceRegistry } from './devices/registry.js';
 import { buildMcpServer } from './mcp/server.js';
 import { handlePairRequest } from './pairing.js';
 import { RateLimiter } from './rateLimit.js';
+import { RunCheckpointService } from './runs/checkpoints.js';
 import type { Store } from './store/types.js';
 
 export interface GatewayAppDeps {
@@ -96,9 +98,20 @@ export function buildGatewayApp(deps: GatewayAppDeps): GatewayApp {
           ...(deps.dashboardFetch === undefined ? {} : { fetchImpl: deps.dashboardFetch }),
         });
 
+  // The deals.* run tools need only the gateway's own Store, but they are
+  // gated on the same configuration as the dashboard tools: they are
+  // authorised with deals:write, and that scope is advertised in the RFC
+  // 9728 metadata below only when the dashboards are configured. Registering
+  // them otherwise would publish a tool no token in a strict-OAuth
+  // deployment could ever satisfy.
+  const runs =
+    config.dashboards === null
+      ? null
+      : new RunCheckpointService({ store: deps.store.runCheckpoints, dashboard: RUN_TOOL_DASHBOARD });
+
   const mcpHandler = createMcpHandler(
     ({ authInfo }) =>
-      buildMcpServer({ broker: deps.broker, serverVersion: deps.serverVersion, dashboards }, authInfo),
+      buildMcpServer({ broker: deps.broker, serverVersion: deps.serverVersion, dashboards, runs }, authInfo),
     {
       // §9: only the 2026-07-28 modern profile unless compatibility is
       // explicitly enabled by configuration.

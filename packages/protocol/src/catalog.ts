@@ -32,6 +32,10 @@ import {
   NavigateOutput,
   OpenAndExtractInput,
   OpenAndExtractOutput,
+  RunCheckpointInput,
+  RunCheckpointOutput,
+  RunResumeInput,
+  RunResumeOutput,
   ScreenshotInput,
   ScreenshotOutput,
   ScrollInput,
@@ -427,4 +431,77 @@ export function dashboardScopeSatisfies(
 
 export function requiredDashboardScope(dashboard: DashboardId, action: DashboardToolAction): string {
   return action === 'upsert' ? DASHBOARD_WRITE_SCOPES[dashboard] : SCOPE_DASHBOARDS_READ;
+}
+
+/* ------------------------------------------------------------------------- *
+ * Deals run checkpoints — gateway-served, backed by the gateway's own Store.
+ *
+ * These tools are named for the run they serve (`deals.*`) rather than for
+ * the dashboard they are authorised against, because a run is not a
+ * dashboard record and calling them `dashboard.*` would say it was. The
+ * scope machinery is keyed on dashboard id, so each entry names its
+ * dashboard explicitly and maps its action onto the existing
+ * DashboardToolAction: writing a checkpoint authorises like an upsert
+ * (deals:write), reading one authorises like a feed read (dashboards:read
+ * or any dashboard write scope). No new scope is introduced — the run
+ * bookkeeping for a dashboard is exactly as sensitive as the dashboard.
+ * ------------------------------------------------------------------------- */
+
+/** The dashboard whose scopes gate the `deals.*` run tools. */
+export const RUN_TOOL_DASHBOARD: DashboardId = 'deals';
+
+export type RunToolAction = 'checkpoint' | 'resume';
+
+export interface RunToolCatalogEntry {
+  /** Public MCP tool name, e.g. `deals.run_checkpoint`. */
+  name: string;
+  action: RunToolAction;
+  /** Dashboard whose scopes authorise this tool (§10.2 — no new scopes). */
+  dashboard: DashboardId;
+  /** Gateway tool-call deadline in milliseconds. */
+  timeoutMs: number;
+  description: string;
+  inputSchema: z.ZodType;
+  outputSchema: z.ZodType;
+}
+
+/**
+ * A checkpoint write is a dashboard write; a resume read is a dashboard
+ * read. Expressing it as a mapping rather than a second scope table is the
+ * point: dashboardScopeSatisfies stays the only place the rule lives.
+ */
+export function runToolDashboardAction(action: RunToolAction): DashboardToolAction {
+  return action === 'checkpoint' ? 'upsert' : 'feed';
+}
+
+/** Neither tool touches a browser or the dashboard API; both are pure store I/O. */
+const RUN_TOOL_TIMEOUT_MS = 10_000;
+
+export const RUN_TOOL_CATALOG: readonly RunToolCatalogEntry[] = [
+  {
+    name: 'deals.run_checkpoint',
+    action: 'checkpoint',
+    dashboard: RUN_TOOL_DASHBOARD,
+    timeoutMs: RUN_TOOL_TIMEOUT_MS,
+    description:
+      'Record what a deals run has already done, so a run that ends at the per-turn tool-call limit resumes instead of re-searching. Bookkeeping only: it writes no listing anywhere and drives no browser. searched and verifiedIds accumulate across checkpoints, pendingIds is replaced, notes is replaced, and an omitted field leaves what is stored untouched — so a turn sends only what it just learned. Store identifiers and counts, never page content.',
+    inputSchema: RunCheckpointInput,
+    outputSchema: RunCheckpointOutput,
+  },
+  {
+    name: 'deals.run_resume',
+    action: 'resume',
+    dashboard: RUN_TOOL_DASHBOARD,
+    timeoutMs: RUN_TOOL_TIMEOUT_MS,
+    description:
+      'Read back what a deals run already searched and verified. With no runId it returns the most recent resumable run — still running and checkpointed within the last 12 hours; naming a runId returns that run whatever its status, so "already finished" is distinguishable from "never existed". Call this first in a turn that continues a run.',
+    inputSchema: RunResumeInput,
+    outputSchema: RunResumeOutput,
+  },
+];
+
+const RUN_CATALOG_BY_NAME = new Map(RUN_TOOL_CATALOG.map((entry) => [entry.name, entry]));
+
+export function getRunToolEntry(name: string): RunToolCatalogEntry | undefined {
+  return RUN_CATALOG_BY_NAME.get(name);
 }

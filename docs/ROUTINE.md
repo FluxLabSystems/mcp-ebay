@@ -38,6 +38,14 @@ Amortized cost per canonical item: **≤ 0.2 calls** (batches of ≥ 10).
 If the budget is going to end early, drop calls from the *bottom*. Never
 drop the write.
 
+Two calls sit outside that table because they pay for themselves. Open with
+**`deals.run_resume`** when a previous turn may have been cut off: if it
+returns `pendingIds`, calls 3–4 are already spent and you go straight to
+the batch. Fold **`deals.run_checkpoint`** into the same moment as each
+`dashboard.upsert` — one extra call that turns a truncated run into a
+resumable one. On a clean run with nothing to resume, skip both and the
+plan above stands at 12.
+
 ## Why each call is one call
 
 - **`browser.open_and_extract`** navigates and extracts in one call. On a
@@ -61,6 +69,35 @@ drop the write.
   what the shortlist justifies. `sellingFormat: "unknown"` is a real
   answer — a card that states no format is genuinely ambiguous, and reading
   silence as fixed price would price a live bid as purchasable.
+
+## When the budget ends anyway
+
+Writing early means a truncated run still produced something. Checkpointing
+means the *next* turn does not start from zero.
+
+- **`deals.run_checkpoint(runId, {searched, verifiedIds, pendingIds, notes})`**
+  — fold it into the same moment as each upsert. `searched` and
+  `verifiedIds` union with what is stored; `pendingIds` replaces. Omitted
+  fields are left alone, which is what makes a mid-turn checkpoint cheap
+  enough to be worth writing.
+- **`deals.run_resume()`** — call it *before* searching. With no `runId` it
+  returns the most recent resumable run for this caller. If it comes back
+  with `verifiedIds`, those items are already done: extract the
+  `pendingIds` and skip the search that produced them.
+- A run is resumable while its `status` is `running` and it was
+  checkpointed within **12 hours**. That window is deliberately shorter
+  than a day: a daily routine must never resume across two scheduled fires,
+  because replaying yesterday's prices as today's evidence is worse than
+  re-searching.
+- A checkpoint holds **ids and counts**, never page content, and is capped
+  at 16 KiB. Over the cap the oldest ids are trimmed and the trim is
+  reported in `warnings` — losing the oldest ids costs less than losing the
+  whole checkpoint, but it is never silent.
+
+Naming a `runId` that exists but is finished returns `found: true,
+resumable: false`, so "already completed" is distinguishable from "never
+existed". Do not re-run a completed run's searches on the strength of an
+empty resume.
 
 ## Coverage audits under a call budget
 

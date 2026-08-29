@@ -800,3 +800,162 @@ export const DashboardUpsertOutput = z.strictObject({
 });
 
 export type WaitCondition = z.infer<typeof WaitConditionBase>;
+
+/* ------------------------------------------------------------------------- *
+ * Deals run checkpoints — gateway-served bookkeeping, no device on the path.
+ *
+ * Root cause 5 of the deals-run budget audit: nothing on the server knew what
+ * a run had already done. A run that hit the per-turn tool-call ceiling
+ * mid-traversal started the next turn from zero and re-searched, because the
+ * only durable record of the turn was audit_events, which is insert-only by
+ * design (§21) and answers "what calls happened", never "what has this run
+ * verified". These two tools give a run one small, explicitly-written state
+ * row instead, so the next turn resumes from the last checkpoint.
+ *
+ * A checkpoint carries identifiers and counts only. It is deliberately not a
+ * place to park scraped page content: the caps below are sized for stable
+ * record ids (`ebay-<itemId>`, `kijiji-<adId>`) and short search labels, and
+ * the free-text field is the one channel that could otherwise smuggle listing
+ * text or personal data into gateway storage, so it is the smallest field
+ * here.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * How long a checkpoint stays readable and resumable, from its last write.
+ * A deals routine fires daily, so half a day is the longest a resume can
+ * reach back without ever crossing two scheduled fires — a run resumed
+ * across that boundary would be replaying yesterday's prices as today's
+ * evidence, which is worse than re-searching.
+ */
+export const RUN_CHECKPOINT_TTL_SECONDS = 12 * 60 * 60;
+
+export const RUN_ID_MAX_LENGTH = 64;
+/**
+ * Caller-chosen, but constrained: a runId is echoed into tool output and
+ * structured logs, so it stays a flat identifier with no whitespace,
+ * newlines, or free text that could carry something it should not.
+ */
+export const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+
+/** Search labels already run — queries and facets, not result pages. */
+export const RUN_CHECKPOINT_MAX_SEARCHED = 24;
+export const RUN_CHECKPOINT_SEARCHED_MAX_CHARS = 160;
+
+/**
+ * Per-list id ceiling. 250 is half of dashboard.upsert's 500-record limit:
+ * a run holding more verified ids than it could write in one upsert has
+ * already outgrown a single run, and the checkpoint should not pretend
+ * otherwise.
+ */
+export const RUN_CHECKPOINT_MAX_IDS = 250;
+export const RUN_CHECKPOINT_ID_MAX_CHARS = 128;
+
+/** Free text for the next turn. Short on purpose — see the block comment. */
+export const RUN_CHECKPOINT_NOTES_MAX_CHARS = 400;
+
+/**
+ * Hard ceiling on the stored payload (the three lists plus notes, as JSON).
+ * The per-list caps bound the count; this bounds the bytes, which is the
+ * quantity that actually decides whether a checkpoint stays small. Oldest
+ * entries are trimmed until the payload fits and the trim is reported in
+ * `warnings` — a checkpoint is never refused for being too big, because
+ * losing the whole checkpoint costs the run more than losing its oldest ids.
+ */
+export const RUN_CHECKPOINT_MAX_BYTES = 16 * 1024;
+
+/**
+ * 'running'   — the run may still be resumed.
+ * 'completed' — the run reached its dashboard.upsert; resume will find it by
+ *               id but will not offer it as the latest resumable run.
+ * 'abandoned' — the run was given up on deliberately; same treatment.
+ */
+export const RunStatusSchema = z.enum(['running', 'completed', 'abandoned']);
+export type RunStatus = z.infer<typeof RunStatusSchema>;
+
+const RunIdSchema = z.string().min(1).max(RUN_ID_MAX_LENGTH).regex(RUN_ID_PATTERN);
+
+/**
+ * Every field except runId is optional, and an omitted field leaves what is
+ * stored untouched. That is what makes a checkpoint cheap enough to write
+ * often: a turn sends the ids it just learned, not the whole run state it
+ * would otherwise have to carry in context to be able to resend.
+ */
+export const RunCheckpointInput = z.strictObject({
+  runId: RunIdSchema,
+  /**
+   * Accumulated by set-union with what is stored. A completed search is a
+   * fact that stays true, so a later checkpoint never un-searches one.
+   */
+  searched: z
+    .array(z.string().min(1).max(RUN_CHECKPOINT_SEARCHED_MAX_CHARS))
+    .max(RUN_CHECKPOINT_MAX_SEARCHED)
+    .optional(),
+  /** Accumulated by set-union, for the same reason as `searched`. */
+  verifiedIds: z
+    .array(z.string().min(1).max(RUN_CHECKPOINT_ID_MAX_CHARS))
+    .max(RUN_CHECKPOINT_MAX_IDS)
+    .optional(),
+  /**
+   * Replaced wholesale, not merged: this is the work still outstanding, and
+   * a queue that only ever grew by union could never reach empty.
+   */
+  pendingIds: z
+    .array(z.string().min(1).max(RUN_CHECKPOINT_ID_MAX_CHARS))
+    .max(RUN_CHECKPOINT_MAX_IDS)
+    .optional(),
+  /** Replaced when sent. Send an empty string to clear it. */
+  notes: z.string().max(RUN_CHECKPOINT_NOTES_MAX_CHARS).optional(),
+  /**
+   * Optional rather than defaulted: a default of 'running' would silently
+   * resurrect a run that a previous checkpoint had already marked complete.
+   * A new run with no status starts 'running'.
+   */
+  status: RunStatusSchema.optional(),
+});
+
+export const RunCheckpointOutput = z.strictObject({
+  runId: z.string(),
+  dashboard: z.string(),
+  status: RunStatusSchema,
+  /** Number of checkpoints written to this run, this one included. */
+  checkpointCount: z.int().min(0),
+  searchedCount: z.int().min(0),
+  verifiedCount: z.int().min(0),
+  pendingCount: z.int().min(0),
+  /** Serialized size of the stored payload against RUN_CHECKPOINT_MAX_BYTES. */
+  storedBytes: z.int().min(0),
+  updatedAt: z.string(),
+  expiresAt: z.string(),
+  /** Non-empty when the write had to trim to stay inside its bounds. */
+  warnings: z.array(z.string()),
+});
+
+/**
+ * Read a run back. With no runId this answers with the most recent
+ * *resumable* run: still 'running', and last written inside
+ * RUN_CHECKPOINT_TTL_SECONDS. Naming a runId reads that run whatever its
+ * status, so a caller can tell "already finished" from "never existed".
+ */
+export const RunResumeInput = z.strictObject({
+  runId: RunIdSchema.optional(),
+});
+
+export const RunResumeOutput = z.strictObject({
+  found: z.boolean(),
+  /** status === 'running' and within TTL. False for a run already finished. */
+  resumable: z.boolean(),
+  runId: z.union([z.string(), z.null()]),
+  dashboard: z.string(),
+  status: z.union([RunStatusSchema, z.null()]),
+  searched: z.array(z.string()),
+  verifiedIds: z.array(z.string()),
+  pendingIds: z.array(z.string()),
+  notes: z.union([z.string(), z.null()]),
+  checkpointCount: z.int().min(0),
+  startedAt: z.union([z.string(), z.null()]),
+  updatedAt: z.union([z.string(), z.null()]),
+  expiresAt: z.union([z.string(), z.null()]),
+  /** Seconds since the last checkpoint — how stale the resumed state is. */
+  ageSeconds: z.union([z.int().min(0), z.null()]),
+  warnings: z.array(z.string()),
+});

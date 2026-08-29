@@ -10,6 +10,7 @@ export * from './db/migrate.js';
 export * from './mcp/server.js';
 export * from './pairing.js';
 export * from './rateLimit.js';
+export * from './runs/checkpoints.js';
 export * from './store/memory.js';
 export * from './store/pg.js';
 export * from './store/types.js';
