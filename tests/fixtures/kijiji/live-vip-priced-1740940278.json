@@ -1,0 +1,8 @@
+{
+  "sourceUrl": "https://www.kijiji.ca/v-toy-game/city-of-toronto/lego/1740940278",
+  "capturedAt": "2026-08-29T14:10:00Z",
+  "synthetic": false,
+  "capturedWith": "curl -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ... Chrome/131.0.0.0' -H 'Accept-Language: en-CA,en;q=0.9'",
+  "httpStatus": 200,
+  "notes": "Unmodified server HTML for repro ad 1740940278 (\"Bulk Lego ~10lbs\", Oakville / Halton Region, $35). Verified real ad content, not a bot or consent wall: the Product JSON-LD carries the ad title, description, four ImageObjects and offers.availableAtOrFrom. Kijiji hydrates the posted-time and pagination widgets client-side, so this capture is the pre-hydration DOM; everything asserted against it is present server-side."
+}

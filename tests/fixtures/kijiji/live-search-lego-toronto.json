@@ -1,0 +1,8 @@
+{
+  "sourceUrl": "https://www.kijiji.ca/b-toys-games/city-of-toronto/lego/k0c108l1700273",
+  "capturedAt": "2026-08-29T14:10:00Z",
+  "synthetic": false,
+  "capturedWith": "curl -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ... Chrome/131.0.0.0' -H 'Accept-Language: en-CA,en;q=0.9'",
+  "httpStatus": 200,
+  "notes": "Unmodified server HTML for a live LEGO search: 40 rich cards of a stated 3,386. The count appears in <title> (\"3,386 ads for lego ...\") and in __NEXT_DATA__ pagination {offset:0,limit:40,totalCount:3386}; no rel=next link and no /page-2/ anchor is served. The per-card posted time is hydrated client-side, so listing-details ships as \"<location>\" plus the dot separator and nothing else here."
+}

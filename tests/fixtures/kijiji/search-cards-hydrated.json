@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "https://www.kijiji.ca/b-toys-games/city-of-toronto/lego/k0c108l1700273",
+  "capturedAt": "2026-08-29T14:10:00Z",
+  "synthetic": true,
+  "notes": "SYNTHETIC, derived from the live capture. Kijiji hydrates the card's posted time client-side, so no server fetch can show it -- live-search-lego-toronto.html ships \"<location>\" plus the dot separator and an empty slot for all 40 cards. The card shells here are copied verbatim from that live capture; the posted-time node is reconstructed from the site's own listing:activation_time.* i18n strings shipped in the same capture (\"{{hours}} hrs ago\", \"1 day ago\", \"{{weeks}} wks ago\", aria_label \"Published {{activationText}}\"). The exact element and class names of the rendered node are NOT live-verified -- only its wording and its position inside listing-details are."
+}

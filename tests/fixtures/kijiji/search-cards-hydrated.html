@@ -1,0 +1,23 @@
+<!doctype html>
+<!--
+  Search-result cards as the browser renders them AFTER hydration. The card
+  shells below are copied verbatim from the live capture in
+  live-search-lego-toronto.html; the only addition is the posted-time node
+  inside [data-testid="listing-details"], which Kijiji renders client-side
+  and therefore never appears in server HTML. Its wording is taken verbatim
+  from the site's own i18n table shipped in that same capture
+  (listing:activation_time.* -> "{{hours}} hrs ago", "1 day ago",
+  "{{weeks}} wks ago", aria_label "Published {{activationText}}").
+-->
+<html lang="en">
+  <head>
+    <title>3,386 ads for lego in Toys &amp; Games in City of Toronto | Kijiji Marketplaces</title>
+  </head>
+  <body>
+    <ul data-testid="srp-grid-search-list">
+      <li data-testid="rich-card-list-item-0" style="list-style-type:none"><article data-testid="rich-card"><header><h3 data-testid="listing-title"><a data-testid="rich-card-link" href="https://www.kijiji.ca/v-toys-games/city-of-toronto/lego-bnib/1742668328">LEGO - BNIB</a></h3><div data-testid="listing-price-container"><p data-testid="listing-price">$45.00</p></div></header><main><div><div data-testid="listing-details"><p data-testid="listing-location">Old Toronto</p><div><span role="separator" data-testid="dot-divider">•</span></div><p aria-label="Published 2 hrs ago">2 hrs ago</p></div></div></main></article></li>
+      <li data-testid="rich-card-list-item-1" style="list-style-type:none"><article data-testid="rich-card"><header><h3 data-testid="listing-title"><a data-testid="rich-card-link" href="https://www.kijiji.ca/v-toys-games/city-of-toronto/lego-baseplate/1655162364">LEGO Baseplate</a></h3><div data-testid="listing-price-container"><p data-testid="listing-price">$15.00</p></div></header><main><div><div data-testid="listing-details"><p data-testid="listing-location">City of Toronto</p><div><span role="separator" data-testid="dot-divider">•</span></div><p aria-label="Published 1 day ago">1 day ago</p></div></div></main></article></li>
+      <li data-testid="rich-card-list-item-2" style="list-style-type:none"><article data-testid="rich-card"><header><h3 data-testid="listing-title"><a data-testid="rich-card-link" href="https://www.kijiji.ca/v-toys-games/city-of-toronto/legos-for-kids/1681528802">Legos for kids</a></h3><div data-testid="listing-price-container"><p data-testid="listing-price">Please Contact</p></div></header><main><div><div data-testid="listing-details"><p data-testid="listing-location">Etobicoke</p><div><span role="separator" data-testid="dot-divider">•</span></div><p aria-label="Published 3 wks ago">3 wks ago</p></div></div></main></article></li>
+    </ul>
+  </body>
+</html>

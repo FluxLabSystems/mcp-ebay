@@ -1,7 +1,7 @@
 /**
- * Price and identity normalization for kijiji.ca.v1 — mirrors the
- * site-ebay normalize conventions (§20-style), adapted to Kijiji's
- * classified-ad price vocabulary and URL shapes.
+ * Price, posted-time and identity normalization for kijiji.ca.v1 — mirrors
+ * the site-ebay normalize conventions (§20-style), adapted to Kijiji's
+ * classified-ad price vocabulary, relative posted times, and URL shapes.
  */
 
 export type KijijiPriceKind = 'amount' | 'free' | 'contact' | 'swap';
@@ -91,6 +91,58 @@ export function canonicalAdUrl(adId: string, observedUrl: string | null): string
   const host = parsed.hostname.toLowerCase();
   if (host !== 'kijiji.ca' && !host.endsWith('.kijiji.ca')) return null;
   return `https://${host}${parsed.pathname}`;
+}
+
+/**
+ * Milliseconds for one relative-time unit, in both the abbreviated and the
+ * spelled-out spellings Kijiji uses. Months are the calendar-free 30 days a
+ * "1 mo ago" card can honestly mean.
+ */
+function postedUnitMs(unit: string): number | null {
+  if (/^(?:s|secs?|seconds?|secondes?)$/.test(unit)) return 1_000;
+  if (/^(?:mins?|minutes?)$/.test(unit)) return 60_000;
+  if (/^(?:hrs?|hours?|heures?|heure)$/.test(unit)) return 3_600_000;
+  if (/^(?:d|days?|j|jours?)$/.test(unit)) return 86_400_000;
+  if (/^(?:wks?|weeks?|sem|semaines?)$/.test(unit)) return 604_800_000;
+  if (/^(?:mos?|months?|mois)$/.test(unit)) return 2_592_000_000;
+  return null;
+}
+
+/**
+ * Parse the relative posted time a search card renders into an ISO instant.
+ * The vocabulary is the site's own: listing:activation_time.* ships inline
+ * on every search page and reads "1 min ago", "{{minutes}} min ago",
+ * "1 hr ago", "{{hours}} hrs ago", "1 day ago", "1 wk ago", "{{weeks}} wks
+ * ago", "1 mo ago" -- not the "Posted 2 hours ago" wording the first pass
+ * assumed -- so both spellings are accepted, as is the "Published {{...}}"
+ * aria-label the same table defines.
+ *
+ * `now` is the instant the offset is measured back from; the caller passes
+ * its own observation time so a record stays reproducible from its fixture.
+ * "30+ d" and "over a month ago" state a bound rather than a time and
+ * return null, as does anything unrecognized: no postedAt is better than a
+ * guessed one.
+ *
+ * NEEDS-LIVE-VERIFICATION: the French column ("il y a 2 heures", "hier") is
+ * carried defensively -- fr_CA activation_time strings have not been seen
+ * on a live page, only the en_CA ones.
+ */
+export function parseKijijiPostedText(rawText: string, now: Date): string | null {
+  const text = rawText.replace(/[\u00a0\u202f]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (text.length === 0) return null;
+  // An open-ended bound is not an instant.
+  if (/\d\+|\bover a\b|\bplus d/.test(text)) return null;
+  if (/\b(?:yesterday|hier)\b/.test(text)) return new Date(now.getTime() - 86_400_000).toISOString();
+  // Every number-unit pair is tried, not just the first: a card's posted
+  // text can trail a postal code ("M5T 1M5") whose "1m" is not a unit.
+  for (const match of text.matchAll(/(\d+)\s*([a-z\u00e0-\u00ff]+)/g)) {
+    const unitMs = postedUnitMs(match[2]!);
+    if (unitMs === null) continue;
+    const amount = Number.parseInt(match[1]!, 10);
+    if (!Number.isFinite(amount)) continue;
+    return new Date(now.getTime() - amount * unitMs).toISOString();
+  }
+  return null;
 }
 
 /** Fluxology deals feed id convention: `kijiji-<marketplaceListingId>`. */

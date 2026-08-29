@@ -1,0 +1,8 @@
+{
+  "sourceUrl": "https://www.kijiji.ca/v-toy-game/city-of-toronto/lego/1730433251",
+  "capturedAt": "2026-08-29T14:10:00Z",
+  "synthetic": false,
+  "capturedWith": "curl -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ... Chrome/131.0.0.0' -H 'Accept-Language: en-CA,en;q=0.9'",
+  "httpStatus": 200,
+  "notes": "Unmodified server HTML for repro ad 1730433251, the \"Please Contact\" ad with 10 images. Verified real ad content: h1, vip-price \"Please Contact\", vip-description-wrapper, and a StandardListing:1730433251 entry in __NEXT_DATA__. Its schema.org Product <script type=\"application/ld+json\"> is served EMPTY -- Kijiji emits no Product JSON-LD at all for a non-amount price -- which is the actual cause of defect 5."
+}
