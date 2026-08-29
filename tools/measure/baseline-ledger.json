@@ -1,0 +1,252 @@
+{
+  "capturedAt": "2026-08-29T14:23:28.142Z",
+  "node": "v22.22.2",
+  "source": {
+    "repoHead": "9ad1f5b41b5ee16b955b4940addb8a53df61a00a",
+    "dirtyPaths": [
+      "apps/gateway/src/broker.ts",
+      "apps/gateway/src/dashboards/client.ts",
+      "apps/gateway/src/mcp/server.ts",
+      "apps/windows-agent/src/executors.ts",
+      "apps/windows-agent/src/index.ts",
+      "packages/protocol/src/catalog.ts",
+      "packages/protocol/src/tools.ts",
+      "packages/site-kijiji/src/extract.ts",
+      "packages/site-kijiji/src/normalize.ts",
+      "packages/site-kijiji/src/traversal.ts",
+      "tests/contract/mcpHttp.test.ts",
+      "tests/contract/oauth.test.ts",
+      "tests/contract/toolSchemas.test.ts",
+      "tests/unit/kijijiNormalize.test.ts"
+    ]
+  },
+  "reachability": [
+    {
+      "host": "www.ebay.ca",
+      "status": 403,
+      "reachable": false
+    },
+    {
+      "host": "www.kijiji.ca",
+      "status": 200,
+      "reachable": true
+    }
+  ],
+  "ledger": {
+    "measured": [
+      {
+        "phase": "preamble",
+        "calls": 2,
+        "bytes": 41348,
+        "seconds": 0.002,
+        "basis": "derived",
+        "note": "2 call(s) at the current one-page-per-call tool surface; bytes measured, seconds are extractor CPU only"
+      },
+      {
+        "phase": "search_page",
+        "calls": 2,
+        "bytes": 159652,
+        "seconds": 0.061,
+        "basis": "derived",
+        "note": "2 call(s) at the current one-page-per-call tool surface; bytes measured, seconds are extractor CPU only"
+      },
+      {
+        "phase": "item_pages",
+        "calls": 34,
+        "bytes": 26934,
+        "seconds": 0.136,
+        "basis": "derived",
+        "note": "34 call(s) at the current one-page-per-call tool surface; bytes measured, seconds are extractor CPU only"
+      },
+      {
+        "phase": "upsert",
+        "calls": 1,
+        "bytes": 3341,
+        "seconds": 0,
+        "basis": "derived",
+        "note": "1 call(s) at the current one-page-per-call tool surface; bytes measured, seconds are extractor CPU only"
+      }
+    ],
+    "reported": [
+      {
+        "phase": "preamble",
+        "calls": 5,
+        "bytes": 40960,
+        "seconds": null,
+        "basis": "reported",
+        "note": "memory, tool load, dashboard.feed full (38 records, ~40 KB), session_open"
+      },
+      {
+        "phase": "search_page",
+        "calls": 8,
+        "bytes": 163840,
+        "seconds": null,
+        "basis": "reported",
+        "note": "navigate + extract (160 KB, spilled to disk) + 5 shell calls to parse it + 1 snapshot for dropped titles"
+      },
+      {
+        "phase": "item_pages",
+        "calls": 37,
+        "bytes": null,
+        "seconds": null,
+        "basis": "reported",
+        "note": "2 calls each (navigate + extract) plus 3 snapshots for ended listings reported active"
+      },
+      {
+        "phase": "upsert",
+        "calls": 0,
+        "bytes": null,
+        "seconds": null,
+        "basis": "reported",
+        "note": "budget exhausted before any write"
+      }
+    ]
+  },
+  "probes": [
+    {
+      "id": "dashboard.feed.full",
+      "question": "What does the routine pull in just to know what it already has?",
+      "basis": "modelled",
+      "bytes": 41053,
+      "ms": 2.38,
+      "detail": {
+        "records": 38,
+        "modelledFrom": "reported ~40960 B total, padded to that mean per record"
+      }
+    },
+    {
+      "id": "dashboard.feed.ids",
+      "question": "How much of that does mode \"ids\" already avoid?",
+      "basis": "measured",
+      "bytes": 7873,
+      "ms": 0.796,
+      "detail": {
+        "reductionPct": 80.8,
+        "note": "Reduction is a property of DashboardClient.feed and holds for any input of this shape; the absolute sizes inherit the modelled record size.",
+        "activeFilter": false
+      }
+    },
+    {
+      "id": "ebay.search.fixture",
+      "question": "What does browser.extract return for the checked-in search fixture?",
+      "basis": "measured",
+      "bytes": 898,
+      "ms": 9.62,
+      "detail": {
+        "servedFrom": "http://127.0.0.1:41373/ebay/search-results.html",
+        "htmlBytes": 1072,
+        "candidates": 2,
+        "bytesPerCandidate": 449,
+        "naiveExtrapolationTo240": 107760,
+        "caveat": "The fixture carries 2 unique candidates with bare /itm/<id>?hash=abc hrefs. Scaling it to 240 rows under-predicts, because the live cost is dominated by href length, which the fixture does not have."
+      }
+    },
+    {
+      "id": "ebay.search.modelled240",
+      "question": "What would a 240-row search page cost through the current extract tool?",
+      "basis": "modelled",
+      "bytes": 159254,
+      "ms": 60.987,
+      "detail": {
+        "rows": 240,
+        "candidates": 240,
+        "meanHrefLength": 373,
+        "meanTitleLength": 72,
+        "modelledParameters": {
+          "itmprpLength": 220,
+          "titleLength": 72,
+          "trackingParams": [
+            "_skw",
+            "itmmeta",
+            "hash",
+            "itmprp"
+          ]
+        },
+        "bytesPerCandidate": 664,
+        "vsReported160KiB": 0.97,
+        "caveat": "Real code, constructed input. The extractor and the response envelope are the shipped ones; the page is generated here because ebay.ca is unreachable. Rescale with meanHrefLength if a captured page says otherwise."
+      }
+    },
+    {
+      "id": "ebay.search.modelled240.canonicalHrefs",
+      "question": "How much of that is the tracking query string?",
+      "basis": "modelled",
+      "bytes": 78386,
+      "ms": 41.563,
+      "detail": {
+        "meanHrefLength": 36,
+        "savedBytes": 80868,
+        "savedPct": 50.8,
+        "note": "Same page, same extractor, hrefs reduced to https://www.ebay.ca/itm/<id> — which is the only part of the URL the traversal then navigates to."
+      }
+    },
+    {
+      "id": "ebay.item.active",
+      "question": "What does one canonical item extract return?",
+      "basis": "measured",
+      "bytes": 1239,
+      "ms": 8.201,
+      "detail": {
+        "servedFrom": "http://127.0.0.1:41373/itm/123456789012",
+        "warnings": 0
+      }
+    },
+    {
+      "id": "ebay.item.ended",
+      "question": "Does the extractor call an ended listing ended?",
+      "basis": "measured",
+      "bytes": 902,
+      "ms": 2.112,
+      "detail": {
+        "listingStatus": "ended",
+        "note": "The fixture renders the banner element the selector list names. The live failure mode is the fallback below it: with no matching banner, detectListingStatus scans the first 2000 characters of body text and otherwise returns \"active\" whenever a title and a price are present."
+      }
+    },
+    {
+      "id": "kijiji.search.fixture",
+      "question": "What does the Kijiji search extract return for its fixture?",
+      "basis": "measured",
+      "bytes": 861,
+      "ms": 2.251,
+      "detail": {
+        "candidates": 2
+      }
+    },
+    {
+      "id": "kijiji.vip.fixture",
+      "question": "What does one Kijiji ad extract return?",
+      "basis": "measured",
+      "bytes": 1087,
+      "ms": 2.168,
+      "detail": {
+        "warnings": 0
+      }
+    }
+  ],
+  "unmeasurable": [
+    {
+      "id": "live.ebay.search.bytes",
+      "reason": "www.ebay.ca answers this box with HTTP 403 (bot wall); no live 240-row SRP can be fetched or extracted here."
+    },
+    {
+      "id": "client.inline_response_limit",
+      "reason": "The threshold above which the chat client spills a tool response to a file lives in the client, not in the gateway or the agent. Nothing in this repo observes it."
+    },
+    {
+      "id": "call.wall_time.end_to_end",
+      "reason": "Real per-call latency is Chrome navigation plus the gateway-to-agent WebSocket round trip on a paired Windows box. No agent and no Chrome here; the seconds reported below are extractor CPU only."
+    },
+    {
+      "id": "shell.parse_calls",
+      "reason": "The 5 shell calls that parsed the spilled search response were client-side tool calls against a local file. They are not gateway calls and leave no trace this repo can read."
+    },
+    {
+      "id": "browser.snapshot.bytes",
+      "reason": "browser.snapshot serializes a live accessibility tree; it has no fixture and no offline path."
+    },
+    {
+      "id": "dashboard.feed.live_bytes",
+      "reason": "The deals dashboard API is not reachable from this box and the harness holds no ingest token. The feed below is modelled at the reported size; only the mode-to-mode reduction is measured."
+    }
+  ]
+}
