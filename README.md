@@ -32,7 +32,7 @@ tests/               unit / contract / security / integration / e2e / live + fix
 
 ## Prerequisites
 
-- Node.js ≥ 22.12, pnpm 10 (`corepack enable`)
+- Node.js ≥ 22.12, pnpm 11 (`corepack enable`; the exact version is pinned in package.json's packageManager field)
 - For browser integration/e2e tests: a Playwright Chromium (`pnpm exec playwright install chromium`) — CI does this; the tests use a **test-only** launch plan and never substitute the production channel
 - For DB tests: any PostgreSQL 17 reachable via `DATABASE_URL` (optional; tests skip without it)
 
