@@ -17,16 +17,23 @@ import {
   buildConfigEntries,
   createLogger,
   detectCharset,
+  detectColorMode,
   interpretKey,
+  meter,
   parseLogLine,
   queryLogonTask,
   renderDashboard,
   resolveUiMode,
   initialViewState,
+  sparkline,
   type AgentStaticInfo,
+  type ColorMode,
   type LogonTaskStatus,
   type ViewState,
 } from '@browser-bridge/windows-agent';
+
+// eslint-disable-next-line no-control-regex -- an ANSI stripper is exactly a control-character regex
+const stripAnsi = (text: string): string => text.replace(/\u001b\][^\u0007]*\u0007/g, '').replace(/\u001b\[[0-9;?]*[A-Za-z]/g, '');
 
 function testInfo(overrides: Partial<AgentStaticInfo> = {}): AgentStaticInfo {
   return {
@@ -82,9 +89,14 @@ describe('AgentStatusStore', () => {
     // Newest first; the error row carries its code.
     expect(snapshot.commands[0]).toMatchObject({ requestId: 'req_2', status: 'error', errorCode: 'POLICY_BLOCKED_URL' });
     expect(snapshot.commands[1]).toMatchObject({ requestId: 'req_1', status: 'ok', durationMs: 812 });
-    // Finishes older than a minute stop counting toward the rate.
+    // Finishes older than a minute stop counting toward the rate, but stay
+    // visible in the 10-minute sparkline history.
     at += 61_000;
-    expect(store.snapshot().commandsPerMinute).toBe(0);
+    const later = store.snapshot();
+    expect(later.commandsPerMinute).toBe(0);
+    expect(later.activityBuckets).toHaveLength(40);
+    expect(later.activityBuckets.reduce((sum, n) => sum + n, 0)).toBe(2);
+    expect(later.activityBuckets.slice(-4).reduce((sum, n) => sum + n, 0)).toBe(0);
   });
 
   it('caps history rings and clearHistory resets history but not identity or phase', () => {
@@ -209,7 +221,7 @@ describe('queryLogonTask', () => {
   });
 });
 
-describe('resolveUiMode / detectCharset', () => {
+describe('resolveUiMode / detectCharset / detectColorMode', () => {
   it('dashboards only on a real console and honors --no-ui and TERM=dumb', () => {
     const none = new Map<string, string>();
     expect(resolveUiMode(none, true, {})).toBe('dashboard');
@@ -222,6 +234,40 @@ describe('resolveUiMode / detectCharset', () => {
     expect(detectCharset({}, 'win32').dotOk).toBe('*');
     expect(detectCharset({ WT_SESSION: '1' }, 'win32').dotOk).toBe('●');
     expect(detectCharset({}, 'linux').dotOk).toBe('●');
+    // A PowerShell 6+ host switches the console to UTF-8 and marks its
+    // children, so pwsh-in-conhost still gets the full glyph set.
+    expect(detectCharset({ POWERSHELL_DISTRIBUTION_CHANNEL: 'MSI:Windows' }, 'win32').dotOk).toBe('●');
+  });
+
+  it('picks truecolor where assured, 16-color otherwise, none under NO_COLOR', () => {
+    expect(detectColorMode({}, 'win32')).toBe('truecolor');
+    expect(detectColorMode({ WT_SESSION: '1' }, 'win32')).toBe('truecolor');
+    expect(detectColorMode({ COLORTERM: 'truecolor' }, 'linux')).toBe('truecolor');
+    expect(detectColorMode({ TERM: 'xterm-256color' }, 'linux')).toBe('basic');
+    expect(detectColorMode({ NO_COLOR: '1', COLORTERM: 'truecolor' }, 'linux')).toBe('none');
+  });
+});
+
+describe('meter / sparkline', () => {
+  it('renders sub-cell resolution with a stable plain-text width', () => {
+    const half = meter(10, 0.55, CHARSET, 'none');
+    expect(half.text).toHaveLength(10);
+    expect(half.text).toContain('█');
+    const empty = meter(10, 0, CHARSET, 'none');
+    expect(empty.text).toBe('·'.repeat(10));
+    const fullBar = meter(10, 1, CHARSET, 'none');
+    expect(fullBar.text).toBe('█'.repeat(10));
+    // Painted form must cover exactly the same columns as the plain text.
+    const painted = meter(10, 0.4, CHARSET, 'truecolor');
+    expect(stripAnsi(painted.painted!)).toBe(painted.text);
+  });
+
+  it('scales sparkline levels to the peak bucket and pads short history', () => {
+    const spark = sparkline([0, 1, 2, 8], 6, CHARSET, 'none');
+    expect(spark.text).toHaveLength(6);
+    expect(spark.text.endsWith('█')).toBe(true);
+    const paintedSpark = sparkline([0, 3, 9], 5, CHARSET, 'truecolor');
+    expect(stripAnsi(paintedSpark.painted!)).toBe(paintedSpark.text);
   });
 });
 
@@ -243,11 +289,17 @@ describe('interpretKey', () => {
 
 const CHARSET = detectCharset({}, 'linux');
 
-function render(store: AgentStatusStore, view: ViewState = initialViewState(), columns = 100, rows = 30) {
+function render(
+  store: AgentStatusStore,
+  view: ViewState = initialViewState(),
+  columns = 100,
+  rows = 30,
+  colorMode: ColorMode = 'none',
+) {
   return renderDashboard(store.snapshot(), view, {
     columns,
     rows,
-    colors: false,
+    colorMode,
     charset: CHARSET,
     now: 1_060_000,
   });
@@ -287,6 +339,22 @@ describe('renderDashboard', () => {
       const result = render(store, initialViewState(), columns, rows);
       expect(result.lines).toHaveLength(rows);
       for (const line of result.lines) expect(line.length).toBeLessThanOrEqual(columns);
+    }
+  });
+
+  it('keeps the same geometry in truecolor and basic modes (ANSI stripped)', () => {
+    const store = populatedStore();
+    for (const mode of ['truecolor', 'basic'] as const) {
+      const result = render(store, initialViewState(), 100, 30, mode);
+      expect(result.lines).toHaveLength(30);
+      for (const line of result.lines) {
+        const visible = stripAnsi(line);
+        expect(visible.length).toBeLessThanOrEqual(100);
+      }
+      // Framed rows stay perfectly rectangular once codes are stripped.
+      const framed = result.lines.filter((line) => stripAnsi(line).startsWith('│'));
+      expect(framed.length).toBeGreaterThan(5);
+      for (const line of framed) expect(stripAnsi(line)).toHaveLength(100);
     }
   });
 
@@ -332,6 +400,8 @@ describe('renderDashboard', () => {
     expect(config).toContain('AGENT_GATEWAY_URL');
     expect(config).toMatch(/AGENT_GATEWAY_URL\s+env/);
     expect(config).toMatch(/AGENT_SITE_PROFILES\s+def/);
+    // The rotating JSON log's location is a config-screen fact, not an env var.
+    expect(config).toMatch(/log file\s+run\s+\/tmp\/agent-run\.ndjson/);
     const help = render(store, { ...initialViewState(), screen: 'help' }).lines.join('\n');
     expect(help).toContain('KEYS');
     expect(help).toContain('graceful shutdown');
@@ -454,7 +524,7 @@ describe('AgentTui', () => {
       },
       output,
       input,
-      colors: false,
+      colorMode: 'none',
       charset: CHARSET,
     });
     tui.start();

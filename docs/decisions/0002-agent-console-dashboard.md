@@ -30,10 +30,29 @@ unmaintained (blessed) or bring a large transitive tree (ink/React). The
 dashboard is ~one screen of layout, so it is written directly against VT
 escape sequences: Node enables Windows' virtual-terminal mode on TTY stdout,
 which covers Windows Terminal, modern conhost, and POSIX terminals alike.
-On a bare legacy conhost (no `WT_SESSION`/`TERM_PROGRAM`/ConEmu marker) the
-glyph set degrades to ASCII because the console codepage would garble UTF-8
-box drawing. The renderer is a pure function of a status snapshot, which is
-what keeps it testable without a terminal.
+The renderer is a pure function of a status snapshot, which is what keeps
+it testable without a terminal.
+
+Capability tiers, detected once at startup, keep one renderer honest across
+consoles:
+
+- **Glyphs.** Rounded panels, partial-block meters, sparklines, and braille
+  spinners wherever UTF-8 rendering is assured: any non-Windows terminal,
+  a declared one (`WT_SESSION`/`TERM_PROGRAM`/ConEmu), or a PowerShell 6+
+  host — pwsh switches the console to UTF-8 at startup and its
+  `POWERSHELL_DISTRIBUTION_CHANNEL` variable marks the children it spawns,
+  so pwsh-in-conhost qualifies. A bare legacy conhost under cmd/Windows
+  PowerShell 5.1 degrades to ASCII, because its OEM codepage would garble
+  multibyte glyphs.
+- **Color.** 24-bit truecolor (a dark-console palette with gradient meters)
+  on every Windows console — conhost has done RGB since well before the
+  Win10 1809 floor Node 22 already requires — and wherever
+  COLORTERM/Windows Terminal/ConEmu/VS Code declare it; a 16-color mapping
+  of the same semantic styles elsewhere (TERM=xterm-256color alone is no
+  truecolor guarantee); none under NO_COLOR. Layout is computed on plain
+  strings and escape codes wrap whole cells afterwards, so the geometry
+  contract (exactly `rows` lines, none wider than `columns`) holds
+  identically in every tier — the unit suite asserts it with ANSI stripped.
 
 ## 3. Task Scheduler probe and the `--launched-by` marker
 

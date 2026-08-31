@@ -144,6 +144,11 @@ export interface AgentStatusSnapshot {
   inFlight: number;
   /** Finished commands per minute over the last 60 s. */
   commandsPerMinute: number;
+  /**
+   * Finished-command counts per 15 s bucket over the last 10 minutes,
+   * oldest first — the dashboard's activity sparkline.
+   */
+  activityBuckets: number[];
   commands: CommandRow[];
   logs: LogRow[];
   session: SessionSnapshot | null;
@@ -176,6 +181,8 @@ export interface AgentMonitor {
 const MAX_LOG_ROWS = 400;
 const MAX_COMMAND_ROWS = 120;
 const MAX_FINISH_TIMESTAMPS = 600;
+const ACTIVITY_BUCKET_MS = 15_000;
+const ACTIVITY_BUCKETS = 40;
 
 /** pino standard keys that are rendered structurally, not as k=v noise. */
 const PINO_META_KEYS = new Set(['level', 'time', 'pid', 'hostname', 'name', 'msg']);
@@ -392,6 +399,11 @@ export class AgentStatusStore implements AgentMonitor {
   snapshot(): AgentStatusSnapshot {
     const now = this.now();
     const minuteAgo = now - 60_000;
+    const buckets = new Array<number>(ACTIVITY_BUCKETS).fill(0);
+    for (const at of this.finishTimestamps) {
+      const index = ACTIVITY_BUCKETS - 1 - Math.floor((now - at) / ACTIVITY_BUCKET_MS);
+      if (index >= 0 && index < ACTIVITY_BUCKETS) buckets[index] = buckets[index]! + 1;
+    }
     return {
       info: this.info,
       phase: this.phase,
@@ -402,6 +414,7 @@ export class AgentStatusStore implements AgentMonitor {
       totals: { ...this.totals },
       inFlight: this.commands.filter((row) => row.status === 'running').length,
       commandsPerMinute: this.finishTimestamps.filter((at) => at > minuteAgo).length,
+      activityBuckets: buckets,
       commands: this.commands.map((row) => ({ ...row })),
       logs: this.logs.map((row) => ({ ...row })),
       session:

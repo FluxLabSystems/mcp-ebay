@@ -7,8 +7,20 @@
  * (with its transitive tree) is a poor trade for ~one screen of layout
  * code. Node enables Windows' virtual-terminal mode on TTY stdout, so the
  * same escape sequences work in Windows Terminal, conhost, and any POSIX
- * terminal; on a bare legacy conhost (no WT_SESSION) box-drawing falls back
- * to ASCII because the console's non-UTF-8 codepage would garble it.
+ * terminal.
+ *
+ * Output adapts to what the terminal can actually show, detected once:
+ * - glyphs: rounded panels, partial-block meters, sparklines, and braille
+ *   spinners wherever UTF-8 rendering is assured — any non-Windows
+ *   terminal, Windows Terminal/VS Code/ConEmu, or a console whose host is
+ *   PowerShell 6+ (pwsh sets the console codepage to UTF-8 at startup and
+ *   its POWERSHELL_DISTRIBUTION_CHANNEL variable marks the children it
+ *   spawns). A bare legacy conhost under cmd/Windows PowerShell keeps the
+ *   ASCII set, because its OEM codepage would garble multibyte glyphs.
+ * - color: 24-bit truecolor on Windows consoles (conhost has supported RGB
+ *   since well before the Win10 1809 floor Node 22 already requires) and
+ *   wherever COLORTERM/WT_SESSION/ConEmu/VS Code says so; a 16-color
+ *   fallback elsewhere; none under NO_COLOR.
  *
  * The split that keeps this testable: renderDashboard() is a pure function
  * of (snapshot, view, size) returning exactly `rows` strings, and AgentTui
@@ -44,90 +56,182 @@ export function resolveUiMode(
 }
 
 export interface Charset {
-  hline: string;
-  bar: string;
+  /** Box drawing: horizontal, vertical, and the four (rounded) corners. */
+  h: string;
+  v: string;
+  tl: string;
+  tr: string;
+  bl: string;
+  br: string;
   dotOk: string;
   dotBad: string;
-  dotWait: string;
   arrow: string;
   ellipsis: string;
-  fill: string;
-  empty: string;
+  sep: string;
+  /** Meter fill by eighths, coarsest→full; a single entry means no partials. */
+  blocks: string[];
+  /** Sparkline levels, low→high; always 8 entries. */
+  spark: string[];
+  /** In-flight spinner frames, advanced once per repaint. */
+  spinner: string[];
+  /** Meter/sparkline background track. */
+  track: string;
 }
 
 const UNICODE_CHARSET: Charset = {
-  hline: '─',
-  bar: '│',
+  h: '─',
+  v: '│',
+  tl: '╭',
+  tr: '╮',
+  bl: '╰',
+  br: '╯',
   dotOk: '●',
   dotBad: '●',
-  dotWait: '◌',
   arrow: '▸',
   ellipsis: '…',
-  fill: '■',
-  empty: '·',
+  sep: '·',
+  blocks: ['▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'],
+  spark: ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'],
+  spinner: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
+  track: '·',
 };
 
 const ASCII_CHARSET: Charset = {
-  hline: '-',
-  bar: '|',
+  h: '-',
+  v: '|',
+  tl: '+',
+  tr: '+',
+  bl: '+',
+  br: '+',
   dotOk: '*',
   dotBad: 'x',
-  dotWait: 'o',
   arrow: '>',
   ellipsis: '~',
-  fill: '#',
-  empty: '.',
+  sep: '.',
+  blocks: ['#'],
+  spark: ['.', '.', ':', '-', '=', '+', '#', '#'],
+  spinner: ['|', '/', '-', '\\'],
+  track: '.',
 };
 
 /**
  * Legacy conhost renders UTF-8 through whatever OEM codepage is active, so
- * only terminals that declare themselves (Windows Terminal, VS Code,
- * ConEmu) get the unicode glyphs on win32. Everything non-Windows does.
+ * win32 gets the unicode glyphs only when the terminal declares itself
+ * (Windows Terminal, VS Code, ConEmu) or the host shell is PowerShell 6+,
+ * which switches the console to UTF-8 at startup and marks its children
+ * with POWERSHELL_DISTRIBUTION_CHANNEL. Everything non-Windows does.
  */
 export function detectCharset(
   env: Record<string, string | undefined> = process.env,
   platform: NodeJS.Platform = process.platform,
 ): Charset {
   if (platform !== 'win32') return UNICODE_CHARSET;
-  if (env.WT_SESSION !== undefined || env.TERM_PROGRAM !== undefined || env.ConEmuANSI === 'ON') {
+  if (
+    env.WT_SESSION !== undefined ||
+    env.TERM_PROGRAM !== undefined ||
+    env.ConEmuANSI === 'ON' ||
+    env.POWERSHELL_DISTRIBUTION_CHANNEL !== undefined
+  ) {
     return UNICODE_CHARSET;
   }
   return ASCII_CHARSET;
 }
 
+export type ColorMode = 'none' | 'basic' | 'truecolor';
+
+/**
+ * Truecolor wherever it is a sure thing: every Windows console Node can
+ * enable VT on already does 24-bit RGB, and COLORTERM / Windows Terminal /
+ * ConEmu / VS Code declare it elsewhere. Anything else gets the 16-color
+ * set — TERM=xterm-256color alone is no truecolor guarantee (macOS
+ * Terminal.app, plain tmux). NO_COLOR wins over everything.
+ */
+export function detectColorMode(
+  env: Record<string, string | undefined> = process.env,
+  platform: NodeJS.Platform = process.platform,
+): ColorMode {
+  if (env.NO_COLOR !== undefined) return 'none';
+  const colorterm = (env.COLORTERM ?? '').toLowerCase();
+  if (colorterm.includes('truecolor') || colorterm.includes('24bit')) return 'truecolor';
+  if (env.WT_SESSION !== undefined || env.ConEmuANSI === 'ON' || env.TERM_PROGRAM === 'vscode') {
+    return 'truecolor';
+  }
+  if (platform === 'win32') return 'truecolor';
+  return 'basic';
+}
+
 // ---------------------------------------------------------------------------
-// Styling: layout is computed on plain strings; SGR codes wrap whole cells
-// afterwards so column math never has to skip escape sequences.
+// Styling. Layout is computed on plain strings; escape codes wrap whole
+// cells afterwards, so column math never has to skip escape sequences. A
+// segment may carry a pre-painted form (gradients, bars) whose visible
+// width is, by construction, its plain text's length.
 
 export type Style =
   | 'title'
-  | 'good'
-  | 'bad'
-  | 'warnc'
-  | 'dim'
+  | 'label'
   | 'accent'
-  | 'bold'
-  | 'invert';
+  | 'good'
+  | 'warn'
+  | 'bad'
+  | 'muted'
+  | 'value'
+  | 'border'
+  | 'header'
+  | 'headerDim'
+  | 'chip'
+  | 'badgeGood'
+  | 'badgeWarn'
+  | 'badgeBad';
 
-const SGR: Record<Style, string> = {
-  title: '1;36',
-  good: '32',
-  bad: '31',
-  warnc: '33',
-  dim: '2',
-  accent: '36',
-  bold: '1',
-  invert: '7',
+/**
+ * Truecolor palette (Tokyo Night-ish, tuned for the dark consoles
+ * PowerShell and Windows Terminal default to) with a 16-color SGR twin for
+ * terminals that only do basic color.
+ */
+const FG = {
+  blue: '122;162;247',
+  cyan: '125;207;255',
+  green: '158;206;106',
+  yellow: '224;175;104',
+  red: '247;118;142',
+  gray: '86;95;137',
+  bright: '192;202;245',
+  border: '59;66;97',
+  ink: '26;27;38',
+};
+
+const STYLE_SGR: Record<Style, { tc: string; basic: string }> = {
+  title: { tc: `1;38;2;${FG.cyan}`, basic: '1;36' },
+  label: { tc: `38;2;${FG.blue}`, basic: '36' },
+  accent: { tc: `38;2;${FG.cyan}`, basic: '96' },
+  good: { tc: `38;2;${FG.green}`, basic: '32' },
+  warn: { tc: `38;2;${FG.yellow}`, basic: '33' },
+  bad: { tc: `38;2;${FG.red}`, basic: '31' },
+  muted: { tc: `38;2;${FG.gray}`, basic: '2' },
+  value: { tc: `38;2;${FG.bright}`, basic: '' },
+  border: { tc: `38;2;${FG.border}`, basic: '2' },
+  header: { tc: `1;48;2;36;40;59;38;2;${FG.cyan}`, basic: '1;7' },
+  headerDim: { tc: `48;2;36;40;59;38;2;${FG.gray}`, basic: '7;2' },
+  chip: { tc: `1;48;2;${FG.blue};38;2;${FG.ink}`, basic: '7;1' },
+  badgeGood: { tc: `1;48;2;${FG.green};38;2;${FG.ink}`, basic: '7;32' },
+  badgeWarn: { tc: `1;48;2;${FG.yellow};38;2;${FG.ink}`, basic: '7;33' },
+  badgeBad: { tc: `1;48;2;${FG.red};38;2;${FG.ink}`, basic: '7;31' },
 };
 
 export interface Segment {
   text: string;
   style?: Style;
+  /** Pre-styled rendering of exactly `text`; used only when it fits whole. */
+  painted?: string;
 }
 
-function paint(segment: Segment, colors: boolean): string {
-  if (!colors || segment.style === undefined || segment.text.length === 0) return segment.text;
-  return `\u001b[${SGR[segment.style]}m${segment.text}\u001b[0m`;
+const RESET = '\u001b[0m';
+
+function paint(text: string, style: Style | undefined, mode: ColorMode): string {
+  if (mode === 'none' || style === undefined || text.length === 0) return text;
+  const sgr = mode === 'truecolor' ? STYLE_SGR[style].tc : STYLE_SGR[style].basic;
+  if (sgr.length === 0) return text;
+  return `\u001b[${sgr}m${text}${RESET}`;
 }
 
 function clip(text: string, width: number, ellipsis: string): string {
@@ -137,21 +241,127 @@ function clip(text: string, width: number, ellipsis: string): string {
   return text.slice(0, width - 1) + ellipsis;
 }
 
-/** Compose one screen line from cells, hard-capped at `width` columns. */
-function line(width: number, colors: boolean, charset: Charset, ...segments: Segment[]): string {
+interface Composed {
+  out: string;
+  used: number;
+}
+
+/** Compose cells into at most `width` columns, tracking the visible width. */
+function compose(width: number, mode: ColorMode, charset: Charset, segments: Segment[]): Composed {
   let used = 0;
   let out = '';
   for (const segment of segments) {
     if (used >= width) break;
-    const text = clip(segment.text, width - used, charset.ellipsis);
+    if (segment.text.length === 0) continue;
+    const room = width - used;
+    if (segment.painted !== undefined && mode !== 'none' && segment.text.length <= room) {
+      out += segment.painted;
+      used += segment.text.length;
+      continue;
+    }
+    const text = clip(segment.text, room, charset.ellipsis);
+    out += paint(text, segment.style, mode);
     used += text.length;
-    out += paint({ text, ...(segment.style === undefined ? {} : { style: segment.style }) }, colors);
   }
-  return out;
+  return { out, used };
 }
 
 function pad(text: string, width: number): string {
   return text.length >= width ? text : text + ' '.repeat(width - text.length);
+}
+
+// ---------------------------------------------------------------------------
+// Gradient meters, sparklines, spinners
+
+function lerpChannel(a: number, b: number, t: number): number {
+  return Math.round(a + (b - a) * t);
+}
+
+function parseRgb(triplet: string): [number, number, number] {
+  const [r, g, b] = triplet.split(';').map(Number);
+  return [r ?? 0, g ?? 0, b ?? 0];
+}
+
+const GRAD_GREEN = parseRgb(FG.green);
+const GRAD_YELLOW = parseRgb(FG.yellow);
+const GRAD_RED = parseRgb(FG.red);
+
+/** green → yellow → red across t ∈ [0,1]; the classic load gradient. */
+function gradientSgr(t: number): string {
+  const [from, to, local] =
+    t < 0.6
+      ? [GRAD_GREEN, GRAD_YELLOW, t / 0.6]
+      : [GRAD_YELLOW, GRAD_RED, (t - 0.6) / 0.4];
+  const r = lerpChannel(from[0], to[0], local);
+  const g = lerpChannel(from[1], to[1], local);
+  const b = lerpChannel(from[2], to[2], local);
+  return `38;2;${r};${g};${b}`;
+}
+
+type MeterHue = 'gradient' | 'good' | 'accent';
+
+function meterCellSgr(hue: MeterHue, t: number, mode: ColorMode): string {
+  if (mode !== 'truecolor') {
+    if (hue === 'gradient') return STYLE_SGR[t < 0.55 ? 'good' : t < 0.85 ? 'warn' : 'bad'].basic;
+    return STYLE_SGR[hue].basic;
+  }
+  if (hue === 'gradient') return gradientSgr(t);
+  return STYLE_SGR[hue].tc;
+}
+
+/**
+ * htop/btop-style meter with sub-cell resolution: full cells from the
+ * blocks table plus one fractional cell, on a muted track. The returned
+ * segment's plain `text` carries the geometry; `painted` the colors.
+ */
+export function meter(
+  width: number,
+  ratio: number,
+  charset: Charset,
+  mode: ColorMode,
+  hue: MeterHue = 'gradient',
+): Segment {
+  const clamped = Math.max(0, Math.min(1, ratio));
+  const full = charset.blocks[charset.blocks.length - 1]!;
+  let text: string;
+  if (charset.blocks.length === 1) {
+    const filled = Math.round(clamped * width);
+    text = full.repeat(filled) + charset.track.repeat(width - filled);
+  } else {
+    const exact = clamped * width;
+    const whole = Math.floor(exact);
+    const fracIndex = Math.floor((exact - whole) * charset.blocks.length);
+    const partial = whole < width && fracIndex > 0 ? charset.blocks[fracIndex - 1]! : '';
+    text = full.repeat(whole) + partial;
+    text += charset.track.repeat(width - text.length);
+  }
+  if (mode === 'none') return { text };
+  let painted = '';
+  for (let i = 0; i < text.length; i++) {
+    const cell = text[i]!;
+    const sgr = cell === charset.track ? (mode === 'truecolor' ? STYLE_SGR.border.tc : STYLE_SGR.border.basic) : meterCellSgr(hue, width <= 1 ? 0 : i / (width - 1), mode);
+    painted += sgr.length === 0 ? cell : `\u001b[${sgr}m${cell}${RESET}`;
+  }
+  return { text, painted };
+}
+
+/** Per-bucket activity sparkline; height and color both track the load. */
+export function sparkline(buckets: number[], width: number, charset: Charset, mode: ColorMode): Segment {
+  const shown = buckets.slice(-width);
+  while (shown.length < width) shown.unshift(0);
+  const peak = Math.max(1, ...shown);
+  let text = '';
+  let painted = '';
+  for (const count of shown) {
+    const t = count / peak;
+    const level = count === 0 ? 0 : Math.max(1, Math.min(7, Math.ceil(t * 7)));
+    const cell = charset.spark[level]!;
+    text += cell;
+    if (mode === 'none') continue;
+    const sgr = count === 0 ? (mode === 'truecolor' ? STYLE_SGR.border.tc : STYLE_SGR.border.basic) : meterCellSgr('gradient', t, mode);
+    painted += sgr.length === 0 ? cell : `\u001b[${sgr}m${cell}${RESET}`;
+  }
+  return mode === 'none' ? { text } : { text, painted };
 }
 
 // ---------------------------------------------------------------------------
@@ -189,27 +399,20 @@ export function formatAge(ms: number): string {
   return `${Math.floor(ms / 3_600_000)}h${Math.floor((ms % 3_600_000) / 60_000)}m`;
 }
 
-/** htop-style meter: label [#####....] caption */
-function meter(width: number, ratio: number, charset: Charset): string {
-  const inner = Math.max(1, width - 2);
-  const filled = Math.max(0, Math.min(inner, Math.round(ratio * inner)));
-  return `[${charset.fill.repeat(filled)}${charset.empty.repeat(inner - filled)}]`;
-}
-
 const LEVELS: Array<{ min: number; label: string; style: Style }> = [
   { min: 60, label: 'FTL', style: 'bad' },
   { min: 50, label: 'ERR', style: 'bad' },
-  { min: 40, label: 'WRN', style: 'warnc' },
+  { min: 40, label: 'WRN', style: 'warn' },
   { min: 30, label: 'INF', style: 'good' },
   { min: 20, label: 'DBG', style: 'accent' },
-  { min: 0, label: 'TRC', style: 'dim' },
+  { min: 0, label: 'TRC', style: 'muted' },
 ];
 
 function levelBadge(level: number): { label: string; style: Style } {
   for (const entry of LEVELS) {
     if (level >= entry.min) return { label: entry.label, style: entry.style };
   }
-  return { label: 'TRC', style: 'dim' };
+  return { label: 'TRC', style: 'muted' };
 }
 
 /** Cycle order for the [l] key; labels match pino's level names. */
@@ -312,9 +515,11 @@ export function interpretKey(data: string): UiAction | null {
 export interface RenderOptions {
   columns: number;
   rows: number;
-  colors: boolean;
+  colorMode: ColorMode;
   charset: Charset;
   now: number;
+  /** Repaint counter; advances spinners. Defaults to 0 for stable tests. */
+  tick?: number;
 }
 
 export interface RenderResult {
@@ -326,58 +531,115 @@ export interface RenderResult {
 const MIN_COLUMNS = 40;
 const MIN_ROWS = 10;
 
-function phaseSegment(snapshot: AgentStatusSnapshot, charset: Charset): Segment[] {
+interface Ctx {
+  columns: number;
+  mode: ColorMode;
+  charset: Charset;
+  now: number;
+  spin: string;
+}
+
+function line(ctx: Ctx, ...segments: Segment[]): string {
+  return compose(ctx.columns, ctx.mode, ctx.charset, segments).out;
+}
+
+function badge(text: string, style: Style): Segment {
+  return { text: ` ${text} `, style };
+}
+
+/** ╭─ TITLE ───── extra ─╮ — a panel's top border with an embedded title. */
+function panelTop(ctx: Ctx, title: string, extra = ''): string {
+  const c = ctx.charset;
+  const titleText = ` ${title} `;
+  // Pre-clip the extra text so the closing corner always survives, however
+  // long the annotation is.
+  const room = ctx.columns - 2 - 1 - titleText.length - 2;
+  const extraText = extra.length > 0 && room > 3 ? clip(` ${extra} ${c.h}`, room, c.ellipsis) : '';
+  const fill = Math.max(0, room - extraText.length + 1);
+  return line(
+    ctx,
+    { text: c.tl + c.h, style: 'border' },
+    { text: titleText, style: 'title' },
+    { text: c.h.repeat(fill), style: 'border' },
+    { text: extraText, style: 'muted' },
+    { text: c.h + c.tr, style: 'border' },
+  );
+}
+
+function panelBottom(ctx: Ctx): string {
+  const c = ctx.charset;
+  return line(ctx, { text: c.bl + c.h.repeat(Math.max(0, ctx.columns - 2)) + c.br, style: 'border' });
+}
+
+/** │ content… │ — one framed row; inner content is clipped and padded. */
+function panelRow(ctx: Ctx, ...segments: Segment[]): string {
+  const inner = compose(ctx.columns - 4, ctx.mode, ctx.charset, segments);
+  const edge = paint(ctx.charset.v, 'border', ctx.mode);
+  return `${edge} ${inner.out}${' '.repeat(Math.max(0, ctx.columns - 4 - inner.used))} ${edge}`;
+}
+
+function headerLine(ctx: Ctx, snapshot: AgentStatusSnapshot): string {
+  const mem = Math.round(process.memoryUsage.rss() / (1024 * 1024));
+  const s = ctx.charset.sep;
+  const left = ` BROWSER BRIDGE AGENT v${snapshot.info.version} `;
+  const right = ` up ${formatUptime(ctx.now - snapshot.info.startedAt)} ${s} mem ${mem}M ${s} pid ${snapshot.info.pid} ${s} ${formatClock(ctx.now)} `;
+  const gap = Math.max(1, ctx.columns - left.length - right.length);
+  return line(
+    ctx,
+    { text: left, style: 'header' },
+    { text: ' '.repeat(gap), style: 'headerDim' },
+    { text: right, style: 'headerDim' },
+  );
+}
+
+function gatewaySegments(ctx: Ctx, snapshot: AgentStatusSnapshot): Segment[] {
   switch (snapshot.phase) {
     case 'connected':
-      return [
-        { text: `${charset.dotOk} CONNECTED`, style: 'good' },
-        { text: `  ${snapshot.connectionId ?? ''}`, style: 'dim' },
-      ];
+      return [badge('CONNECTED', 'badgeGood'), { text: `  ${snapshot.connectionId ?? ''}`, style: 'muted' }];
     case 'connecting':
-      return [{ text: `${charset.dotWait} CONNECTING`, style: 'warnc' }];
+      return [{ text: `${ctx.spin} CONNECTING`, style: 'warn' }];
     case 'waiting':
       return [
         {
-          text: `${charset.dotWait} RETRYING${snapshot.retryDelayMs === null ? '' : ` in ${formatDuration(snapshot.retryDelayMs)}`}`,
-          style: 'warnc',
+          text: `${ctx.spin} RETRYING${snapshot.retryDelayMs === null ? '' : ` in ${formatDuration(snapshot.retryDelayMs)}`}`,
+          style: 'warn',
         },
       ];
     case 'stopped':
-      return [{ text: `${charset.dotBad} STOPPED`, style: 'bad' }];
+      return [badge('STOPPED', 'badgeBad')];
     case 'idle':
-      return [{ text: `${charset.dotWait} STARTING`, style: 'dim' }];
+      return [{ text: `${ctx.spin} STARTING`, style: 'muted' }];
   }
 }
 
-function taskLineSegments(snapshot: AgentStatusSnapshot): Segment[] {
+function taskSegments(snapshot: AgentStatusSnapshot): Segment[] {
   const runAs: Segment =
     snapshot.info.launchedBy === 'logon-task'
       ? { text: 'this run: background (logon task)', style: 'accent' }
-      : { text: 'this run: interactive window', style: 'dim' };
+      : { text: 'this run: interactive window', style: 'muted' };
   const task = snapshot.task;
   if (task === null) {
-    return [{ text: 'checking Task Scheduler', style: 'dim' }, { text: '   ' }, runAs];
+    return [{ text: 'checking Task Scheduler', style: 'muted' }, { text: '   ' }, runAs];
   }
   if (!task.supported) {
-    return [{ text: 'n/a on this OS (Windows-only)', style: 'dim' }, { text: '   ' }, runAs];
+    return [{ text: 'n/a on this OS (Windows-only)', style: 'muted' }, { text: '   ' }, runAs];
   }
   if (task.error !== null) {
-    return [{ text: 'status unavailable', style: 'warnc' }, { text: `  ${task.error}`, style: 'dim' }];
+    return [{ text: 'status unavailable', style: 'warn' }, { text: `  ${task.error}`, style: 'muted' }];
   }
   if (!task.installed) {
     return [
-      { text: 'not installed', style: 'warnc' },
+      { text: 'not installed', style: 'warn' },
       { text: '   ' },
       runAs,
-      { text: '   (scripts\\windows\\install-logon-task.ps1)', style: 'dim' },
+      { text: '   (scripts\\windows\\install-logon-task.ps1)', style: 'muted' },
     ];
   }
   const state = task.state ?? 'unknown';
-  const stateStyle: Style = state === 'Running' ? 'good' : state === 'Disabled' ? 'bad' : 'accent';
   const segments: Segment[] = [
     { text: 'installed', style: 'good' },
     { text: ' ' },
-    { text: state, style: stateStyle },
+    { text: state, style: state === 'Running' ? 'good' : state === 'Disabled' ? 'bad' : 'accent' },
   ];
   if (task.lastTaskResult !== null && task.lastTaskResult !== 0 && task.lastTaskResult !== 267009) {
     // 267009 (0x41301) just means "currently running"; anything else nonzero
@@ -388,43 +650,140 @@ function taskLineSegments(snapshot: AgentStatusSnapshot): Segment[] {
   return segments;
 }
 
-function commandRowSegments(row: CommandRow, charset: Charset): Segment[] {
+function statusRows(ctx: Ctx, snapshot: AgentStatusSnapshot): string[] {
+  const s = ctx.charset.sep;
+  const rows: string[] = [];
+  const rxAge =
+    snapshot.lastGatewayActivityAt === null ? null : Math.max(0, ctx.now - snapshot.lastGatewayActivityAt);
+  rows.push(
+    panelRow(
+      ctx,
+      { text: 'Gateway  ', style: 'label' },
+      ...gatewaySegments(ctx, snapshot),
+      { text: `  ${snapshot.info.gatewayWsUrl}`, style: 'muted' },
+      rxAge === null
+        ? { text: '' }
+        : {
+            text: rxAge < 1000 ? '  rx now' : `  rx ${formatAge(rxAge)} ago`,
+            style: rxAge < 10_000 ? 'good' : rxAge < 45_000 ? 'warn' : 'bad',
+          },
+      { text: snapshot.reconnects > 0 ? `  ${s} reconnects ${snapshot.reconnects}` : '', style: 'muted' },
+    ),
+  );
+  rows.push(
+    panelRow(
+      ctx,
+      { text: 'Device   ', style: 'label' },
+      { text: snapshot.info.agentName, style: 'value' },
+      { text: `  ${snapshot.info.deviceId}  key ${snapshot.info.keyStoreKind}  profiles ${snapshot.info.siteProfiles.join(',')}`, style: 'muted' },
+    ),
+  );
+  rows.push(panelRow(ctx, { text: 'Task     ', style: 'label' }, ...taskSegments(snapshot)));
+
+  const session = snapshot.session;
+  if (session === null) {
+    rows.push(
+      panelRow(
+        ctx,
+        { text: 'Browser  ', style: 'label' },
+        { text: 'no session', style: 'muted' },
+        { text: '  (opens on the first browser.session_open)', style: 'muted' },
+      ),
+    );
+  } else {
+    rows.push(
+      panelRow(
+        ctx,
+        { text: 'Browser  ', style: 'label' },
+        session.degraded ? badge('DEGRADED', 'badgeBad') : badge('READY', 'badgeGood'),
+        { text: `  profile ${session.profileName}`, style: 'value' },
+        { text: `  ${session.handle}`, style: 'muted' },
+        { text: `  tabs ${session.tabs.length}`, style: 'value' },
+      ),
+    );
+    for (const tab of session.tabs.slice(0, 3)) {
+      rows.push(
+        panelRow(
+          ctx,
+          { text: `  ${ctx.charset.arrow} `, style: tab.active ? 'accent' : 'muted' },
+          { text: tab.url, style: tab.active ? 'value' : 'muted' },
+          { text: tab.title.length > 0 ? `  ${s} ${tab.title}` : '', style: 'muted' },
+        ),
+      );
+    }
+  }
+
+  for (const job of snapshot.jobs.slice(0, 2)) {
+    const ratio = job.requested === 0 ? 1 : job.completed / job.requested;
+    rows.push(
+      panelRow(
+        ctx,
+        { text: `  ${job.jobId}  `, style: 'muted' },
+        meter(20, ratio, ctx.charset, ctx.mode, job.status === 'running' ? 'accent' : 'good'),
+        { text: ` ${job.completed}/${job.requested} ${job.status}`, style: 'value' },
+        { text: job.failed > 0 ? `  failed ${job.failed}` : '', style: 'bad' },
+      ),
+    );
+  }
+
+  const policyTotal =
+    snapshot.policy.request_aborted + snapshot.policy.popup_denied + snapshot.policy.download_blocked;
+  rows.push(
+    panelRow(
+      ctx,
+      { text: 'Activity ', style: 'label' },
+      sparkline(snapshot.activityBuckets, Math.min(24, Math.max(8, ctx.columns - 76)), ctx.charset, ctx.mode),
+      { text: ` ${snapshot.commandsPerMinute}/min`, style: 'accent' },
+      { text: `  ${s} ok `, style: 'muted' },
+      { text: String(snapshot.totals.ok), style: 'good' },
+      { text: `  ${s} err `, style: 'muted' },
+      { text: String(snapshot.totals.error), style: snapshot.totals.error > 0 ? 'bad' : 'muted' },
+      { text: `  ${s} policy `, style: 'muted' },
+      { text: String(policyTotal), style: policyTotal > 0 ? 'warn' : 'muted' },
+      { text: `  ${s} in-flight `, style: 'muted' },
+      { text: String(snapshot.inFlight), style: snapshot.inFlight > 0 ? 'accent' : 'muted' },
+    ),
+  );
+  return rows;
+}
+
+function commandRowSegments(ctx: Ctx, row: CommandRow): Segment[] {
   const at = formatClock(row.startedAt);
   const name = pad(row.command, 26);
   if (row.status === 'running') {
     return [
-      { text: ` ${at}  ` },
-      { text: name },
-      { text: `${charset.dotWait} running`, style: 'warnc' },
-      { text: `  ${row.requestId}`, style: 'dim' },
+      { text: `${at}  `, style: 'muted' },
+      { text: name, style: 'value' },
+      { text: `${ctx.spin} running`, style: 'warn' },
+      { text: `   ${row.requestId}`, style: 'muted' },
     ];
   }
   const dur = pad(row.durationMs === null ? '' : formatDuration(row.durationMs), 8);
   if (row.status === 'ok') {
     return [
-      { text: ` ${at}  ` },
-      { text: name },
-      { text: `${charset.dotOk} ok     `, style: 'good' },
-      { text: ` ${dur}` },
-      { text: ` ${row.requestId}`, style: 'dim' },
+      { text: `${at}  `, style: 'muted' },
+      { text: name, style: 'value' },
+      { text: `${ctx.charset.dotOk} ok      `, style: 'good' },
+      { text: dur, style: 'value' },
+      { text: ` ${row.requestId}`, style: 'muted' },
     ];
   }
   return [
-    { text: ` ${at}  ` },
-    { text: name },
-    { text: `${charset.dotBad} ${row.errorCode ?? 'error'}`, style: 'bad' },
-    { text: `  ${dur}` },
-    { text: ` ${row.requestId}`, style: 'dim' },
+    { text: `${at}  `, style: 'muted' },
+    { text: name, style: 'value' },
+    { text: `${ctx.charset.dotBad} ${row.errorCode ?? 'error'}`, style: 'bad' },
+    { text: `  ${dur}`, style: 'value' },
+    { text: ` ${row.requestId}`, style: 'muted' },
   ];
 }
 
 function logRowSegments(row: LogRow): Segment[] {
-  const badge = levelBadge(row.level);
+  const badgeInfo = levelBadge(row.level);
   return [
-    { text: ` ${formatClock(row.at)} `, style: 'dim' },
-    { text: badge.label, style: badge.style },
-    { text: `  ${row.msg}` },
-    { text: row.fields.length > 0 ? `  ${row.fields}` : '', style: 'dim' },
+    { text: `${formatClock(row.at)} `, style: 'muted' },
+    { text: badgeInfo.label, style: badgeInfo.style },
+    { text: `  ${row.msg}`, style: 'value' },
+    { text: row.fields.length > 0 ? `  ${row.fields}` : '', style: 'muted' },
   ];
 }
 
@@ -441,181 +800,133 @@ const HELP_ROWS: Array<[string, string]> = [
   ['?  h', 'toggle this help'],
 ];
 
+function footerLine(ctx: Ctx, view: ViewState): string {
+  const levelLabel = LEVEL_FILTER_CYCLE.find((e) => e.value === view.minLevel)?.label ?? 'info';
+  const following = !view.paused && view.logScroll === 0;
+  const chips: Array<[string, string]> = [
+    ['q', 'quit'],
+    ['p', view.paused ? 'resume' : 'pause'],
+    ['j/k', 'scroll'],
+    ['f', 'follow'],
+    ['l', `level:${levelLabel}`],
+    ['c', 'clear'],
+    ['e', 'config'],
+    ['t', 'task'],
+    ['?', 'help'],
+  ];
+  const segments: Segment[] = [{ text: ' ' }];
+  for (const [key, label] of chips) {
+    segments.push({ text: ` ${key} `, style: 'chip' }, { text: `${label}  `, style: 'muted' });
+  }
+  if (!following) segments.push({ text: ' log tail frozen ', style: 'badgeWarn' });
+  return line(ctx, ...segments);
+}
+
 export function renderDashboard(
   snapshot: AgentStatusSnapshot,
   view: ViewState,
   options: RenderOptions,
 ): RenderResult {
-  const { columns, rows, colors, charset, now } = options;
-  const L = (...segments: Segment[]): string => line(columns, colors, charset, ...segments);
+  const { columns, rows, colorMode, charset, now } = options;
+  const tick = options.tick ?? 0;
+  const ctx: Ctx = {
+    columns,
+    mode: colorMode,
+    charset,
+    now,
+    spin: charset.spinner[tick % charset.spinner.length]!,
+  };
 
   if (columns < MIN_COLUMNS || rows < MIN_ROWS) {
-    const lines = [L({ text: `terminal too small (${columns}x${rows}, need ${MIN_COLUMNS}x${MIN_ROWS})`, style: 'warnc' })];
+    const lines = [
+      line(ctx, { text: `terminal too small (${columns}x${rows}, need ${MIN_COLUMNS}x${MIN_ROWS})`, style: 'warn' }),
+    ];
     while (lines.length < rows) lines.push('');
-    return { lines: lines.slice(0, rows), maxLogScroll: 0 };
+    return { lines: lines.slice(0, Math.max(1, rows)), maxLogScroll: 0 };
   }
 
-  const sep = L({ text: charset.hline.repeat(columns), style: 'dim' });
   const out: string[] = [];
+  out.push(headerLine(ctx, snapshot));
 
-  // Title bar
-  const mem = process.memoryUsage.rss();
-  const memText = `${Math.round(mem / (1024 * 1024))}M`;
-  const left = ` BROWSER BRIDGE AGENT v${snapshot.info.version}`;
-  const right = `up ${formatUptime(now - snapshot.info.startedAt)}  mem ${meter(12, Math.min(1, mem / (512 * 1024 * 1024)), charset)} ${memText}  pid ${snapshot.info.pid} `;
-  const gapWidth = Math.max(1, columns - left.length - right.length);
-  out.push(L({ text: left, style: 'title' }, { text: ' '.repeat(gapWidth) }, { text: right, style: 'dim' }));
-  out.push(sep);
+  const status = statusRows(ctx, snapshot);
+  out.push(panelTop(ctx, 'STATUS'));
+  out.push(...status);
+  out.push(panelBottom(ctx));
 
-  // Status block
-  const hbAge =
-    snapshot.lastGatewayActivityAt === null ? null : Math.max(0, now - snapshot.lastGatewayActivityAt);
-  out.push(
-    L(
-      { text: ' Gateway  ', style: 'bold' },
-      ...phaseSegment(snapshot, charset),
-      { text: `  ${snapshot.info.gatewayWsUrl}`, style: 'dim' },
-      { text: hbAge === null ? '' : `  rx ${formatAge(hbAge)} ago` },
-      { text: snapshot.reconnects > 0 ? `  reconnects ${snapshot.reconnects}` : '', style: 'dim' },
-    ),
-  );
-  out.push(
-    L(
-      { text: ' Device   ', style: 'bold' },
-      { text: `${snapshot.info.agentName}  ` },
-      { text: `${snapshot.info.deviceId}  `, style: 'dim' },
-      { text: `key ${snapshot.info.keyStoreKind}  `, style: 'dim' },
-      { text: `profiles ${snapshot.info.siteProfiles.join(',')}`, style: 'dim' },
-    ),
-  );
-  out.push(L({ text: ' Task     ', style: 'bold' }, ...taskLineSegments(snapshot)));
-
-  const session = snapshot.session;
-  if (session === null) {
-    out.push(
-      L(
-        { text: ' Browser  ', style: 'bold' },
-        { text: 'no session', style: 'dim' },
-        { text: '  (opens on the first browser.session_open)', style: 'dim' },
-      ),
-    );
-  } else {
-    out.push(
-      L(
-        { text: ' Browser  ', style: 'bold' },
-        session.degraded
-          ? { text: `${charset.dotBad} DEGRADED`, style: 'bad' }
-          : { text: `${charset.dotOk} READY`, style: 'good' },
-        { text: `  profile ${session.profileName}` },
-        { text: `  ${session.handle}`, style: 'dim' },
-        { text: `  tabs ${session.tabs.length}` },
-      ),
-    );
-    for (const tab of session.tabs.slice(0, 3)) {
-      out.push(
-        L(
-          { text: `   ${charset.arrow} `, style: tab.active ? 'accent' : 'dim' },
-          { text: tab.url, style: tab.active ? undefined : 'dim' },
-          { text: tab.title.length > 0 ? `  ${charset.hline} ${tab.title}` : '', style: 'dim' },
-        ),
-      );
-    }
-  }
-
-  for (const job of snapshot.jobs.slice(0, 2)) {
-    const ratio = job.requested === 0 ? 1 : job.completed / job.requested;
-    out.push(
-      L(
-        { text: `   ${job.jobId} `, style: 'dim' },
-        { text: meter(22, ratio, charset), style: job.status === 'running' ? 'warnc' : 'good' },
-        { text: ` ${job.completed}/${job.requested} ${job.status}` },
-        { text: job.failed > 0 ? `  failed ${job.failed}` : '', style: 'bad' },
-      ),
-    );
-  }
-
-  const policyTotal =
-    snapshot.policy.request_aborted + snapshot.policy.popup_denied + snapshot.policy.download_blocked;
-  out.push(
-    L(
-      { text: ' Activity ', style: 'bold' },
-      { text: `${meter(22, Math.min(1, snapshot.commandsPerMinute / 30), charset)} ${snapshot.commandsPerMinute}/min`, style: 'accent' },
-      { text: `   ok ${snapshot.totals.ok}`, style: 'good' },
-      { text: `  err ${snapshot.totals.error}`, style: snapshot.totals.error > 0 ? 'bad' : 'dim' },
-      { text: `  policy ${policyTotal}`, style: policyTotal > 0 ? 'warnc' : 'dim' },
-      { text: `  in-flight ${snapshot.inFlight}` },
-    ),
-  );
-  out.push(sep);
-
-  // Footer assembled first so the flexible region knows its budget.
   const levelLabel = LEVEL_FILTER_CYCLE.find((e) => e.value === view.minLevel)?.label ?? 'info';
   const following = !view.paused && view.logScroll === 0;
-  const footer = L({
-    text: ` q quit  p ${view.paused ? 'resume' : 'pause'}  j/k scroll  f follow  l level:${levelLabel}  c clear  e config  t task  ? help  ${following ? '' : '[log tail frozen]'}`,
-    style: 'invert',
-  });
-
+  // Rows left for the two flexible panels (each costs 2 rows of frame),
+  // after the header and footer.
   const bodyRows = rows - out.length - 1;
   let maxLogScroll = 0;
 
   if (view.screen === 'help') {
-    out.push(L({ text: ' KEYS', style: 'title' }));
-    for (const [key, desc] of HELP_ROWS.slice(0, Math.max(0, bodyRows - 1))) {
-      out.push(L({ text: `   ${pad(key, 14)}`, style: 'accent' }, { text: desc }));
+    out.push(panelTop(ctx, 'KEYS'));
+    const inner = Math.max(0, bodyRows - 2);
+    for (const [key, desc] of HELP_ROWS.slice(0, inner)) {
+      out.push(panelRow(ctx, { text: pad(key, 14), style: 'accent' }, { text: desc, style: 'value' }));
     }
+    for (let i = HELP_ROWS.length; i < inner; i++) out.push(panelRow(ctx));
+    out.push(panelBottom(ctx));
   } else if (view.screen === 'config') {
-    out.push(L({ text: ' CONFIG', style: 'title' }, { text: '  effective agent environment (no secrets are read here)', style: 'dim' }));
+    out.push(panelTop(ctx, 'CONFIG', 'effective agent environment; the agent env holds no secrets'));
+    const inner = Math.max(0, bodyRows - 2);
     const keyWidth = Math.min(34, Math.max(12, ...snapshot.config.map((e) => e.key.length)) + 2);
-    for (const entry of snapshot.config.slice(0, Math.max(0, bodyRows - 1))) {
+    const rowsBudget = snapshot.info.logPath === null ? inner : Math.max(0, inner - 1);
+    let contentCount = 0;
+    for (const entry of snapshot.config.slice(0, rowsBudget)) {
       out.push(
-        L(
-          { text: `   ${pad(entry.key, keyWidth)}`, style: 'accent' },
-          { text: pad(entry.source === 'env' ? 'env' : 'def', 5), style: entry.source === 'env' ? 'good' : 'dim' },
-          { text: entry.value },
+        panelRow(
+          ctx,
+          { text: pad(entry.key, keyWidth), style: 'accent' },
+          { text: pad(entry.source === 'env' ? 'env' : 'def', 5), style: entry.source === 'env' ? 'good' : 'muted' },
+          { text: entry.value, style: 'value' },
         ),
       );
+      contentCount += 1;
     }
+    if (snapshot.info.logPath !== null && contentCount < inner) {
+      // Derived, not an env var: where this run's JSON log stream lands.
+      out.push(
+        panelRow(
+          ctx,
+          { text: pad('log file', keyWidth), style: 'accent' },
+          { text: pad('run', 5), style: 'muted' },
+          { text: snapshot.info.logPath, style: 'value' },
+        ),
+      );
+      contentCount += 1;
+    }
+    for (; contentCount < inner; contentCount += 1) out.push(panelRow(ctx));
+    out.push(panelBottom(ctx));
   } else {
-    // Main screen: commands on top, logs below, logs get the larger share.
-    const commandsRows = Math.max(3, Math.min(snapshot.commands.length + 1, Math.floor(bodyRows * 0.35)));
-    const logsRows = bodyRows - commandsRows - 2;
+    // Main screen: commands on top, logs below; logs get the larger share.
+    const commandsInner = Math.max(1, Math.min(snapshot.commands.length || 1, Math.floor((bodyRows - 4) * 0.35)));
+    const logsInner = Math.max(1, bodyRows - 4 - commandsInner);
 
-    out.push(
-      L(
-        { text: ' COMMANDS', style: 'title' },
-        { text: `  ${snapshot.commands.length} recent, newest first`, style: 'dim' },
-      ),
-    );
-    const commandRows = snapshot.commands.slice(0, commandsRows - 1);
-    for (const row of commandRows) out.push(L(...commandRowSegments(row, charset)));
-    for (let i = commandRows.length; i < commandsRows - 1; i++) out.push('');
-    out.push(sep);
+    out.push(panelTop(ctx, 'COMMANDS', `${snapshot.commands.length} recent ${charset.sep} newest first`));
+    const commandRows = snapshot.commands.slice(0, commandsInner);
+    for (const row of commandRows) out.push(panelRow(ctx, ...commandRowSegments(ctx, row)));
+    for (let i = commandRows.length; i < commandsInner; i++) out.push(panelRow(ctx));
+    out.push(panelBottom(ctx));
 
     const filtered = snapshot.logs.filter((row) => row.level >= view.minLevel);
-    maxLogScroll = Math.max(0, filtered.length - Math.max(1, logsRows - 1));
+    maxLogScroll = Math.max(0, filtered.length - logsInner);
     const scroll = Math.min(view.logScroll, maxLogScroll);
-    out.push(
-      L(
-        { text: ' LOGS', style: 'title' },
-        { text: `  level>=${levelLabel}`, style: 'dim' },
-        {
-          text: following ? '  following' : scroll > 0 ? `  scrolled +${scroll}` : '  paused',
-          style: following ? 'dim' : 'warnc',
-        },
-        { text: snapshot.info.logPath === null ? '' : `  file ${snapshot.info.logPath}`, style: 'dim' },
-      ),
-    );
-    const visible = Math.max(1, logsRows - 1);
+    const state = following ? 'following' : scroll > 0 ? `scrolled +${scroll}` : 'paused';
+    // The log file's full path lives on the config screen ([e]); putting it
+    // here would eat the whole border on a Windows %LOCALAPPDATA% path.
+    out.push(panelTop(ctx, 'LOGS', `level>=${levelLabel} ${charset.sep} ${state}`));
     const end = filtered.length - scroll;
-    for (const row of filtered.slice(Math.max(0, end - visible), end)) {
-      out.push(L(...logRowSegments(row)));
-    }
+    const visible = filtered.slice(Math.max(0, end - logsInner), end);
+    for (const row of visible) out.push(panelRow(ctx, ...logRowSegments(row)));
+    for (let i = visible.length; i < logsInner; i++) out.push(panelRow(ctx));
+    out.push(panelBottom(ctx));
   }
 
   while (out.length < rows - 1) out.push('');
   const lines = out.slice(0, rows - 1);
-  lines.push(footer);
+  lines.push(footerLine(ctx, view));
   return { lines, maxLogScroll };
 }
 
@@ -648,26 +959,27 @@ export interface AgentTuiOptions {
   onRefreshTask?: () => void;
   output?: OutputLike;
   input?: InputLike;
-  colors?: boolean;
+  colorMode?: ColorMode;
   charset?: Charset;
   now?: () => number;
-  /** Steady repaint cadence; keeps ages/uptime moving between events. */
+  /** Steady repaint cadence; keeps ages, uptime, and spinners moving. */
   refreshMs?: number;
 }
 
-const ENTER_ALT = '\u001b[?1049h\u001b[?25l\u001b[2J\u001b[H';
+const ENTER_ALT = '\u001b[?1049h\u001b[?25l\u001b[2J\u001b[H\u001b]0;Browser Bridge Agent\u0007';
 const LEAVE_ALT = '\u001b[0m\u001b[?25h\u001b[?1049l';
 
 export class AgentTui {
   private readonly options: AgentTuiOptions;
   private readonly output: OutputLike;
   private readonly input: InputLike;
-  private readonly colors: boolean;
+  private readonly colorMode: ColorMode;
   private readonly charset: Charset;
   private readonly now: () => number;
   private view: ViewState = initialViewState();
   private running = false;
   private quitRequested = false;
+  private tick = 0;
   private renderTimer: NodeJS.Timeout | null = null;
   private intervalTimer: NodeJS.Timeout | null = null;
   private unsubscribe: (() => void) | null = null;
@@ -680,7 +992,7 @@ export class AgentTui {
     this.options = options;
     this.output = options.output ?? process.stdout;
     this.input = options.input ?? process.stdin;
-    this.colors = options.colors ?? (process.env.NO_COLOR === undefined);
+    this.colorMode = options.colorMode ?? detectColorMode();
     this.charset = options.charset ?? detectCharset();
     this.now = options.now ?? Date.now;
   }
@@ -740,12 +1052,14 @@ export class AgentTui {
     // unset), and a zero-height frame would render as a blank screen.
     const columns = this.output.columns || 80;
     const rows = this.output.rows || 24;
+    this.tick += 1;
     const result = renderDashboard(this.options.store.snapshot(), this.view, {
       columns,
       rows,
-      colors: this.colors,
+      colorMode: this.colorMode,
       charset: this.charset,
       now: this.now(),
+      tick: this.tick,
     });
     this.lastMaxLogScroll = result.maxLogScroll;
     if (this.view.logScroll > result.maxLogScroll) this.view.logScroll = result.maxLogScroll;
