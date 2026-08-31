@@ -454,7 +454,11 @@ export const SearchCompactionInput = z
      * Allow-list of candidate row keys to keep. Deliberately a string list
      * and not an enum: the site packages add candidate fields on their own
      * cadence, and an enum here would have to be edited in lockstep with
-     * every such addition or would start rejecting valid requests.
+     * every such addition or would start rejecting valid requests. Names
+     * the two site profiles spell differently are resolved across both
+     * (price/snippetPrice, format/sellingFormat, location/locationText/
+     * itemLocationText) and returned under the requested name, so one
+     * field list works against eBay and Kijiji pages alike.
      */
     fields: z.array(z.string().min(1).max(64)).min(1).max(32).optional(),
     include: z
@@ -598,12 +602,31 @@ export const BatchExtractItemSchema = z.strictObject({
   url: z.string(),
   /** Where the tab actually landed; null when navigation never committed. */
   finalUrl: z.union([z.string(), z.null()]),
+  /**
+   * True only when the slot produced listing evidence. A page that loaded
+   * but is not a listing — eBay's error/removed-item template
+   * (listingStatus 'unavailable'), a deleted Kijiji ad, or Kijiji's
+   * removed-ad redirect — is ok:false with error.code LISTING_UNAVAILABLE,
+   * so an upsert keyed on ok never writes an error page to a dashboard.
+   * Sold, ended, and expired listings are still ok:true: those pages carry
+   * the evidence a re-validation pass exists to collect.
+   */
   ok: z.boolean(),
   siteProfile: z.union([z.string(), z.null()]),
   pageRevision: z.union([z.int(), z.null()]),
-  /** Compact projection when compact is true; the provenance record otherwise. */
+  /**
+   * Compact projection when compact is true; the provenance record
+   * otherwise. Present even on a LISTING_UNAVAILABLE slot — what the dead
+   * page said is exactly the evidence needed to retire a stored id.
+   */
   record: z.union([z.looseObject({}), z.null()]),
   warnings: z.array(z.string()),
+  /**
+   * Per-slot failure. Usually a catalogued bridge error from navigation or
+   * extraction; the slot-only code LISTING_UNAVAILABLE (not in the §17
+   * catalog — it is a page outcome, not a call failure) marks a page that
+   * answered but holds no listing.
+   */
   error: z.union([
     z.strictObject({
       code: z.string(),
@@ -703,8 +726,9 @@ export const DashboardFeedInput = z.strictObject({
   dashboard: z.enum(DASHBOARD_IDS),
   /**
    * 'ids' returns root metadata plus per-listing {id, firstSeen, lastSeen,
-   * lastChanged, status} only — enough to diff a run's findings against the
-   * stored feed without pulling every full record into context.
+   * lastChanged, lastVerified, status, active} only — enough to diff a run's
+   * findings against the stored feed without pulling every full record into
+   * context.
    */
   mode: z.enum(['full', 'ids']).default('full'),
   /**
@@ -716,9 +740,10 @@ export const DashboardFeedInput = z.strictObject({
   filter: z
     .strictObject({
       /**
-       * true keeps only listings whose status reads as active; false keeps
-       * only those that do not. A listing with no status at all is not
-       * "active" — the run that wrote it never claimed it was.
+       * true keeps only listings not retired with active:false; false keeps
+       * only the retired ones. This reads the listing's own `active` field —
+       * the boards' retirement flag, where absence means active — not the
+       * separate `status` lifecycle vocabulary (watching, tracked, …).
        */
       active: z.boolean().optional(),
       /** Case-insensitive status allow-list, e.g. ["active","price_drop"]. */

@@ -184,8 +184,19 @@ describe('defect 5 — an ad whose price is not an amount', () => {
     expect(contactAd().record.postedAt).toBe('2025-12-15T18:15:13.000Z');
   });
 
-  it('still counts the ten images the gallery carries', () => {
-    expect(contactAd().record.imageCount).toBe(10);
+  it('counts the six distinct photos, not the ten gallery img nodes', () => {
+    // The rendered gallery repeats photos as hero + thumbnail: this capture
+    // holds 10 img elements over 6 distinct image UUIDs, and the page's own
+    // hydration cache states exactly those 6 in StandardListing.imageUrls.
+    // The old expectation of 10 pinned the double-count as if it were fact.
+    expect(contactAd().record.imageCount).toBe(6);
+  });
+
+  it('counts past the four-image cap of the schema.org block on the priced ad', () => {
+    // 1740940278 states 4 images in JSON-LD and 7 in its hydration cache;
+    // the 2026-08-30 connector test caught the same cap on a 6-photo ad
+    // that reported imageCount 4.
+    expect(pricedAd().record.imageCount).toBe(7);
   });
 });
 

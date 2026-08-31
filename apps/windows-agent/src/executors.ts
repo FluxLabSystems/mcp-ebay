@@ -59,10 +59,14 @@ import {
   EBAY_SITE_PROFILE_ID,
 } from '@browser-bridge/site-ebay';
 import {
+  adIdFromUrl,
   classifyKijijiPage,
   extractKijijiListing,
   extractSearchResults,
+  isKijijiAdImageUrl,
+  KIJIJI_GALLERY_SELECTORS,
   KIJIJI_SITE_PROFILE_ID,
+  normalizeKijijiImageUrl,
 } from '@browser-bridge/site-kijiji';
 import type { BrowserSessionRuntime } from '@browser-bridge/browser-core';
 import { compactItemRecord, compactSearchPage } from './compact.js';
@@ -127,6 +131,14 @@ function ebayGalleryHints(): GalleryHints {
   return {
     gallerySelectors: EBAY_GALLERY_SELECTORS,
     normalizeImageUrl: normalizeEbayImageUrl,
+  };
+}
+
+function kijijiGalleryHints(): GalleryHints {
+  return {
+    gallerySelectors: KIJIJI_GALLERY_SELECTORS,
+    normalizeImageUrl: normalizeKijijiImageUrl,
+    isGalleryImage: isKijijiAdImageUrl,
   };
 }
 
@@ -266,10 +278,14 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
           ...(args as object),
         });
         // Hint selection follows the loaded page, not the profile id: a
-        // composite profile (e.g. ebay+kijiji) still gets eBay hints on
-        // eBay pages and generic enumeration elsewhere.
+        // composite profile (e.g. ebay+kijiji) still gets each site's hints
+        // on its own pages and generic enumeration elsewhere. Kijiji used to
+        // fall to {} here, which silently turned scope "gallery" into a
+        // whole-page img scan — six ad photos plus a store badge.
+        const imagesSite = siteForUrl(session.getTab(tabId).page.url());
         const hints =
-          host.galleryHints ?? (siteForUrl(session.getTab(tabId).page.url()) === 'ebay' ? ebayGalleryHints() : {});
+          host.galleryHints ??
+          (imagesSite === 'ebay' ? ebayGalleryHints() : imagesSite === 'kijiji' ? kijijiGalleryHints() : {});
         const outcome = await enumerateImages(session, tabId, input.scope, hints);
         return { result: { ...outcome }, pageRevision: outcome.pageRevision, artifacts: [] };
       }
@@ -467,6 +483,10 @@ async function executeExtract(
           hasNextPage: searchPage.hasNextPage,
           nextPageUrl: searchPage.nextPageUrl,
           totalResults: searchPage.totalResults,
+          // The removed-ad marker: a deleted ad's VIP URL 302s to this
+          // search page carrying ?adRemoved=<id>. Dropping it here made the
+          // redirect indistinguishable from an ordinary search landing.
+          removedAdId: searchPage.removedAdId,
           note: 'Candidate snippets are traversal hints; open each ad URL and extract it for canonical evidence.',
         },
         searchOptions,
@@ -593,6 +613,43 @@ function applySearchCompaction(
 }
 
 /**
+ * A slot whose page answered but is not a listing: eBay's error or
+ * removed-item template (listingStatus 'unavailable'), a deleted Kijiji ad
+ * still rendering a VIP shell (listingStatus 'deleted'), or Kijiji's
+ * removed-ad redirect — the VIP URL 302s to its category search page
+ * carrying ?adRemoved=<id>. These used to come back ok:true and count as
+ * succeeded, so a routine upserting every ok slot would write a record
+ * literally titled "Discover error" to the deals board. The record stays on
+ * the slot — a dead listing is exactly the evidence a re-validation pass
+ * needs to retire a stored id — but ok now means "produced listing
+ * evidence", not "the tab loaded something".
+ *
+ * 'sold', 'ended' and 'expired' stay ok:true on purpose: those are real
+ * listing pages whose data (final price, close date) is the signal a deals
+ * watch exists to collect.
+ */
+function deadListingError(url: string, record: Record<string, unknown> | null): BatchExtractItem['error'] {
+  if (record === null) return null;
+  const status = typeof record.listingStatus === 'string' ? record.listingStatus : null;
+  if (status === 'unavailable' || status === 'deleted') {
+    return {
+      code: 'LISTING_UNAVAILABLE',
+      message: `The page reports listingStatus "${status}" — an error, removed-listing, or deleted-ad page, not listing evidence.`,
+      retryable: false,
+    };
+  }
+  const removedAdId = typeof record.removedAdId === 'string' ? record.removedAdId : null;
+  if (removedAdId !== null && removedAdId === adIdFromUrl(url)) {
+    return {
+      code: 'LISTING_UNAVAILABLE',
+      message: `Kijiji redirected this ad to its category search page marked adRemoved=${removedAdId}: the ad no longer exists.`,
+      retryable: false,
+    };
+  }
+  return null;
+}
+
+/**
  * Traverse one URL: navigate, then extract, and turn any failure into this
  * URL's own result slot instead of the batch's.
  *
@@ -622,15 +679,16 @@ async function traverseOne(
     const warnings = Array.isArray(result.warnings) ? (result.warnings as string[]) : [];
     const profile = typeof result.siteProfile === 'string' ? result.siteProfile : siteProfile;
     const record = (result.record ?? null) as Record<string, unknown> | null;
+    const dead = deadListingError(url, record);
     return {
       url,
       finalUrl: nav.finalUrl,
-      ok: true,
+      ok: dead === null,
       siteProfile: profile,
       pageRevision: outcome.pageRevision,
       record: record === null ? null : compact ? compactItemRecord(profile, record, warnings) : record,
       warnings,
-      error: null,
+      error: dead,
     };
   } catch (err) {
     const bridgeError = BridgeError.from(err);

@@ -314,7 +314,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'reversible',
     timeoutMs: EXTRACT_MANY_TIMEOUT_MS,
     description:
-      `Traverse up to ${EXTRACT_MANY_MAX_URLS} item or ad URLs in one call and return one compact record per URL. Read and traversal only: it navigates and extracts, nothing else. Each URL gets its own result slot with its own error, so one dead or blocked page never fails the batch. mode "auto" answers inline for a batch that fits this tool's deadline and otherwise returns a jobId to poll with browser.job_status.`,
+      `Traverse up to ${EXTRACT_MANY_MAX_URLS} item or ad URLs in one call and return one compact record per URL. Read and traversal only: it navigates and extracts, nothing else. Each URL gets its own result slot with its own error, so one dead or blocked page never fails the batch. A page that loads but is not a listing (an error, removed-listing, or deleted-ad page) is ok:false with error.code LISTING_UNAVAILABLE and keeps its record as evidence — only upsert slots with ok:true. mode "auto" answers inline for a batch that fits this tool's deadline and otherwise returns a jobId to poll with browser.job_status.`,
     inputSchema: ExtractManyInput,
     outputSchema: ExtractManyOutput,
   },
@@ -401,7 +401,7 @@ export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
     action: 'feed',
     timeoutMs: 30_000,
     description:
-      'Read the current Fluxology dashboard feed (deals, office, jobs, or vacation) so a run can diff its findings against stored records before writing. mode "ids" returns root metadata plus per-listing identity/freshness fields only.',
+      'Read the current Fluxology dashboard feed (deals, office, jobs, vacation, or wardrobe) so a run can diff its findings against stored records before writing. mode "ids" returns root metadata plus per-listing identity/freshness fields (including the active retirement flag) only. filter.active reads that flag: a record is active unless retired with active:false.',
     inputSchema: DashboardFeedInput,
     outputSchema: DashboardFeedOutput,
   },
@@ -410,7 +410,7 @@ export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
     action: 'upsert',
     timeoutMs: 30_000,
     description:
-      'Upsert listing records into a Fluxology dashboard (deals, office, jobs, or vacation). Records merge by stable id server-side; unrelated and historical records are preserved. Send only new or materially changed records.',
+      'Upsert listing records into a Fluxology dashboard (deals, office, jobs, vacation, or wardrobe). Records merge by stable id server-side; unrelated and historical records are preserved. Send only new or materially changed records.',
     inputSchema: DashboardUpsertInput,
     outputSchema: DashboardUpsertOutput,
   },

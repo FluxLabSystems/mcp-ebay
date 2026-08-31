@@ -9,6 +9,7 @@
  * provenance of its own, and on an ad with a non-amount price it is stated
  * nowhere but the page's hydration cache. See readKijijiApolloCache.
  */
+import { isKijijiAdImageUrl, KIJIJI_GALLERY_SELECTORS, normalizeKijijiImageUrl } from './gallery.js';
 import { adIdFromUrl, canonicalAdUrl, parseKijijiPrice } from './normalize.js';
 import type { KijijiExtractionRecord, KijijiFieldSource, KijijiListingStatus } from './record.js';
 
@@ -147,6 +148,22 @@ export function apolloActivationDate(cache: Record<string, unknown> | null, adId
   return typeof activationDate === 'string' && activationDate.length > 0 ? activationDate : null;
 }
 
+/**
+ * The full image list the cache states for one ad. This is the only complete
+ * statement of it in server HTML: the schema.org Product block caps its image
+ * array at 4 (live 1740940278 stated 4 there against 7 here), and the
+ * rendered gallery repeats each photo as hero plus thumbnail.
+ */
+export function apolloImageUrls(cache: Record<string, unknown> | null, adId: string | null): string[] | null {
+  if (cache === null || adId === null) return null;
+  const entry = cache[`StandardListing:${adId}`];
+  if (typeof entry !== 'object' || entry === null) return null;
+  const imageUrls = (entry as Record<string, unknown>).imageUrls;
+  if (!Array.isArray(imageUrls)) return null;
+  const urls = imageUrls.filter((url): url is string => typeof url === 'string' && url.length > 0);
+  return urls.length > 0 ? urls : null;
+}
+
 function textOf(document: Document, selector: string): string | null {
   try {
     const el = document.querySelector(selector);
@@ -281,12 +298,9 @@ const ATTRIBUTE_GROUP_SELECTORS = [
   'dl[data-testid="attributes"]',
   '[class*="attributeList"]',
 ];
-const GALLERY_SELECTORS = [
-  '[data-testid="gallery"]',
-  '[data-testid="vip-gallery"]',
-  '[class*="galleryContainer"]',
-  '[class*="heroImage"]',
-];
+// Gallery container hooks live in gallery.ts so browser.images and this
+// extractor scope "the gallery" identically.
+const GALLERY_SELECTORS = KIJIJI_GALLERY_SELECTORS;
 
 // Removed/expired ad marker text, in the ENDED_MARKERS style of the ebay
 // extractor. NEEDS-LIVE-VERIFICATION: exact live wording of both banners.
@@ -736,9 +750,17 @@ export function extractKijijiListing(
   const sellerType =
     attributeSellerType === 'unknown' ? sellerTypeFromAboutBlock(document) : attributeSellerType;
 
-  // --- image count (jsonld image array → dom gallery) ---
+  // --- image count (apollo imageUrls → jsonld image array → dom gallery) ---
+  // The cache leads because it is the only complete statement: the
+  // schema.org image array caps at 4 (a 6-photo live ad reported
+  // imageCount 4 on the 2026-08-30 connector test), and the rendered
+  // gallery repeats each photo as hero plus thumbnail (live 1730433251:
+  // 10 img nodes, 6 photos), so the DOM fallback counts distinct photos,
+  // not img elements, and skips site-chrome assets.
   let imageCount: number | null = null;
-  if (jsonld?.image !== undefined) {
+  const cachedImageUrls = apolloImageUrls(apollo, adId);
+  if (cachedImageUrls !== null) imageCount = cachedImageUrls.length;
+  if (imageCount === null && jsonld?.image !== undefined) {
     imageCount = Array.isArray(jsonld.image) ? jsonld.image.length : 1;
   }
   if (imageCount === null) {
@@ -750,9 +772,14 @@ export function extractKijijiListing(
         continue;
       }
       if (!gallery) continue;
-      const count = gallery.querySelectorAll('img').length;
-      if (count > 0) {
-        imageCount = count;
+      const distinct = new Set<string>();
+      for (const img of Array.from(gallery.querySelectorAll('img'))) {
+        const src = img.getAttribute('src') ?? '';
+        if (src.length === 0 || src.startsWith('data:') || !isKijijiAdImageUrl(src)) continue;
+        distinct.add(normalizeKijijiImageUrl(src).dedupKey);
+      }
+      if (distinct.size > 0) {
+        imageCount = distinct.size;
         break;
       }
     }

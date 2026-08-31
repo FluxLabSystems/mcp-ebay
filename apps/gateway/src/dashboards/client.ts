@@ -48,7 +48,7 @@ export interface DashboardUpsertResult {
   result: Record<string, unknown>;
 }
 
-const IDENTITY_FIELDS = ['id', 'firstSeen', 'lastSeen', 'lastChanged', 'lastVerified', 'status'] as const;
+const IDENTITY_FIELDS = ['id', 'firstSeen', 'lastSeen', 'lastChanged', 'lastVerified', 'status', 'active'] as const;
 
 /** Strip a listing down to identity + freshness fields for mode "ids". */
 function toIdentity(listing: Record<string, unknown>): Record<string, unknown> {
@@ -105,8 +105,12 @@ function matchesFilter(
   filter: NonNullable<DashboardFeedOptions['filter']>,
 ): boolean {
   if (filter.active !== undefined) {
-    // A record with no status never claimed to be active, so it is not.
-    const isActive = statusOf(listing) === 'active';
+    // The boards' retirement convention: a record is active unless its own
+    // `active` field says false. `status` is a separate lifecycle vocabulary
+    // (watching, tracked, needs_revalidation, …) and does not decide
+    // retirement — matching it here made active:true match nothing and
+    // active:false match everything.
+    const isActive = listing.active !== false;
     if (isActive !== filter.active) return false;
   }
   if (filter.status !== undefined) {

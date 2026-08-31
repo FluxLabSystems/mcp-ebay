@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import type { BrowserSessionRuntime } from '@browser-bridge/browser-core';
 import { WIRE_PROTOCOL_VERSION, type CommandEnvelope } from '@browser-bridge/protocol';
 import { ebaySiteProfile } from '@browser-bridge/site-ebay';
+import { kijijiSiteProfile } from '@browser-bridge/site-kijiji';
 import {
   BatchJobStore,
   createLogger,
@@ -54,6 +55,10 @@ interface StubOptions {
   pages: Record<string, string>;
   /** Hostname → resolved addresses, for the real URL policy's DNS check. */
   resolve?: (hostname: string) => Promise<string[]>;
+  /** Requested URL → URL the "server" 302s to (which must be in pages). */
+  redirects?: Record<string, string>;
+  /** Site policy profile; defaults to the eBay one. */
+  profile?: typeof ebaySiteProfile;
 }
 
 interface Stub {
@@ -74,10 +79,11 @@ function buildStub(options: StubOptions): Stub {
     content: async () => options.pages[currentUrl] ?? '<html><body></body></html>',
     goto: async (url: string) => {
       navigations.push(url);
-      if (!(url in options.pages)) {
+      const landed = options.redirects?.[url] ?? url;
+      if (!(landed in options.pages)) {
         throw new Error(`net::ERR_NAME_NOT_RESOLVED at ${url}`);
       }
-      currentUrl = url;
+      currentUrl = landed;
       revision += 1;
       return {};
     },
@@ -90,7 +96,7 @@ function buildStub(options: StubOptions): Stub {
   const session = {
     handle: HANDLE,
     // The production policy engine over the production ebay.ca.v1 profile.
-    policy: createPagePolicy(ebaySiteProfile, {
+    policy: createPagePolicy(options.profile ?? ebaySiteProfile, {
       resolve: options.resolve ?? (async () => ['104.18.0.1']),
     }),
     enqueue,
@@ -276,6 +282,53 @@ describe('browser.extract_many', () => {
     expect(progress.results[1]!.error).not.toBeNull();
     // The batch kept going: the third URL was still traversed.
     expect(progress.results[2]!.ok).toBe(true);
+  });
+
+  it('an eBay error page that loads fine is ok:false, not a succeeded slot', async () => {
+    // The 2026-08-30 connector test fed /itm/000000000000 to extract_many
+    // and got back ok:true, succeeded:3 failed:0, with a record titled
+    // "Discover error" — which an upsert-on-ok routine would have written
+    // to the deals board as a listing.
+    const dead = 'https://www.ebay.ca/itm/000000000000';
+    const DEAD_HTML = `<!doctype html><html><head><title>Discover error</title></head>
+<body><div class="ux-message__title">We looked everywhere.</div>
+<h1>Discover error</h1><p>Think of this as an alternate route.</p></body></html>`;
+    const stub = buildStub({ pages: { [urls[0]!]: ITEM_HTML, [dead]: DEAD_HTML } });
+    const progress = (
+      await executeCommand(
+        stub.host,
+        envelope('extract_many', { urls: [urls[0], dead], siteProfile: 'ebay.ca.v1', mode: 'inline' }),
+      )
+    ).result as unknown as BatchProgress;
+    expect(progress.succeeded).toBe(1);
+    expect(progress.failed).toBe(1);
+    const slot = progress.results[1]!;
+    expect(slot.ok).toBe(false);
+    expect(slot.error?.code).toBe('LISTING_UNAVAILABLE');
+    expect(slot.error?.retryable).toBe(false);
+    // The record stays on the slot as evidence for retiring a stored id.
+    expect(slot.record?.listingStatus).toBe('unavailable');
+  });
+
+  it('a Kijiji ad that redirects to its category page marked adRemoved is ok:false', async () => {
+    const ad = 'https://www.kijiji.ca/v-toys-games/city-of-toronto/lego/1712345678';
+    const searchLanding =
+      'https://www.kijiji.ca/b-toys-games/city-of-toronto/c108l1700273?adRemoved=1712345678';
+    const stub = buildStub({
+      profile: kijijiSiteProfile,
+      pages: { [searchLanding]: '<html><body><h1>Toys in Toronto</h1></body></html>' },
+      redirects: { [ad]: searchLanding },
+    });
+    const progress = (
+      await executeCommand(
+        stub.host,
+        envelope('extract_many', { urls: [ad], siteProfile: 'kijiji.ca.v1', mode: 'inline' }),
+      )
+    ).result as unknown as BatchProgress;
+    expect(progress.failed).toBe(1);
+    expect(progress.results[0]!.ok).toBe(false);
+    expect(progress.results[0]!.error?.code).toBe('LISTING_UNAVAILABLE');
+    expect(progress.results[0]!.error?.message).toContain('1712345678');
   });
 
   it('POLICY: a URL outside the allowlist is denied per URL, and never loaded', async () => {
