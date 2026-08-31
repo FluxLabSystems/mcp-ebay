@@ -5,7 +5,7 @@
  */
 import type { FieldContext } from '@browser-bridge/policy';
 import { makeElementRef, type SemanticNode } from '@browser-bridge/protocol';
-import type { BrowserSessionRuntime } from './session.js';
+import { resolveDirtyRevision, type BrowserSessionRuntime } from './session.js';
 
 interface RawSnapshotNode {
   ordinal: number;
@@ -183,12 +183,9 @@ export async function snapshot(
   maxNodes: number,
 ): Promise<SnapshotResult> {
   const tab = session.getTab(tabId);
-  // §14: explicit snapshot refresh after mutation increments the revision.
-  if (tab.dirty) {
-    tab.revision += 1;
-    tab.dirty = false;
-  }
-  const revision = tab.revision;
+  // §14: explicit snapshot refresh after mutation increments the revision
+  // (shared with extraction-source capture so the two read models agree).
+  const revision = resolveDirtyRevision(tab);
   const raw = await tab.page.evaluate(collectInPage, { revision, maxNodes });
   const nodes: SemanticNode[] = raw.nodes.map((node) => {
     const secret =

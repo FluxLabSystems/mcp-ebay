@@ -96,6 +96,9 @@ importers:
       '@browser-bridge/site-kijiji':
         specifier: workspace:*
         version: link:../../packages/site-kijiji
+      '@browser-bridge/site-zazzle':
+        specifier: workspace:*
+        version: link:../../packages/site-zazzle
       '@browser-bridge/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
@@ -176,6 +179,15 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
+  packages/site-zazzle:
+    dependencies:
+      '@browser-bridge/policy':
+        specifier: workspace:*
+        version: link:../policy
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
   packages/telemetry: {}
 
   tests:
@@ -204,6 +216,9 @@ importers:
       '@browser-bridge/site-kijiji':
         specifier: workspace:*
         version: link:../packages/site-kijiji
+      '@browser-bridge/site-zazzle':
+        specifier: workspace:*
+        version: link:../packages/site-zazzle
       '@browser-bridge/windows-agent':
         specifier: workspace:*
         version: link:../apps/windows-agent

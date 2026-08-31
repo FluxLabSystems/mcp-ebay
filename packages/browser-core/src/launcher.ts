@@ -180,8 +180,16 @@ export function acquireProfileLock(profileDir: string): ProfileLock {
     let stale = false;
     try {
       const existing = JSON.parse(readFileSync(lockFilePath, 'utf8')) as LockPayload;
-      if (existing.pid === process.pid) {
+      if (existing.pid === process.pid && existing.hostname === hostname()) {
         stale = true; // our own previous acquisition in-process (re-entrant)
+      } else if (existing.hostname !== hostname()) {
+        // A lock from another machine (synced or copied profile dir): the
+        // LOCAL process table can prove nothing about that owner's liveness,
+        // so this fails closed — the payload records hostname for exactly
+        // this comparison. (Previously the pid was probed locally anyway,
+        // which "worked" on Linux only because pid 1 always exists there and
+        // reclaimed foreign locks on Windows, where it usually does not.)
+        stale = false;
       } else {
         try {
           process.kill(existing.pid, 0);

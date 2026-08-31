@@ -24,6 +24,7 @@
  */
 import { canonicalListingUrl, itemIdFromUrl } from '@browser-bridge/site-ebay';
 import { adIdFromUrl, canonicalAdUrl } from '@browser-bridge/site-kijiji';
+import { canonicalProductUrl as canonicalZazzleProductUrl } from '@browser-bridge/site-zazzle';
 import {
   ACK_DEADLINE_MS,
   BridgeError,
@@ -171,6 +172,56 @@ export function compactKijijiAd(record: unknown): CompactKijijiAd {
  * that ships a third site profile before this module learns about it should
  * degrade to "uncompacted", not to "empty".
  */
+export interface CompactZazzleProduct {
+  productId: string | null;
+  canonicalUrl: string | null;
+  title: string | null;
+  vendor: string | null;
+  listedPrice: { value: number | null; currency: string | null } | null;
+  originalPrice: { value: number | null; currency: string | null } | null;
+  priceBasis: string | null;
+  priceQuantityTier: number | null;
+  moq1Supported: boolean | null;
+  personalizationOffered: boolean | null;
+  discountPct: number | null;
+  promoExpires: string | null;
+  ratingValue: number | null;
+  ratingCount: number | null;
+  listingStatus: string | null;
+  warnings: string[];
+}
+
+export function compactZazzleProduct(
+  record: unknown,
+  warnings: readonly string[] = [],
+): CompactZazzleProduct {
+  const product = asObject(record) ?? {};
+  const listed = asObject(product.listedPrice);
+  const original = asObject(product.originalPrice);
+  return {
+    productId: readString(product.productId),
+    canonicalUrl: readString(product.canonicalUrl),
+    title: readString(product.title),
+    vendor: readString(product.vendor),
+    listedPrice:
+      listed === null ? null : { value: readNumber(listed.value), currency: readString(listed.currency) },
+    originalPrice:
+      original === null
+        ? null
+        : { value: readNumber(original.value), currency: readString(original.currency) },
+    priceBasis: readString(product.priceBasis),
+    priceQuantityTier: readNumber(product.priceQuantityTier),
+    moq1Supported: readBoolean(product.moq1Supported),
+    personalizationOffered: readBoolean(product.personalizationOffered),
+    discountPct: readNumber(product.discountPct),
+    promoExpires: readString(product.promoExpires),
+    ratingValue: readNumber(product.ratingValue),
+    ratingCount: readNumber(product.ratingCount),
+    listingStatus: readString(product.listingStatus),
+    warnings: [...warnings],
+  };
+}
+
 export function compactItemRecord(
   siteProfile: string | null,
   record: unknown,
@@ -178,6 +229,9 @@ export function compactItemRecord(
 ): Record<string, unknown> {
   if (siteProfile !== null && siteProfile.startsWith('kijiji')) {
     return compactKijijiAd(record) as unknown as Record<string, unknown>;
+  }
+  if (siteProfile !== null && siteProfile.startsWith('zazzle')) {
+    return compactZazzleProduct(record, warnings) as unknown as Record<string, unknown>;
   }
   if (siteProfile !== null && siteProfile.startsWith('ebay')) {
     return compactEbayItem(record, warnings) as unknown as Record<string, unknown>;
@@ -214,6 +268,15 @@ const DEFAULT_KIJIJI_CANDIDATE_FIELDS = [
   'price',
   'locationText',
   'postedText',
+] as const;
+
+const DEFAULT_ZAZZLE_CANDIDATE_FIELDS = [
+  'productId',
+  'url',
+  'title',
+  'price',
+  'originalPrice',
+  'discountText',
 ] as const;
 
 /**
@@ -263,10 +326,12 @@ export interface SearchCompactionResult {
   warnings: string[];
 }
 
-type Site = 'ebay' | 'kijiji';
+type Site = 'ebay' | 'kijiji' | 'zazzle';
 
 function siteOfProfile(siteProfile: unknown): Site {
-  return typeof siteProfile === 'string' && siteProfile.startsWith('kijiji') ? 'kijiji' : 'ebay';
+  if (typeof siteProfile === 'string' && siteProfile.startsWith('kijiji')) return 'kijiji';
+  if (typeof siteProfile === 'string' && siteProfile.startsWith('zazzle')) return 'zazzle';
+  return 'ebay';
 }
 
 /**
@@ -282,6 +347,9 @@ export function canonicalizeCandidateUrl(rawUrl: string, site: Site): string {
     if (site === 'ebay') {
       const itemId = itemIdFromUrl(rawUrl);
       if (itemId !== null) return canonicalListingUrl(itemId, rawUrl);
+    } else if (site === 'zazzle') {
+      const canonical = canonicalZazzleProductUrl(rawUrl);
+      if (canonical !== null) return canonical;
     } else {
       const adId = adIdFromUrl(rawUrl);
       if (adId !== null) {
@@ -426,9 +494,57 @@ export function compactSearchPage(
   }
 
   const allowed =
-    options.fields ?? (site === 'kijiji' ? DEFAULT_KIJIJI_CANDIDATE_FIELDS : DEFAULT_EBAY_CANDIDATE_FIELDS);
+    options.fields ??
+    (site === 'kijiji'
+      ? DEFAULT_KIJIJI_CANDIDATE_FIELDS
+      : site === 'zazzle'
+        ? DEFAULT_ZAZZLE_CANDIDATE_FIELDS
+        : DEFAULT_EBAY_CANDIDATE_FIELDS);
+
+  // B3: a caller-named field that resolves to NO key on any scanned row —
+  // directly or through an alias — is a typo or a wrong-profile name, and
+  // silently returning rows without it hid a real defect for two rounds of
+  // testing. Skipped when the page rendered no rows at all: an empty page
+  // proves nothing about field names.
+  if (options.fields !== undefined && rows.length > 0) {
+    const emittedKeys = new Set<string>();
+    for (const raw of rows) {
+      const row = asObject(raw);
+      if (row !== null) for (const key of Object.keys(row)) emittedKeys.add(key);
+    }
+    const resolvable = (name: string): boolean =>
+      emittedKeys.has(name) || (CANDIDATE_FIELD_ALIASES[name] ?? []).some((alias) => emittedKeys.has(alias));
+    const unknown = options.fields.filter((name) => !resolvable(name));
+    if (unknown.length > 0) {
+      warnings.push(
+        `UNKNOWN_FIELDS_IGNORED: ${unknown.map((name) => `"${name}"`).join(', ')} match no candidate key on this page (aliases included) and were omitted; keys this page emits: ${[...emittedKeys].sort().join(', ')}.`,
+      );
+    }
+  }
+
   const window = matched.slice(options.offset, options.offset + options.limit);
   const candidates = window.map((row) => projectCandidate(row, allowed, site, options.canonicalizeUrls));
+
+  // C3: absent is explicit, never silent. projectCandidate now emits null
+  // for a known-but-unreadable field; summarize the gaps once per page so a
+  // routine can SEE partial enrichment instead of inferring it from missing
+  // keys (the shape of defect B1's symptom).
+  if (candidates.length > 0) {
+    const nullCounts = new Map<string, number>();
+    for (const candidate of candidates) {
+      for (const [key, value] of Object.entries(candidate)) {
+        if (value === null) nullCounts.set(key, (nullCounts.get(key) ?? 0) + 1);
+      }
+    }
+    if (nullCounts.size > 0) {
+      const parts = [...nullCounts.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, count]) => `${key} on ${count}`);
+      warnings.push(
+        `CANDIDATE_FIELDS_NULL: unreadable on some of the ${candidates.length} returned candidate(s): ${parts.join(', ')}.`,
+      );
+    }
+  }
 
   const out: Record<string, unknown> = {};
   for (const key of PRESERVED_ROOT_FIELDS) {
@@ -457,8 +573,10 @@ function projectCandidate(
   const out: Record<string, unknown> = {};
   for (const key of allowed) {
     let value = row[key];
+    let known = key in row;
     if (value === undefined || value === null) {
       for (const alias of CANDIDATE_FIELD_ALIASES[key] ?? []) {
+        known = known || alias in row;
         const fallback = row[alias];
         if (fallback !== undefined && fallback !== null) {
           value = fallback;
@@ -466,15 +584,25 @@ function projectCandidate(
         }
       }
     }
-    if (value === undefined || value === null) continue;
+    if (value === undefined || value === null) {
+      // C3: a key the row carries (directly or via alias) whose value could
+      // not be read comes back as an EXPLICIT null — "the extractor looked
+      // and the page did not say" — never as a silently missing key. A name
+      // the row does not know at all is omitted here and reported once per
+      // page by the UNKNOWN_FIELDS_IGNORED warning.
+      if (known) out[key] = null;
+      continue;
+    }
     out[key] = key === 'url' && canonicalize && typeof value === 'string'
       ? canonicalizeCandidateUrl(value, site)
       : value;
   }
   // A row the caller can neither identify nor open is not a saving. If the
   // allow-list left out the URL, put the canonical one back.
-  if (out.url === undefined && typeof row.url === 'string') {
-    out.url = canonicalize ? canonicalizeCandidateUrl(row.url, site) : row.url;
+  if (out.url === undefined || out.url === null) {
+    if (typeof row.url === 'string') {
+      out.url = canonicalize ? canonicalizeCandidateUrl(row.url, site) : row.url;
+    }
   }
   return out;
 }

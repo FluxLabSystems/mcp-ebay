@@ -283,7 +283,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'read',
     timeoutMs: DEFAULT_TIMEOUT_MS,
     description:
-      'Run versioned site-profile extraction on the current page, dispatched by page kind. eBay (ebay.ca.v1): item /itm/ pages return the full listing record with provenance and confidence; search /sch/ and seller store /str/ or /usr/ pages return an ordered listing-candidate list for traversal. Kijiji (kijiji.ca.v1): ad (VIP) pages return the full record; search /b-* pages return candidates plus next-page pagination. Candidate snippets are traversal hints - follow each candidate URL and extract the item page for canonical evidence.',
+      'Run versioned site-profile extraction on the current page, dispatched by page kind. eBay (ebay.ca.v1): item /itm/ pages return the full listing record with provenance and confidence; search /sch/ and seller store /str/ or /usr/ pages return an ordered listing-candidate list for traversal. Kijiji (kijiji.ca.v1): ad (VIP) pages return the full record; search /b-* pages return candidates plus next-page pagination. Zazzle (zazzle.com.v1): product pages return the wardrobe record (listed-currency prices, priceBasis discriminator, personalization/promo evidence); /s/ and /c/ pages return candidates. Candidate snippets are traversal hints - follow each candidate URL and extract the item page for canonical evidence.',
     inputSchema: ExtractInput,
     outputSchema: ExtractOutput,
   },

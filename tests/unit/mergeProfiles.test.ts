@@ -59,8 +59,12 @@ describe('mergeSiteProfiles', () => {
 describe('AGENT_SITE_PROFILES config', () => {
   const baseEnv = { AGENT_GATEWAY_URL: 'ws://127.0.0.1:3000/agent/ws' };
 
-  it('defaults to both marketplace profiles', () => {
-    expect(loadAgentConfig(baseEnv, 'linux').siteProfileIds).toEqual(['ebay.ca.v1', 'kijiji.ca.v1']);
+  it('defaults to every compiled site profile', () => {
+    expect(loadAgentConfig(baseEnv, 'linux').siteProfileIds).toEqual([
+      'ebay.ca.v1',
+      'kijiji.ca.v1',
+      'zazzle.com.v1',
+    ]);
   });
 
   it('parses, trims, and deduplicates an explicit list', () => {

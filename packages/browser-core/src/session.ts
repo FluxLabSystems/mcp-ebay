@@ -19,6 +19,24 @@ export interface ImageRegistryEntry {
   pageRevision: number;
 }
 
+/**
+ * The HTML serialization one page revision vouches for. The first extract at
+ * a revision captures it; every later extract at the SAME revision parses
+ * this same string, so identical calls return identical payloads and an
+ * offset/limit page-through walks one coherent candidate list — a live
+ * marketplace page mutates itself continuously (hydration, ad rotation,
+ * card virtualization) and re-serializing it per call is what made
+ * pageRevision lie (defect B1/B2).
+ */
+export interface ExtractionPin {
+  revision: number;
+  html: string;
+  /** ISO instant the HTML was captured; extraction observedAt derives from it. */
+  capturedAt: string;
+  /** Extraction-output fingerprint, computed lazily by the agent for drift checks. */
+  fingerprint?: string;
+}
+
 export interface TabState {
   tabId: string;
   page: Page;
@@ -28,6 +46,24 @@ export interface TabState {
   /** Last network-policy block observed for a main-frame navigation. */
   lastBlock: { url: string; code: 'ORIGIN_DENIED' | 'PRIVATE_NETWORK_DENIED' | 'SCHEME_DENIED' | 'ACTION_BLOCKED' } | null;
   imageRegistry: Map<string, ImageRegistryEntry>;
+  /** Pinned extraction source for the current revision; null until first extract. */
+  extractionPin: ExtractionPin | null;
+}
+
+/**
+ * §14 read-model refresh: a mutating action marks the tab dirty, and the
+ * NEXT read-model rebuild — a snapshot, or an extraction-source capture —
+ * resolves that to a revision bump. Shared so snapshot and extraction can
+ * never disagree about what a revision means. Bumping invalidates the
+ * extraction pin (it described the pre-mutation page).
+ */
+export function resolveDirtyRevision(tab: TabState): number {
+  if (tab.dirty) {
+    tab.revision += 1;
+    tab.dirty = false;
+    tab.extractionPin = null;
+  }
+  return tab.revision;
 }
 
 class SerialQueue {
@@ -133,6 +169,7 @@ export class BrowserSessionRuntime {
       dirty: false,
       lastBlock: null,
       imageRegistry: new Map(),
+      extractionPin: null,
     };
     this.tabs.set(tab.tabId, tab);
     this.pageToTab.set(page, tab);
@@ -141,6 +178,7 @@ export class BrowserSessionRuntime {
         tab.revision += 1;
         tab.dirty = false;
         tab.imageRegistry.clear();
+        tab.extractionPin = null;
       }
     });
     page.on('download', (download) => {
@@ -293,6 +331,27 @@ export async function navigate(
       }
     }
     const finalUrl = tab.page.url();
+
+    // Post-landing revalidation (defect B4). Playwright invokes route
+    // handlers only for the FIRST request of a redirect chain, so the
+    // interception above never sees the hops — which is exactly how
+    // ebay.ca/signin/ committed on signin.ebay.ca while the requested URL
+    // passed every check. The landed document is therefore re-validated
+    // against the full policy (origin allowlist AND auth-path deny rules,
+    // context 'redirect'), and a denied landing never stays open: the tab
+    // is parked on about:blank before the error is raised.
+    if (finalUrl !== url) {
+      const landed = await session.policy.checkUrl(finalUrl, 'redirect');
+      if (!landed.allowed) {
+        await tab.page.goto('about:blank').catch(() => undefined);
+        throw new BridgeError(
+          landed.errorCode ?? 'ORIGIN_DENIED',
+          `Navigation to ${url} redirected to ${finalUrl}, which local policy blocks (${landed.reason ?? landed.errorCode ?? 'denied'}).`,
+          { url, finalUrl },
+        );
+      }
+    }
+
     let origin = '';
     try {
       origin = new URL(finalUrl).origin;

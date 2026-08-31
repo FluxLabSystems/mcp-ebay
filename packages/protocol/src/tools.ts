@@ -530,7 +530,7 @@ export const ExtractInput = z.strictObject({
    * dispatches by the live page's host and page kind; this field declares
    * caller intent and a mismatch downgrades to a warning, never a refusal.
    */
-  siteProfile: z.enum(['ebay.ca.v1', 'kijiji.ca.v1']),
+  siteProfile: z.enum(['ebay.ca.v1', 'kijiji.ca.v1', 'zazzle.com.v1']),
   /**
    * Optional server-side reduction of a search/candidate page, evaluated on
    * the agent. Omitting it is the Phase 1 behavior exactly — the full
@@ -572,7 +572,7 @@ export const OpenAndExtractInput = z.strictObject({
   tabId: z.string(),
   url: z.url(),
   waitUntil: z.enum(['domcontentloaded', 'load']).default('domcontentloaded'),
-  siteProfile: z.enum(['ebay.ca.v1', 'kijiji.ca.v1']),
+  siteProfile: z.enum(['ebay.ca.v1', 'kijiji.ca.v1', 'zazzle.com.v1']),
   /**
    * Compaction for search/candidate pages. Omitted, this tool applies
    * DEFAULT_SEARCH_COMPACTION — unlike browser.extract, which stays
@@ -675,7 +675,7 @@ export const ExtractManyInput = z.strictObject({
   browserSessionHandle: z.string(),
   tabId: z.string(),
   urls: z.array(z.url()).min(1).max(EXTRACT_MANY_MAX_URLS),
-  siteProfile: z.enum(['ebay.ca.v1', 'kijiji.ca.v1']),
+  siteProfile: z.enum(['ebay.ca.v1', 'kijiji.ca.v1', 'zazzle.com.v1']),
   waitUntil: z.enum(['domcontentloaded', 'load']).default('domcontentloaded'),
   /** Appendix A compact projection; the reason the batch fits in context. */
   compact: z.boolean().default(true),

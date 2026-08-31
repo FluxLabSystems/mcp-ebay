@@ -173,7 +173,10 @@ describe('buildConfigEntries', () => {
     const byKey = new Map(entries.map((entry) => [entry.key, entry]));
     expect(byKey.get('AGENT_GATEWAY_URL')).toMatchObject({ value: 'ws://127.0.0.1:3000/agent/ws', source: 'env' });
     expect(byKey.get('AGENT_NAME')).toMatchObject({ value: 'laptop', source: 'env' });
-    expect(byKey.get('AGENT_SITE_PROFILES')).toMatchObject({ value: 'ebay.ca.v1,kijiji.ca.v1', source: 'default' });
+    expect(byKey.get('AGENT_SITE_PROFILES')).toMatchObject({
+      value: 'ebay.ca.v1,kijiji.ca.v1,zazzle.com.v1',
+      source: 'default',
+    });
     expect(byKey.get('AGENT_TASK_NAME')).toMatchObject({ value: DEFAULT_LOGON_TASK_NAME, source: 'default' });
     expect(byKey.get('AGENT_UI_GLYPHS')).toMatchObject({ value: 'auto', source: 'default' });
     expect(byKey.get('AGENT_PROFILE_DIR')?.source).toBe('default');

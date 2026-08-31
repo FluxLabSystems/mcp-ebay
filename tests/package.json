@@ -16,6 +16,7 @@
     "@browser-bridge/protocol": "workspace:*",
     "@browser-bridge/site-ebay": "workspace:*",
     "@browser-bridge/site-kijiji": "workspace:*",
+    "@browser-bridge/site-zazzle": "workspace:*",
     "@browser-bridge/windows-agent": "workspace:*",
     "@hono/node-server": "^2.1.0",
     "@modelcontextprotocol/server": "2.0.0",

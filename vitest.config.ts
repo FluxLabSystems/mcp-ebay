@@ -44,6 +44,14 @@ export default defineConfig({
       {
         test: {
           ...baseTest,
+          name: 'conformance',
+          include: ['tests/conformance/**/*.test.ts'],
+          testTimeout: 120_000,
+        },
+      },
+      {
+        test: {
+          ...baseTest,
           name: 'e2e',
           include: ['tests/e2e/**/*.test.ts'],
           testTimeout: 180_000,

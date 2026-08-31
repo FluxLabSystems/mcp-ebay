@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<!-- zazzle.com.v1 fixture: search results. Card markup mirrors the live
+     SearchResultsGridCell2 structure captured 2026-08-31: a duplicate
+     product link that must dedupe, an off-site anchor with an 18-digit tail
+     that the host filter must exclude, and one degraded (image-only) card
+     whose enrichment must come back as explicit nulls. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Name T-Shirts &amp; T-Shirt Designs | Zazzle</title>
+</head>
+<body>
+  <div class="SearchResults_grid">
+    <div class="SearchResults_cell SearchResultsGridCell2_root" data-itemid="256993602821254375" title="Pet's Simple Modern Cool Typography Name and Photo T-Shirt">
+      <div class="SearchResultsGridCell2_realviewContainer">
+        <a aria-label="Product: Pet's Simple Modern Cool Typography Name and Photo T-Shirt" class="SearchResultsGridCell2_link" href="https://www.zazzle.com/pets_simple_modern_cool_typography_name_and_photo_t_shirt-256993602821254375?tracking=abc">
+          <img src="https://rlv.zcache.com/pets-247.jpg" alt="Pet's Simple Modern Cool Typography Name and Photo T-Shirt">
+        </a>
+        <div class="SearchProductPriceBadge_root SearchResultsGridCell2_priceBadge">Save 10%</div>
+      </div>
+      <div class="SearchResultsGridCell2_info">
+        <a class="SearchResultsGridCell2_link" href="https://www.zazzle.com/pets_simple_modern_cool_typography_name_and_photo_t_shirt-256993602821254375">
+          <span class="SearchResultsGridCell2_title">Pet's Simple Modern Cool Typography Name and Photo T-Shirt</span>
+        </a>
+        <div class="SearchProductPrice_root">
+          <span class="SearchProductPrice_priceAdjustedText SearchProductPrice_black">$19.31</span>
+          <span class="SearchProductPrice_cv_text SearchProductPrice_lineThrough">$21.45</span>
+          <span class="SearchProductPrice_cv_text">Comp. value</span>
+        </div>
+      </div>
+    </div>
+    <div class="SearchResults_cell SearchResultsGridCell2_root" data-itemid="235604562741116693" title="Cool Custom Family Team Name Retro Sports Logo T-Shirt">
+      <div class="SearchResultsGridCell2_info">
+        <a class="SearchResultsGridCell2_link" href="/cool_custom_family_team_name_retro_sports_logo_t_shirt-235604562741116693">
+          <span class="SearchResultsGridCell2_title">Cool Custom Family Team Name Retro Sports Logo T-Shirt</span>
+        </a>
+        <div class="SearchProductPrice_root">
+          <span class="SearchProductPrice_priceAdjustedText">$23.10</span>
+        </div>
+      </div>
+    </div>
+    <div class="SearchResults_cell SearchResultsGridCell2_root" data-itemid="256993602821254375">
+      <!-- duplicate link to the first product; traversal must dedupe -->
+      <a class="SearchResultsGridCell2_link" href="https://www.zazzle.com/pets_simple_modern_cool_typography_name_and_photo_t_shirt-256993602821254375?src=rec">
+        <span class="SearchResultsGridCell2_title">Pet's Simple (duplicate card)</span>
+      </a>
+    </div>
+    <div class="SearchResults_cell SearchResultsGridCell2_root" data-itemid="256417746022202831">
+      <!-- degraded card: anchor wraps only an image; no title/price nodes -->
+      <a class="SearchResultsGridCell2_link" href="https://www.zazzle.com/3_rex_cute_dinosaur_theme_3rd_birthday_party_name_toddler_t_shirt-256417746022202831">
+        <img src="https://rlv.zcache.com/rex-247.jpg" alt="">
+      </a>
+    </div>
+    <div class="SearchResults_cell">
+      <!-- off-site anchor with a plausible numeric tail; host filter must exclude it -->
+      <a href="https://example.com/shirts/custom_tee-256000000000000001">Sponsored: custom tees on example.com</a>
+    </div>
+  </div>
+</body>
+</html>

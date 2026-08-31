@@ -1,0 +1,21 @@
+{
+  "name": "@browser-bridge/site-zazzle",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "zazzle.com.v1 site profile: allowlist (with the permanent entripy.com deny), protected-action rules, product/search extraction for the Fluxology wardrobe workflows (read-only)",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@browser-bridge/policy": "workspace:*",
+    "zod": "^4.4.3"
+  }
+}
