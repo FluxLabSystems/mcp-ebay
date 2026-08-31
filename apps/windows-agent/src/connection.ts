@@ -25,6 +25,7 @@ import { AGENT_VERSION } from './version.js';
 import { executeCommand, type ExecutionOutcome, type ExecutorHost } from './executors.js';
 import type { DeviceIdentity } from './identity.js';
 import type { Logger } from './logger.js';
+import type { AgentMonitor } from './monitor.js';
 
 export interface ConnectionOptions {
   gatewayWsUrl: string;
@@ -33,6 +34,8 @@ export interface ConnectionOptions {
   host: ExecutorHost;
   logger: Logger;
   heartbeatSeconds: number;
+  /** Optional dashboard sink (monitor.ts); absent in tests and plain mode. */
+  monitor?: AgentMonitor;
   fetchImpl?: typeof fetch;
   /** Injectable for tests. */
   webSocketFactory?: (url: string) => WebSocket;
@@ -78,6 +81,7 @@ export class AgentConnection {
     this.heartbeatTimer = null;
     this.ws?.close();
     this.ws = null;
+    this.options.monitor?.connectionStopped();
   }
 
   get isConnected(): boolean {
@@ -88,6 +92,7 @@ export class AgentConnection {
     if (this.stopped) return;
     const factory = this.options.webSocketFactory ?? ((url: string) => new WebSocket(url));
     this.logger.info({ url: this.options.gatewayWsUrl }, 'Connecting to gateway');
+    this.options.monitor?.connectionConnecting(this.options.gatewayWsUrl);
     const ws = factory(this.options.gatewayWsUrl);
     this.ws = ws;
     this.connectionId = null;
@@ -98,6 +103,7 @@ export class AgentConnection {
     });
     ws.on('message', (data) => {
       this.lastGatewayActivity = Date.now();
+      this.options.monitor?.gatewayActivity();
       void this.onFrame(String(data));
     });
     ws.on('close', () => {
@@ -130,6 +136,7 @@ export class AgentConnection {
     const delay = Math.round(base + jitter);
     this.backoffIndex = Math.min(this.backoffIndex + 1, RECONNECT_BACKOFF_MS.length - 1);
     this.logger.info({ reason, delayMs: delay }, 'Reconnecting after backoff');
+    this.options.monitor?.connectionLost(reason, delay);
     setTimeout(() => this.connect(), delay).unref?.();
   }
 
@@ -179,6 +186,7 @@ export class AgentConnection {
         this.backoffIndex = 0;
         this.failureSince = null;
         this.logger.info({ connectionId: message.connectionId }, 'Device channel ready');
+        this.options.monitor?.connectionReady(message.connectionId);
         this.startHeartbeat();
         this.sendStateReport();
         this.options.onReady?.(message.connectionId);
@@ -252,6 +260,7 @@ export class AgentConnection {
       return;
     }
     this.inFlight.add(envelope.requestId);
+    this.options.monitor?.commandStarted(envelope.requestId, envelope.command);
     // §12.4: ack within 2 s of queueing.
     this.send(
       AckSchema.parse({
@@ -323,6 +332,12 @@ export class AgentConnection {
       this.cancelled.delete(envelope.requestId);
       this.inFlight.delete(envelope.requestId);
     }
+    this.options.monitor?.commandFinished(
+      envelope.requestId,
+      result.status,
+      result.durationMs,
+      result.error?.code ?? null,
+    );
     const frame = JSON.stringify(result);
     this.recentResults.set(envelope.requestId, { at: Date.now(), frame });
     this.pruneRecentResults();

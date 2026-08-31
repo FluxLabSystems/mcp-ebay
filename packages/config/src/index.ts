@@ -208,6 +208,9 @@ export function loadGatewayConfig(env: Record<string, string | undefined> = proc
   };
 }
 
+/** Default per-user logon task name; install-logon-task.ps1's -TaskName default. */
+export const DEFAULT_LOGON_TASK_NAME = 'FluxologyBrowserBridgeAgent';
+
 export const AgentEnvSchema = z.object({
   AGENT_GATEWAY_URL: z
     .url()
@@ -229,6 +232,11 @@ export const AgentEnvSchema = z.object({
    * e.g. "ebay.ca.v1" to pin a session to one marketplace.
    */
   AGENT_SITE_PROFILES: z.string().default('ebay.ca.v1,kijiji.ca.v1'),
+  /**
+   * Scheduled-task name the console dashboard probes for install/run state.
+   * Override only when install-logon-task.ps1 was run with -TaskName.
+   */
+  AGENT_TASK_NAME: z.string().min(1).default(DEFAULT_LOGON_TASK_NAME),
 });
 
 export interface AgentConfig {
@@ -243,6 +251,8 @@ export interface AgentConfig {
   ebayDestinationPostalCode: string;
   /** Ordered, deduplicated site-profile ids from AGENT_SITE_PROFILES. */
   siteProfileIds: string[];
+  /** Windows scheduled-task name the dashboard's TASK pane probes. */
+  taskName: string;
 }
 
 export const DEFAULT_PROFILE_LEAF = ['Fluxology', 'BrowserBridge', 'profiles', 'ebay-research'] as const;
@@ -304,5 +314,6 @@ export function loadAgentConfig(
     logLevel: parsed.LOG_LEVEL,
     ebayDestinationPostalCode: parsed.EBAY_DESTINATION_POSTAL_CODE,
     siteProfileIds,
+    taskName: parsed.AGENT_TASK_NAME,
   };
 }

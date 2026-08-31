@@ -57,9 +57,11 @@ if (-not (Test-Path -LiteralPath $AgentCli)) {
 }
 $AgentCliResolved = (Resolve-Path -LiteralPath $AgentCli).Path
 
+# --launched-by logon-task lets the console dashboard label this instance as
+# the background task rather than a window someone started by hand.
 $action = New-ScheduledTaskAction `
     -Execute $NodeExe `
-    -Argument "`"$AgentCliResolved`" run" `
+    -Argument "`"$AgentCliResolved`" run --launched-by logon-task" `
     -WorkingDirectory (Split-Path $AgentCliResolved)
 
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME

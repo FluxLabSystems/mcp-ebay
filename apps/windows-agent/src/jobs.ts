@@ -105,6 +105,35 @@ export class BatchJobStore {
   get size(): number {
     return this.jobs.size;
   }
+
+  /**
+   * Shallow per-job progress for the console dashboard: counts only, never
+   * the extracted result payloads — the dashboard is a status surface, not
+   * a data one, and item records can be large.
+   */
+  snapshotJobs(): BatchJobSummary[] {
+    this.prune();
+    return [...this.jobs.values()]
+      .map((job) => ({
+        jobId: job.jobId,
+        status: job.status,
+        requested: job.requested,
+        completed: job.results.length,
+        failed: job.results.filter((item) => !item.ok).length,
+        startedAt: job.startedAt,
+      }))
+      .sort((a, b) => Number(a.status !== 'running') - Number(b.status !== 'running') || b.startedAt - a.startedAt);
+  }
+}
+
+/** One row of snapshotJobs(); running jobs sort first, then newest first. */
+export interface BatchJobSummary {
+  jobId: string;
+  status: BatchJobStatus;
+  requested: number;
+  completed: number;
+  failed: number;
+  startedAt: number;
 }
 
 /** Shape both browser.extract_many and browser.job_status return. */
