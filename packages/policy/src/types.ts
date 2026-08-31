@@ -13,6 +13,14 @@ export interface SitePolicyProfile {
    * depth under the base). Matching is label-boundary safe.
    */
   allowedHosts: readonly string[];
+  /**
+   * Deny-wins host list, same syntax as allowedHosts, checked BEFORE it.
+   * A host named here is ORIGIN_DENIED even if some allowlist entry —
+   * present or future — would admit it. For hosts a routine has ruled out
+   * permanently (the wardrobe routine's entripy.com), so a mistyped URL or
+   * a careless later allowlist widening can never reach them.
+   */
+  deniedHosts?: readonly string[];
   /** Lower-cased substrings of accessible names/labels that must never be interacted with. */
   blockedActionPatterns: readonly string[];
   /** Autocomplete tokens marking secret fields beyond the global set. */
@@ -22,6 +30,16 @@ export interface SitePolicyProfile {
    * layer; matches are aborted (§19.2 defense-in-depth).
    */
   transactionEndpointPatterns: readonly string[];
+  /**
+   * Auth-surface deny rules: case-insensitive regex sources over full URLs
+   * naming the profile's sign-in/registration/credential pages. Blocked by
+   * default for navigation, redirect, popup, and frame targets — and because
+   * the browser network layer re-evaluates EVERY main-frame hop, a redirect
+   * that lands on an auth host (ebay.ca/signin/ → signin.ebay.ca) is blocked
+   * at the hop even though the requested URL passed. The bridge is read-only
+   * research tooling; there is no legitimate traversal into a login flow.
+   */
+  authPathPatterns?: readonly string[];
   /** Required destination for destination-resolved data, when applicable. */
   destinationPostalCode?: string;
   /**
@@ -44,7 +62,7 @@ export type UrlPolicyContext =
 
 export interface UrlPolicyDecision {
   allowed: boolean;
-  errorCode?: 'SCHEME_DENIED' | 'ORIGIN_DENIED' | 'PRIVATE_NETWORK_DENIED';
+  errorCode?: 'SCHEME_DENIED' | 'ORIGIN_DENIED' | 'PRIVATE_NETWORK_DENIED' | 'ACTION_BLOCKED';
   reason?: string;
   /** Addresses the hostname resolved to at check time (rebinding pinning). */
   resolvedAddresses?: string[];

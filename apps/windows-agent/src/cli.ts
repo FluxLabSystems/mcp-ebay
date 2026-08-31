@@ -19,6 +19,7 @@ import { mergeSiteProfiles, type SitePolicyProfile } from '@browser-bridge/polic
 import { BridgeError } from '@browser-bridge/protocol';
 import { ebaySiteProfile } from '@browser-bridge/site-ebay';
 import { kijijiSiteProfile } from '@browser-bridge/site-kijiji';
+import { zazzleSiteProfile } from '@browser-bridge/site-zazzle';
 import { AgentConnection } from './connection.js';
 import { IdentityStore } from './identity.js';
 import { createLogger } from './logger.js';
@@ -29,7 +30,7 @@ import { AGENT_VERSION } from './version.js';
 
 /** Site profiles compiled into this agent build, keyed by versioned id. */
 const SITE_PROFILES: ReadonlyMap<string, SitePolicyProfile> = new Map(
-  [ebaySiteProfile, kijijiSiteProfile].map((profile) => [profile.id, profile]),
+  [ebaySiteProfile, kijijiSiteProfile, zazzleSiteProfile].map((profile) => [profile.id, profile]),
 );
 
 function parseFlags(argv: string[]): Map<string, string> {

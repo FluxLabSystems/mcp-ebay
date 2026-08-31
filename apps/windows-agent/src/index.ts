@@ -1,3 +1,4 @@
+export * from './challenge.js';
 export * from './compact.js';
 export * from './connection.js';
 export * from './destinationFlow.js';

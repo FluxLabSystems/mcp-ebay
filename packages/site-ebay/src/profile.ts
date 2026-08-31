@@ -28,21 +28,29 @@ export const EBAY_DESTINATION_POSTAL_CODE = 'M6H 2W9';
  * These are defense-in-depth behind the accessible-name deny patterns.
  */
 export const EBAY_TRANSACTION_ENDPOINT_PATTERNS: readonly string[] = [
-  // Checkout / purchase flows
-  'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*)?(?:checkout|rxo|rgc)(?:/|\\?|$)',
+  // Checkout / purchase flows. `(?:.*/)?` — token must START a path segment:
+  // /itm/vintage-checkout-counter/123 is a listing whose slug merely contains
+  // the word and stays reachable; /checkout/… and /rxo/… stay aborted. The
+  // old free-substring form silently aborted real listings whose seller-
+  // written slug contained a keyword.
+  'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*/)?(?:checkout|rxo|rgc)(?:/|\\?|#|$)',
   'https?://pay(?:ments)?\\.ebay\\.(?:ca|com)/',
-  // Bidding
+  // Bidding (camelCase/API tokens; no real-word collision, substring kept)
   'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*)?(?:PlaceBid|placebid|bidflow|MakeBid)',
-  // Best Offer submission
-  'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*)?(?:bestoffer|best-offer|makeOffer|offer/submit)',
+  // Best Offer submission — "best offer" appears in listing titles all day,
+  // so the plain-word forms are segment-anchored; API tokens stay substring.
+  'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*/)?(?:bestoffer|best-offer)(?:/|\\?|#|$)',
+  'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*)?(?:makeOffer|offer/submit)',
   // Cart mutation (blocked in MVP, §4)
   'https?://cart\\.ebay\\.(?:ca|com)/(?:.*)?(?:add|update|checkout)',
   'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*)?cart/(?:api|add)',
   // Seller messaging
   'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*)?(?:contact_seller|ShowSellerFAQ|sendmsg|M2MContact)',
   'https?://mesg(?:[a-z0-9-]*)\\.ebay\\.(?:ca|com)/',
-  // Account security / credentials
-  'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*)?(?:acctsec|account/security|changepassword|change-password|reset)',
+  // Account security / credentials — plain words segment-anchored
+  // ("factory-reset" slugs are merchandise, /reset/ is not); API tokens kept.
+  'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*)?(?:acctsec|account/security|changepassword)',
+  'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*/)?(?:change-password|reset)(?:/|\\?|#|$)',
   'https?://signin\\.ebay\\.(?:ca|com)/(?:.*)?(?:SignInSubmit|password)',
   // Watch/follow state mutation (low-consequence state, blocked in MVP)
   'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*)?(?:watchlist/api|AddToWatchList|watch/add|follow/api)',
@@ -73,6 +81,26 @@ export const EBAY_BLOCKED_ACTION_PATTERNS: readonly string[] = [
   'commit to buy',
 ];
 
+/**
+ * Auth-surface deny rules (blocked by default; see SitePolicyProfile).
+ * `ebay.ca/signin/` 302s to `signin.ebay.ca`, which the host allowlist
+ * (*.ebay.ca) admits — so the landing HOST is named here explicitly and the
+ * network layer's per-hop re-evaluation blocks the redirect where the
+ * requested-URL check alone could not. Read-only research never signs in;
+ * over-blocking is acceptable, under-blocking is not.
+ */
+export const EBAY_AUTH_PATH_PATTERNS: readonly string[] = [
+  // The dedicated sign-in hosts, post-redirect (signin.ebay.ca, signin.ebay.com).
+  'https?://signin\\.ebay\\.(?:ca|com)/',
+  // Sign-in / registration PATH SEGMENTS on any eBay host. The auth token
+  // must be a complete path segment — "/signin/", never a listing slug that
+  // merely contains the word — so /itm/vintage-sign-in-frame/123 stays
+  // reachable while /signin/ and /help/signin are blocked.
+  'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:[a-zA-Z0-9_.~%-]+/)*(?:signin|sign-in|signup|sign-up|registration)(?:/|\\?|#|$)',
+  // Legacy ISAPI sign-in endpoints.
+  'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/ws/eBayISAPI\\.dll\\?Sign(?:In|Up)',
+];
+
 export const EBAY_BLOCKED_FIELD_AUTOCOMPLETE: readonly string[] = [
   'current-password',
   'new-password',
@@ -97,5 +125,6 @@ export const ebaySiteProfile: SitePolicyProfile = {
   blockedActionPatterns: EBAY_BLOCKED_ACTION_PATTERNS,
   blockedFieldAutocomplete: EBAY_BLOCKED_FIELD_AUTOCOMPLETE,
   transactionEndpointPatterns: EBAY_TRANSACTION_ENDPOINT_PATTERNS,
+  authPathPatterns: EBAY_AUTH_PATH_PATTERNS,
   destinationPostalCode: EBAY_DESTINATION_POSTAL_CODE,
 };

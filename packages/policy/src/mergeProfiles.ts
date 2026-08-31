@@ -61,6 +61,10 @@ export function mergeSiteProfiles(profiles: readonly SitePolicyProfile[]): SiteP
     blockedActionPatterns: union(profiles.map((profile) => profile.blockedActionPatterns)),
     blockedFieldAutocomplete: union(profiles.map((profile) => profile.blockedFieldAutocomplete)),
     transactionEndpointPatterns: union(profiles.map((profile) => profile.transactionEndpointPatterns)),
+    // Deny data, like the other deny lists: every profile's auth surfaces
+    // and denied hosts stay blocked on every site in the composite.
+    authPathPatterns: union(profiles.map((profile) => profile.authPathPatterns ?? [])),
+    deniedHosts: union(profiles.map((profile) => profile.deniedHosts ?? [])),
     ...(destinations.length === 1 ? { destinationPostalCode: destinations[0]! } : {}),
   };
 }

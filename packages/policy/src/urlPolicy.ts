@@ -32,6 +32,47 @@ async function defaultResolve(hostname: string): Promise<string[]> {
 }
 
 /**
+ * Contexts the auth-surface deny rules apply to. Subresources are exempt on
+ * purpose: an allowed page may pull assets from an auth host, and blocking
+ * those would break rendering without stopping any sign-in. What must never
+ * happen is the TAB landing on an auth page — directly, via redirect hop,
+ * popup, or frame handoff.
+ */
+const AUTH_BLOCKED_CONTEXTS: ReadonlySet<UrlPolicyContext> = new Set([
+  'navigation',
+  'redirect',
+  'popup',
+  'frame',
+]);
+
+/** Compiled authPathPatterns, memoized per profile object. */
+const authPatternCache = new WeakMap<SitePolicyProfile, RegExp[]>();
+
+function compiledAuthPatterns(profile: SitePolicyProfile): RegExp[] {
+  const cached = authPatternCache.get(profile);
+  if (cached !== undefined) return cached;
+  const compiled: RegExp[] = [];
+  for (const source of profile.authPathPatterns ?? []) {
+    try {
+      compiled.push(new RegExp(source, 'i'));
+    } catch {
+      // An uncompilable deny rule must not silently widen the surface; fail
+      // closed by matching everything the raw source appears in.
+      compiled.push(new RegExp(source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+    }
+  }
+  authPatternCache.set(profile, compiled);
+  return compiled;
+}
+
+/** True when the URL matches the profile's auth-surface deny rules. */
+export function isAuthPathBlocked(rawUrl: string, profile: SitePolicyProfile): boolean {
+  const patterns = compiledAuthPatterns(profile);
+  if (patterns.length === 0) return false;
+  return patterns.some((pattern) => pattern.test(rawUrl));
+}
+
+/**
  * Label-boundary-safe host allowlist match. "ebay.ca" matches only itself;
  * "*.ebay.ca" matches any depth of subdomain but never "notebay.ca".
  * Comparison is case-insensitive; trailing dots are normalized away.
@@ -83,11 +124,31 @@ export async function checkUrl(
   }
 
   const hostname = url.hostname;
+  // Deny wins, and it wins BEFORE the allowlist so no union of profiles can
+  // ever re-admit a host one profile has permanently ruled out.
+  if (profile.deniedHosts !== undefined && hostMatchesAllowlist(hostname, profile.deniedHosts)) {
+    return {
+      allowed: false,
+      errorCode: 'ORIGIN_DENIED',
+      reason: `Host ${hostname} is on the ${profile.id} permanent deny list`,
+    };
+  }
   if (!hostMatchesAllowlist(hostname, profile.allowedHosts)) {
     return {
       allowed: false,
       errorCode: 'ORIGIN_DENIED',
       reason: `Host ${hostname} is not in the ${profile.id} allowlist`,
+    };
+  }
+
+  // Auth surfaces are blocked by default for tab-level targets, and because
+  // this same check runs on every main-frame hop (context 'redirect'), the
+  // policy holds for the POST-REDIRECT host, not just the requested URL.
+  if (AUTH_BLOCKED_CONTEXTS.has(context) && isAuthPathBlocked(rawUrl, profile)) {
+    return {
+      allowed: false,
+      errorCode: 'ACTION_BLOCKED',
+      reason: `${rawUrl} matches the ${profile.id} auth-page deny rules (sign-in/registration/credential surfaces are blocked)`,
     };
   }
 

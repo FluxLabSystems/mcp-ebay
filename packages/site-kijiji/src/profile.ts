@@ -24,19 +24,32 @@ export const KIJIJI_SITE_PROFILE_ID = 'kijiji.ca.v1';
  * is not.
  */
 export const KIJIJI_TRANSACTION_ENDPOINT_PATTERNS: readonly string[] = [
-  // Reply / messaging flows (never contact posters in the read-only MVP)
-  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*)?(?:r-reply|reply|contact-poster|send-message)',
-  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*)?(?:messages?|conversations?|chat)(?:/|\\?|$)',
+  // A Kijiji VIP slug is seller-written ad-title text, so every plain-word
+  // token below is segment-anchored: `(?:.*/)?token` requires the token to
+  // START a path segment, and a trailing boundary closes it. The old
+  // free-substring forms aborted real ads — "antique-cash-register",
+  // "lamp-post", "gaming-chat", "fire-alerts" all matched a deny keyword.
+  // Kijiji's own t-/p-/r- route prefixes keep prefix matching (no ad slug
+  // realistically starts with "t-login"); over-blocking on those is fine.
+  //
+  // Reply / messaging flows (never contact posters in the read-only MVP).
+  // m-msg is Kijiji's real inbox route prefix.
+  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*/)?(?:r-reply|m-msg|contact-poster|send-message)',
+  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*/)?(?:reply|messages?|conversations?|chat)(?:\\.html)?(?:/|\\?|#|$)',
   // Ad posting / ad management
-  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*)?(?:p-post-ad|p-select-category|p-edit-ad|p-delete-ad|p-promote|p-activate)',
-  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*)?/post(?:/|\\?|$)',
+  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*/)?(?:p-post-ad|p-select-category|p-edit-ad|p-delete-ad|p-promote|p-activate)',
+  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*/)?post(?:/|\\?|#|$)',
   // Payments / promotion checkout / billing
-  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*)?(?:payment|checkout|billing|purchase)',
+  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*/)?(?:payment|checkout|billing|purchase)(?:\\.html)?(?:/|\\?|#|$)',
   // Account security / credentials
-  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*)?(?:t-login|t-register|login|register|signin|sign-in|password|account/security)',
+  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*/)?(?:t-login|t-register)',
+  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*/)?(?:login|log-in|register|signin|sign-in|password)(?:\\.html)?(?:/|\\?|#|$)',
+  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*/)?account/security',
   // Favourite / watchlist / saved-search / alert state mutation
-  // (low-consequence state, still blocked in MVP)
-  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*)?(?:favou?rites?|watchlist|saved-search|save-search|alerts?)(?:/|\\?|$)',
+  // (low-consequence state, still blocked in MVP). The m- forms are
+  // Kijiji's real account routes (/m-my-favourites/, /m-saved-searches/).
+  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*/)?(?:m-my-favou?rites?|m-saved-search(?:es)?)',
+  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:.*/)?(?:favou?rites?|watchlist|saved-search|save-search|alerts?)(?:\\.html)?(?:/|\\?|#|$)',
 ];
 
 /**
@@ -67,6 +80,25 @@ export const KIJIJI_BLOCKED_ACTION_PATTERNS: readonly string[] = [
   'security settings',
   'sign in',
   'register',
+];
+
+/**
+ * Auth-surface deny rules (blocked by default; see SitePolicyProfile).
+ * Kijiji's login was already caught by the transaction-endpoint patterns
+ * above; it is restated here so the auth posture is uniform across profiles
+ * and enforced per redirect hop, and the central id host is named for the
+ * post-redirect case. Over-blocking is acceptable, under-blocking is not.
+ */
+export const KIJIJI_AUTH_PATH_PATTERNS: readonly string[] = [
+  // Auth tokens as COMPLETE path segments only: /t-login.html is blocked,
+  // while a cash-register VIP slug ("antique-cash-register") never matches,
+  // because "register" there is not a whole segment. (The broader
+  // transaction-endpoint patterns above predate this rule and match
+  // substrings; they abort requests, so their over-match is a known cost —
+  // this list must not add to it.)
+  'https?://(?:[a-z0-9-]+\\.)*kijiji\\.ca/(?:[a-zA-Z0-9_.~%-]+/)*(?:t-login|t-register|login|log-in|register|signin|sign-in|signup|sign-up)(?:\\.html)?(?:/|\\?|#|$)',
+  // Central identity host, in case a login link hops off www.kijiji.ca.
+  'https?://id\\.kijiji\\.ca/',
 ];
 
 /** Same credential/payment autocomplete set as ebay.ca.v1. */
@@ -102,4 +134,5 @@ export const kijijiSiteProfile: SitePolicyProfile = {
   blockedActionPatterns: KIJIJI_BLOCKED_ACTION_PATTERNS,
   blockedFieldAutocomplete: KIJIJI_BLOCKED_FIELD_AUTOCOMPLETE,
   transactionEndpointPatterns: KIJIJI_TRANSACTION_ENDPOINT_PATTERNS,
+  authPathPatterns: KIJIJI_AUTH_PATH_PATTERNS,
 };

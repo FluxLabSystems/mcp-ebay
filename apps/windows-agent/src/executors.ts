@@ -68,7 +68,14 @@ import {
   KIJIJI_SITE_PROFILE_ID,
   normalizeKijijiImageUrl,
 } from '@browser-bridge/site-kijiji';
-import type { BrowserSessionRuntime } from '@browser-bridge/browser-core';
+import {
+  classifyZazzlePage,
+  extractZazzleProduct,
+  extractZazzleSearchResults,
+  ZAZZLE_SITE_PROFILE_ID,
+} from '@browser-bridge/site-zazzle';
+import { resolveDirtyRevision, type BrowserSessionRuntime, type TabState } from '@browser-bridge/browser-core';
+import { challengeWarning, CHALLENGE_WARNING_PREFIX, detectChallengePage } from './challenge.js';
 import { compactItemRecord, compactSearchPage } from './compact.js';
 import { ensureDestination } from './destinationFlow.js';
 import { BatchJobStore, jobProgress, type BatchJob } from './jobs.js';
@@ -142,7 +149,7 @@ function kijijiGalleryHints(): GalleryHints {
   };
 }
 
-type ExtractionSite = 'ebay' | 'kijiji' | 'generic';
+type ExtractionSite = 'ebay' | 'kijiji' | 'zazzle' | 'generic';
 
 /**
  * Extraction dispatches by the page actually loaded, not by the session's
@@ -156,10 +163,106 @@ function siteForUrl(pageUrl: string): ExtractionSite {
     const host = new URL(pageUrl).hostname.toLowerCase();
     if (host === 'kijiji.ca' || host.endsWith('.kijiji.ca')) return 'kijiji';
     if (/(?:^|\.)ebay\.(?:ca|com)$/.test(host)) return 'ebay';
+    if (host === 'zazzle.com' || host.endsWith('.zazzle.com')) return 'zazzle';
     return 'generic';
   } catch {
     return 'generic';
   }
+}
+
+/**
+ * The extraction source one revision vouches for (defects B1/B2). The first
+ * extract at a (tab, revision) captures page.content() ONCE and pins it;
+ * every later extract at the same revision parses the SAME string, so
+ * identical calls return identical payloads and offset/limit paging walks
+ * one coherent list — a live marketplace page rewrites its own result cards
+ * continuously, and re-serializing per call is what made identical calls
+ * disagree while pageRevision sat still. A mutating action resolves to a
+ * revision bump here exactly as it does in snapshot (§14 shared rule), which
+ * also invalidates the pin.
+ */
+interface ExtractionSource {
+  document: Document;
+  /** Instant the pinned HTML was captured; extraction observedAt derives from it. */
+  capturedAt: Date;
+  /** True when this call was served from an existing pin. */
+  pinned: boolean;
+}
+
+async function resolveExtractionSource(tab: TabState): Promise<ExtractionSource> {
+  resolveDirtyRevision(tab);
+  const pin = tab.extractionPin;
+  if (pin !== null && pin !== undefined && pin.revision === tab.revision) {
+    const { document } = parseHTML(pin.html);
+    return { document: document as unknown as Document, capturedAt: new Date(pin.capturedAt), pinned: true };
+  }
+  const html = await tab.page.content();
+  const capturedAt = new Date();
+  tab.extractionPin = { revision: tab.revision, html, capturedAt: capturedAt.toISOString() };
+  const { document } = parseHTML(html);
+  return { document: document as unknown as Document, capturedAt, pinned: false };
+}
+
+/**
+ * Deterministic fingerprint of what a given HTML serialization EXTRACTS to,
+ * with all time-derived fields held at a fixed instant so only DOM-derived
+ * content participates. Used by the browser.wait drift check: cosmetic churn
+ * (tracking params, timers, ad rotation) must not bump pageRevision, while a
+ * change to any extractable field must.
+ */
+const FINGERPRINT_EPOCH = new Date('2000-01-01T00:00:00.000Z');
+
+function extractionFingerprint(html: string, pageUrl: string): string {
+  const site = siteForUrl(pageUrl);
+  try {
+    const { document } = parseHTML(html);
+    const doc = document as unknown as Document;
+    if (site === 'kijiji') {
+      if (classifyKijijiPage(pageUrl) === 'listing') {
+        return JSON.stringify(extractKijijiListing(doc, pageUrl, { observedAt: FINGERPRINT_EPOCH }).record);
+      }
+      return JSON.stringify(extractSearchResults(doc, pageUrl, { observedAt: FINGERPRINT_EPOCH }));
+    }
+    if (site === 'ebay') {
+      if (classifyEbayPage(pageUrl) === 'listing') {
+        return JSON.stringify(extractListing(doc, pageUrl, { observedAt: FINGERPRINT_EPOCH }).record);
+      }
+      return JSON.stringify(extractListingCandidates(doc, pageUrl));
+    }
+    if (site === 'zazzle') {
+      if (classifyZazzlePage(pageUrl) === 'product') {
+        return JSON.stringify(extractZazzleProduct(doc, pageUrl, { observedAt: FINGERPRINT_EPOCH }).record);
+      }
+      return JSON.stringify(extractZazzleSearchResults(doc, pageUrl));
+    }
+  } catch {
+    // Fall through to the byte comparison below.
+  }
+  // Generic pages have no extractor semantics; the bytes are the content.
+  return html;
+}
+
+/**
+ * browser.wait doubles as the caller's explicit "let the page move on"
+ * primitive, so after the condition holds it is the one place a
+ * spontaneous page change is allowed to surface: if the extractable content
+ * has drifted from the pinned source, the revision bumps and the pin is
+ * re-captured — the caller sees the bump in the wait result and knows to
+ * re-extract. Without this, "extract → wait → extract" either lied (same
+ * revision, different data) or froze (pin served forever).
+ */
+async function refreshExtractionPinAfterWait(tab: TabState): Promise<number | null> {
+  const pin = tab.extractionPin;
+  if (pin === null || pin === undefined || pin.revision !== tab.revision) return null;
+  const freshHtml = await tab.page.content();
+  if (freshHtml === pin.html) return null;
+  const pageUrl = tab.page.url();
+  pin.fingerprint ??= extractionFingerprint(pin.html, pageUrl);
+  if (extractionFingerprint(freshHtml, pageUrl) === pin.fingerprint) return null;
+  tab.revision += 1;
+  tab.dirty = false;
+  tab.extractionPin = { revision: tab.revision, html: freshHtml, capturedAt: new Date().toISOString() };
+  return tab.revision;
 }
 
 export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelope): Promise<ExecutionOutcome> {
@@ -355,7 +458,13 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
           ...(args as object),
         });
         const outcome = await waitFor(session, tabId, input.condition, Math.min(input.timeoutMs, budget));
-        return { result: { ...outcome }, pageRevision: outcome.pageRevision, artifacts: [] };
+        // B2: a satisfied wait is the explicit refresh point — if the page's
+        // extractable content moved on from the pinned source, bump the
+        // revision so the caller can SEE staleness instead of re-extracting
+        // identical-revision data that silently differs.
+        const bumped = await refreshExtractionPinAfterWait(session.getTab(tabId));
+        const pageRevision = bumped ?? outcome.pageRevision;
+        return { result: { ...outcome, pageRevision }, pageRevision, artifacts: [] };
       }
       case 'extract': {
         // The gateway threads the deployment-authoritative destination on
@@ -446,7 +555,12 @@ async function executeExtract(
   // hop between marketplaces inside one session.
   const intentWarnings: string[] = [];
   if (site !== 'generic') {
-    const activeProfile = site === 'kijiji' ? KIJIJI_SITE_PROFILE_ID : EBAY_SITE_PROFILE_ID;
+    const activeProfile =
+      site === 'kijiji'
+        ? KIJIJI_SITE_PROFILE_ID
+        : site === 'zazzle'
+          ? ZAZZLE_SITE_PROFILE_ID
+          : EBAY_SITE_PROFILE_ID;
     if (declaredSiteProfile !== activeProfile) {
       intentWarnings.push(
         `DECLARED_SITE_PROFILE_MISMATCH: extraction ran ${activeProfile} for ${pageUrl}; the call declared ${declaredSiteProfile}.`,
@@ -454,14 +568,47 @@ async function executeExtract(
     }
   }
 
+  // B1: one pinned serialization per (tab, revision) — identical calls at
+  // the same revision extract from the same bytes.
+  const source = await resolveExtractionSource(tab);
+  const document = source.document;
+
+  // C5: a bot wall is not the page the caller asked about, and it is
+  // retryable where a dead listing is not. Detect it before any site
+  // extractor runs so its half-empty shell never masquerades as evidence.
+  const challenge = detectChallengePage(document, pageUrl);
+  if (challenge !== null) {
+    const activeProfile =
+      site === 'kijiji'
+        ? KIJIJI_SITE_PROFILE_ID
+        : site === 'ebay'
+          ? EBAY_SITE_PROFILE_ID
+          : site === 'zazzle'
+            ? ZAZZLE_SITE_PROFILE_ID
+            : declaredSiteProfile;
+    return {
+      result: {
+        siteProfile: activeProfile,
+        pageRevision: tab.revision,
+        record: {
+          pageKind: 'challenge',
+          pageUrl,
+          challengeVendor: challenge.vendor,
+          observedAt: source.capturedAt.toISOString(),
+        },
+        warnings: [...intentWarnings, challengeWarning(challenge)],
+      },
+      pageRevision: tab.revision,
+      artifacts: [],
+    };
+  }
+
   if (site === 'kijiji') {
     const kind = classifyKijijiPage(pageUrl);
-    const html = await tab.page.content();
-    const { document } = parseHTML(html);
     // 'other' is not a refusal: run the same ad-link scan the search pages
     // use. Worst case it finds nothing and says so.
     if (kind === 'search' || kind === 'other') {
-      const searchPage = extractSearchResults(document as unknown as Document, pageUrl);
+      const searchPage = extractSearchResults(document, pageUrl, { observedAt: source.capturedAt });
       const warnings = [...intentWarnings];
       if (kind === 'other') {
         warnings.push(
@@ -478,6 +625,7 @@ async function executeExtract(
           siteProfile: KIJIJI_SITE_PROFILE_ID,
           pageKind: kind,
           pageUrl,
+          observedAt: source.capturedAt.toISOString(),
           candidateCount: searchPage.results.length,
           candidates: searchPage.results,
           hasNextPage: searchPage.hasNextPage,
@@ -503,8 +651,64 @@ async function executeExtract(
         artifacts: [],
       };
     }
-    const { record, warnings } = extractKijijiListing(document as unknown as Document, pageUrl, {
+    const { record, warnings } = extractKijijiListing(document, pageUrl, {
       pageRevision: tab.revision,
+      observedAt: source.capturedAt,
+    });
+    return {
+      result: {
+        siteProfile: record.siteProfile,
+        pageRevision: tab.revision,
+        record: record as unknown as Record<string, unknown>,
+        warnings: [...intentWarnings, ...warnings],
+      },
+      pageRevision: tab.revision,
+      artifacts: [],
+    };
+  }
+
+  if (site === 'zazzle') {
+    const kind = classifyZazzlePage(pageUrl);
+    if (kind === 'search' || kind === 'other') {
+      const searchPage = extractZazzleSearchResults(document, pageUrl);
+      const warnings = [...intentWarnings];
+      if (kind === 'other') {
+        warnings.push(
+          `UNCLASSIFIED_PAGE: ${pageUrl} is not a Zazzle product (…-<18-digit id>) or search (/s/, /c/) URL; returned a best-effort product-link scan. An empty candidate list here may mean the page has no products, not that extraction failed.`,
+        );
+      }
+      if (searchPage.results.length === 0) {
+        warnings.push(
+          'NO_LISTING_CANDIDATES: no product links found — an empty results page, or the result-card selectors need updating.',
+        );
+      }
+      const zazzlePage = applySearchCompaction(
+        {
+          siteProfile: ZAZZLE_SITE_PROFILE_ID,
+          pageKind: kind,
+          pageUrl,
+          observedAt: source.capturedAt.toISOString(),
+          candidateCount: searchPage.results.length,
+          candidates: searchPage.results,
+          note: 'Candidate snippets are traversal hints (card prices state no currency); open each product URL and extract it for canonical evidence.',
+        },
+        searchOptions,
+        warnings,
+      );
+      return {
+        result: {
+          siteProfile: ZAZZLE_SITE_PROFILE_ID,
+          pageRevision: tab.revision,
+          record: zazzlePage.record,
+          warnings: zazzlePage.warnings,
+        },
+        pageRevision: tab.revision,
+        artifacts: [],
+      };
+    }
+    const { record, warnings } = extractZazzleProduct(document, pageUrl, {
+      pageRevision: tab.revision,
+      observedAt: source.capturedAt,
     });
     return {
       result: {
@@ -524,9 +728,7 @@ async function executeExtract(
   // is not an item page gets the /itm/-link scan, including 'other'.
   const kind = site === 'ebay' ? classifyEbayPage(pageUrl) : ('listing' as const);
   if (kind === 'search' || kind === 'store' || kind === 'other') {
-    const html = await tab.page.content();
-    const { document } = parseHTML(html);
-    const candidates = extractListingCandidates(document as unknown as Document, pageUrl);
+    const candidates = extractListingCandidates(document, pageUrl);
     const warnings = [...intentWarnings];
     if (kind === 'other') {
       warnings.push(
@@ -543,6 +745,7 @@ async function executeExtract(
         siteProfile: EBAY_SITE_PROFILE_ID,
         pageKind: kind,
         pageUrl,
+        observedAt: source.capturedAt.toISOString(),
         candidateCount: candidates.length,
         candidates,
         note: 'Candidate snippets are traversal hints; open each /itm/ URL and extract it for canonical evidence.',
@@ -562,22 +765,33 @@ async function executeExtract(
     };
   }
   // §20.1: verify/set destination through reversible controls before
-  // marking shipping destination-resolved.
+  // marking shipping destination-resolved. This runs AFTER the challenge
+  // check on purpose — the bridge never pokes controls on a bot wall — and
+  // its raw locator interactions bypass the browser-core dirty flag, so a
+  // set attempt resolves to a fresh revision by hand before re-capturing.
   let verifiedDestination: { postalCode: string; verified: boolean } | undefined;
+  let listingSource = source;
   if (site === 'ebay' && isListingPage(pageUrl)) {
     const outcome = await ensureDestination(session, tabId, expectedPostalCode, host.logger);
     verifiedDestination =
       outcome.postalCode === null
         ? { postalCode: '', verified: false }
         : { postalCode: outcome.postalCode, verified: outcome.verified };
+    if (outcome.attemptedSet) {
+      tab.revision += 1;
+      tab.dirty = false;
+      tab.extractionPin = null;
+    }
+    // No-op when nothing above invalidated the pin; a fresh capture when
+    // the destination flow (or a navigation it triggered) moved the page.
+    listingSource = await resolveExtractionSource(tab);
   }
 
-  const html = await tab.page.content();
-  const { document } = parseHTML(html);
-  const { record, warnings } = extractListing(document as unknown as Document, pageUrl, {
+  const { record, warnings } = extractListing(listingSource.document, pageUrl, {
     expectedPostalCode,
     verifiedDestination,
     pageRevision: tab.revision,
+    observedAt: listingSource.capturedAt,
   });
 
   const allWarnings = [...intentWarnings, ...warnings];
@@ -679,16 +893,23 @@ async function traverseOne(
     const warnings = Array.isArray(result.warnings) ? (result.warnings as string[]) : [];
     const profile = typeof result.siteProfile === 'string' ? result.siteProfile : siteProfile;
     const record = (result.record ?? null) as Record<string, unknown> | null;
-    const dead = deadListingError(url, record);
+    // A bot wall outranks every other page classification: it is retryable
+    // where a dead listing is not, and its half-rendered shell must never be
+    // scored as (or retire) listing evidence.
+    const challengeNote = warnings.find((warning) => warning.startsWith(`${CHALLENGE_WARNING_PREFIX}:`));
+    const error: BatchExtractItem['error'] =
+      challengeNote !== undefined
+        ? { code: 'CHALLENGE_PAGE', message: challengeNote, retryable: true }
+        : deadListingError(url, record);
     return {
       url,
       finalUrl: nav.finalUrl,
-      ok: dead === null,
+      ok: error === null,
       siteProfile: profile,
       pageRevision: outcome.pageRevision,
       record: record === null ? null : compact ? compactItemRecord(profile, record, warnings) : record,
       warnings,
-      error: dead,
+      error,
     };
   } catch (err) {
     const bridgeError = BridgeError.from(err);
@@ -792,6 +1013,14 @@ async function executeExtractMany(
       : host.expectedPostalCode;
 
   const warnings: string[] = [];
+  // B5: a batch traverses each unique URL once. The same URL twice bought
+  // two full navigations for one answer at 25-URL batch scale.
+  const uniqueUrls = [...new Set(input.urls)];
+  if (uniqueUrls.length < input.urls.length) {
+    warnings.push(
+      `DUPLICATE_URLS_REMOVED: ${input.urls.length - uniqueUrls.length} duplicate URL(s) in the batch were removed; each unique URL is traversed once and reports one slot (requested counts unique URLs).`,
+    );
+  }
   if (input.concurrency > 1) {
     // Honest refusal rather than silent compliance: a session executes its
     // commands through one FIFO queue (packages/browser-core/src/session.ts
@@ -803,7 +1032,7 @@ async function executeExtractMany(
   }
 
   const plan: BatchPlan = {
-    urls: input.urls,
+    urls: uniqueUrls,
     waitUntil: input.waitUntil,
     siteProfile: input.siteProfile,
     expectedPostalCode,
@@ -813,8 +1042,9 @@ async function executeExtractMany(
   // §18 promotion rule: 'auto' answers inline only for a batch that fits
   // this tool's own catalog deadline at the catalog's per-item charge
   // (MAX_INLINE_BATCH_ITEMS, derived in packages/protocol/src/catalog.ts).
+  // Judged on UNIQUE URLs — the work actually performed.
   const resolvedMode =
-    input.mode === 'auto' ? (input.urls.length <= MAX_INLINE_BATCH_ITEMS ? 'inline' : 'job') : input.mode;
+    input.mode === 'auto' ? (uniqueUrls.length <= MAX_INLINE_BATCH_ITEMS ? 'inline' : 'job') : input.mode;
 
   if (resolvedMode === 'inline') {
     return session.enqueue(async (): Promise<ExecutionOutcome> => {
@@ -827,11 +1057,11 @@ async function executeExtractMany(
       });
       if (status === 'partial') {
         warnings.push(
-          `BATCH_DEADLINE_REACHED: ${results.length} of ${input.urls.length} URLs were traversed before the call's deadline; re-issue the remainder, or use mode "job".`,
+          `BATCH_DEADLINE_REACHED: ${results.length} of ${uniqueUrls.length} URLs were traversed before the call's deadline; re-issue the remainder, or use mode "job".`,
         );
       }
       return {
-        result: inlineProgress(status, input.urls.length, input.compact, results, warnings),
+        result: inlineProgress(status, uniqueUrls.length, input.compact, results, warnings),
         pageRevision: results.at(-1)?.pageRevision ?? null,
         artifacts: [],
       };
@@ -841,7 +1071,7 @@ async function executeExtractMany(
   const store = resolveJobStore(host);
   const job: BatchJob = store.create(
     envelope.browserSessionHandle,
-    input.urls.length,
+    uniqueUrls.length,
     input.compact,
     warnings,
   );
