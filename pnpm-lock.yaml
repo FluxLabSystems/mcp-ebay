@@ -99,6 +99,9 @@ importers:
       '@browser-bridge/site-zazzle':
         specifier: workspace:*
         version: link:../../packages/site-zazzle
+      '@browser-bridge/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
       linkedom:
         specifier: ^0.18.13
         version: 0.18.13

@@ -16,6 +16,7 @@ import {
 } from '@browser-bridge/browser-core';
 import { BridgeError, type Tab } from '@browser-bridge/protocol';
 import type { Logger } from './logger.js';
+import type { AgentMonitor } from './monitor.js';
 
 export interface SessionOpenResult {
   browserSessionHandle: string;
@@ -31,6 +32,8 @@ export interface SessionManagerOptions {
   launcher?: PersistentContextLauncher;
   /** TEST-ONLY plan override; production always uses buildChromeLaunchPlan. */
   planOverride?: BrowserLaunchPlan;
+  /** Optional dashboard sink (monitor.ts); absent in tests and plain mode. */
+  monitor?: AgentMonitor;
 }
 
 export class SessionManager {
@@ -102,6 +105,7 @@ export class SessionManager {
         { launchesInWindow: this.launchTimestamps.length },
         'Browser crash loop detected; entering DEGRADED state',
       );
+      this.options.monitor?.sessionDegraded();
     }
   }
 
@@ -119,12 +123,23 @@ export class SessionManager {
       onContextClosed: () => {
         this.options.logger.warn({ handle: session?.handle }, 'Browser context closed');
         this.session = null;
+        this.options.monitor?.sessionClosed();
       },
-      onDownloadBlocked: (url) => this.options.logger.warn({ url }, 'Download blocked (DOWNLOAD_BLOCKED policy)'),
-      onPopupDenied: (url) => this.options.logger.warn({ url }, 'Popup denied by URL policy'),
-      onRequestAborted: (url, reason) => this.options.logger.info({ url, reason }, 'Request aborted by policy'),
+      onDownloadBlocked: (url) => {
+        this.options.logger.warn({ url }, 'Download blocked (DOWNLOAD_BLOCKED policy)');
+        this.options.monitor?.policyBlocked('download_blocked');
+      },
+      onPopupDenied: (url) => {
+        this.options.logger.warn({ url }, 'Popup denied by URL policy');
+        this.options.monitor?.policyBlocked('popup_denied');
+      },
+      onRequestAborted: (url, reason) => {
+        this.options.logger.info({ url, reason }, 'Request aborted by policy');
+        this.options.monitor?.policyBlocked('request_aborted');
+      },
     });
     this.session = session;
+    this.options.monitor?.sessionOpened(session.handle, session.profileName);
     return session;
   }
 
@@ -142,7 +157,10 @@ export class SessionManager {
   async close(): Promise<void> {
     const session = this.session;
     this.session = null;
-    if (session !== null) await session.close();
+    if (session !== null) {
+      await session.close();
+      this.options.monitor?.sessionClosed();
+    }
     this.lock?.release();
     this.lock = null;
   }

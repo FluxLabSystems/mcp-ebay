@@ -81,9 +81,11 @@ claude mcp add --transport http browser-bridge http://127.0.0.1:3000/mcp
 
 `lane-a-run.ps1` starts PostgreSQL and the gateway (minimized window), runs
 the branded-Chrome preflight, pairs the PC on first run, starts the agent in
-its own window, and prints the attach line. First run only: log into eBay in
-the automation Chrome window and set your delivery destination. Dev mode
-disables OAuth and binds to localhost — never expose it to the network.
+its own window, and prints the attach line. The agent window renders the
+live console dashboard (see *Agent console dashboard* below) instead of raw
+JSON logs. First run only: log into eBay in the automation Chrome window and
+set your delivery destination. Dev mode disables OAuth and binds to
+localhost — never expose it to the network.
 
 ## Single-machine smoke (laptop, no VPS — manual steps)
 
@@ -149,6 +151,51 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\install-logon-task.ps1 
 ```
 
 The dedicated automation profile lives at `%LOCALAPPDATA%\Fluxology\BrowserBridge\profiles\ebay-research` — never Chrome's normal `User Data` directory. Log into eBay once in that profile and set the delivery destination to M6H 2W9 (SDD §32.1 step 11). The device private key is DPAPI-protected (CurrentUser); only the public key leaves the PC.
+
+## Agent console dashboard
+
+`node apps\windows-agent\dist\cli.js run` on a real console renders an
+htop-style live dashboard instead of scrolling JSON: gateway link state
+(connected / retry countdown, last-rx age, reconnect count), device
+identity, the Windows logon task (installed? Ready/Running/Disabled? was
+*this* process started by the task or by hand?), the browser session with
+its open tabs, batch-job progress bars, ok/error/policy counters with a
+10-minute activity sparkline, a table of recent `browser.*` commands, and
+a colorized log tail. The agent's stdout is not a protocol channel (MCP
+terminates at the gateway; the device link is an outbound WebSocket), so
+the console is free to be a UI.
+
+The look adapts to the terminal. Under PowerShell 7 / Windows Terminal /
+VS Code (and any console declaring COLORTERM=truecolor) it renders the
+full 24-bit theme: rounded panels, gradient meters with sub-cell block
+resolution, braille spinners, and a colored sparkline — pwsh 6+ switches
+the console to UTF-8 at startup and marks its children, so even
+pwsh-in-conhost gets the full glyph set. The logon-task window
+(`Start-ScheduledTask -TaskName FluxologyBrowserBridgeAgent`, or at
+logon) carries no terminal env markers because Task Scheduler starts
+node.exe directly, so detection also reads the Windows "default terminal
+application" setting: machines whose new console windows open in Windows
+Terminal get the full theme there too. A bare legacy conhost under
+cmd/Windows PowerShell 5.1 falls back to ASCII glyphs, non-truecolor
+terminals to 16-color, and NO_COLOR is honored; `AGENT_UI_GLYPHS`
+(`auto`/`unicode`/`ascii`) overrides the glyph guess when it gets a
+console wrong.
+
+Keys: `q` quit (graceful shutdown) · `p` pause the log tail · `j`/`k`/arrows
+scroll, `f`/`End` re-follow · `l` cycle the minimum log level · `c` clear
+history/counters · `e` config screen (every `AGENT_*` variable with its
+effective value, whether env or default supplied it, and this run's log
+file path) · `t` re-probe the logon task · `?` help.
+
+While the dashboard owns the screen, the structured pino stream (same §26
+redaction) is written to a rotating NDJSON file at
+`%LOCALAPPDATA%\Fluxology\BrowserBridge\state\logs\agent-run.ndjson`
+(5 MiB × 5 files). When stdout is not a console — piped, redirected, CI —
+`run` keeps the historical JSON-lines behavior automatically; `--no-ui`
+forces that on a console too. The logon task installs with
+`--launched-by logon-task`, which is how the dashboard labels a background
+instance; set `AGENT_TASK_NAME` only if the task was installed under a
+non-default `-TaskName`.
 
 ## MCP endpoint
 

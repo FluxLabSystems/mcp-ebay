@@ -11,21 +11,30 @@
  *
  *   node apps\\windows-agent\\dist\\cli.js pair --token <one-time-token> [--name <device-name>]
  *   node apps\\windows-agent\\dist\\cli.js preflight
- *   node apps\\windows-agent\\dist\\cli.js run
+ *   node apps\\windows-agent\\dist\\cli.js run [--no-ui] [--launched-by logon-task]
+ *
+ * `run` on a real console renders the live dashboard (tui.ts); redirected
+ * output — and --no-ui — keeps the historical pino JSON stream on stdout.
  */
+import { join } from 'node:path';
 import { buildChromeLaunchPlan, preflightBrowser } from '@browser-bridge/browser-core';
-import { loadAgentConfig } from '@browser-bridge/config';
+import { loadAgentConfig, type AgentConfig } from '@browser-bridge/config';
 import { mergeSiteProfiles, type SitePolicyProfile } from '@browser-bridge/policy';
-import { BridgeError } from '@browser-bridge/protocol';
+import { BridgeError, IDEMPOTENCY_WINDOW_SECONDS } from '@browser-bridge/protocol';
 import { ebaySiteProfile } from '@browser-bridge/site-ebay';
 import { kijijiSiteProfile } from '@browser-bridge/site-kijiji';
 import { zazzleSiteProfile } from '@browser-bridge/site-zazzle';
+import { RotatingNdjsonLog } from '@browser-bridge/telemetry';
 import { AgentConnection } from './connection.js';
-import { IdentityStore } from './identity.js';
-import { createLogger } from './logger.js';
+import { IdentityStore, type DeviceIdentity } from './identity.js';
+import { BatchJobStore } from './jobs.js';
+import { createLogger, type Logger } from './logger.js';
+import { queryLogonTask } from './logonTask.js';
+import { AgentStatusStore, buildConfigEntries, type LaunchedBy } from './monitor.js';
 import { pairDevice } from './pairing.js';
 import { createPagePolicy } from './policyEngine.js';
 import { SessionManager } from './sessionManager.js';
+import { AgentTui, detectCharset, queryDefaultTerminal, resolveUiMode } from './tui.js';
 import { AGENT_VERSION } from './version.js';
 
 /** Site profiles compiled into this agent build, keyed by versioned id. */
@@ -49,6 +58,97 @@ function parseFlags(argv: string[]): Map<string, string> {
     }
   }
   return flags;
+}
+
+interface Dashboard {
+  store: AgentStatusStore;
+  logger: Logger;
+  jobs: BatchJobStore;
+  start(sessions: SessionManager, onQuit: () => void): void;
+  stop(): Promise<void>;
+}
+
+/**
+ * Assemble the dashboard mode of `run`: the pino stream keeps its §26
+ * redaction but lands in a rotating NDJSON file under the state dir (and
+ * the on-screen tail) instead of painting over the UI, and background
+ * samplers keep the tab list, batch jobs, and Task Scheduler pane fresh.
+ */
+function createDashboard(config: AgentConfig, identity: DeviceIdentity, launchedBy: LaunchedBy): Dashboard {
+  const fileLog = new RotatingNdjsonLog({ dir: join(config.stateDir, 'logs'), fileName: 'agent-run.ndjson' });
+  const store = new AgentStatusStore({
+    info: {
+      version: AGENT_VERSION,
+      deviceId: identity.deviceId ?? 'unpaired',
+      fingerprint: identity.fingerprint,
+      keyStoreKind: identity.keyStoreKind,
+      gatewayWsUrl: config.gatewayWsUrl,
+      agentName: config.agentName,
+      siteProfiles: config.siteProfileIds,
+      launchedBy,
+      taskName: config.taskName,
+      logPath: fileLog.path,
+      pid: process.pid,
+      startedAt: Date.now(),
+    },
+    config: buildConfigEntries(config),
+  });
+  const logger = createLogger(config.logLevel, 'browser-bridge-agent', {
+    write: (line: string) => {
+      fileLog.append(line);
+      store.recordLogLine(line);
+    },
+  });
+  const jobs = new BatchJobStore({ retentionMs: IDEMPOTENCY_WINDOW_SECONDS * 1000 });
+  let tui: AgentTui | null = null;
+  const timers: NodeJS.Timeout[] = [];
+
+  const probeTask = (): void => {
+    void queryLogonTask(config.taskName).then((status) => store.updateTaskStatus(status));
+  };
+
+  return {
+    store,
+    logger,
+    jobs,
+    start(sessions: SessionManager, onQuit: () => void): void {
+      // Resolve glyphs here rather than by env markers alone: a
+      // Task-Scheduler-launched window has none, but the machine's
+      // default-terminal setting still says whether Windows Terminal will
+      // be the one drawing it.
+      tui = new AgentTui({
+        store,
+        onQuit,
+        onRefreshTask: probeTask,
+        charset: detectCharset(process.env, process.platform, {
+          preference: config.uiGlyphs,
+          defaultTerminal: queryDefaultTerminal(),
+        }),
+      });
+      tui.start();
+      probeTask();
+      const sampler = setInterval(() => {
+        store.updateJobs(jobs.snapshotJobs());
+        const session = sessions.listActive()[0];
+        if (session === undefined) return;
+        void session
+          .listTabs()
+          .then((tabs) =>
+            store.updateTabs(tabs.map((tab) => ({ tabId: tab.tabId, url: tab.url, title: tab.title, active: tab.active }))),
+          )
+          .catch(() => {});
+      }, 2000);
+      sampler.unref?.();
+      const taskTimer = setInterval(probeTask, 60_000);
+      taskTimer.unref?.();
+      timers.push(sampler, taskTimer);
+    },
+    async stop(): Promise<void> {
+      for (const timer of timers) clearInterval(timer);
+      tui?.stop();
+      await fileLog.close();
+    },
+  };
 }
 
 async function main(): Promise<number> {
@@ -101,9 +201,6 @@ async function main(): Promise<number> {
         );
         return 2;
       }
-      if (process.platform !== 'win32') {
-        logger.warn({}, 'Running on a non-Windows host: development/test mode only');
-      }
       const unknownIds = config.siteProfileIds.filter((id) => !SITE_PROFILES.has(id));
       if (unknownIds.length > 0) {
         console.error(
@@ -112,35 +209,65 @@ async function main(): Promise<number> {
         );
         return 2;
       }
+      const uiMode = resolveUiMode(flags, process.stdout.isTTY === true);
+      const launchedBy: LaunchedBy = flags.get('launched-by') === 'logon-task' ? 'logon-task' : 'interactive';
+      const dashboard = uiMode === 'dashboard' ? createDashboard(config, identity, launchedBy) : null;
+      const runLogger = dashboard?.logger ?? logger;
+      if (process.platform !== 'win32') {
+        runLogger.warn({}, 'Running on a non-Windows host: development/test mode only');
+      }
       const policy = createPagePolicy(
         mergeSiteProfiles(config.siteProfileIds.map((id) => SITE_PROFILES.get(id)!)),
       );
-      const sessions = new SessionManager({ profileDir: config.profileDir, policy, logger });
+      const sessions = new SessionManager({
+        profileDir: config.profileDir,
+        policy,
+        logger: runLogger,
+        ...(dashboard === null ? {} : { monitor: dashboard.store }),
+      });
       const connection = new AgentConnection({
         gatewayWsUrl: config.gatewayWsUrl,
         gatewayHttpUrl: config.gatewayHttpUrl,
         identity,
-        host: { sessions, logger, expectedPostalCode: config.ebayDestinationPostalCode },
-        logger,
+        host: {
+          sessions,
+          logger: runLogger,
+          expectedPostalCode: config.ebayDestinationPostalCode,
+          ...(dashboard === null ? {} : { jobs: dashboard.jobs }),
+        },
+        logger: runLogger,
         heartbeatSeconds: config.heartbeatSeconds,
+        ...(dashboard === null ? {} : { monitor: dashboard.store }),
       });
       connection.start();
-      logger.info(
+      runLogger.info(
         { agentVersion: AGENT_VERSION, deviceId: identity.deviceId, siteProfiles: config.siteProfileIds },
         'Agent running',
       );
       await new Promise<void>((resolve) => {
+        let shuttingDown = false;
         const shutdown = () => {
-          logger.info({}, 'Shutting down');
+          // Idempotent: [q] on the dashboard and SIGINT/SIGTERM can race.
+          if (shuttingDown) return;
+          shuttingDown = true;
+          runLogger.info({}, 'Shutting down');
           void connection.stop().then(() => sessions.close()).then(resolve);
         };
         process.on('SIGINT', shutdown);
         process.on('SIGTERM', shutdown);
+        dashboard?.start(sessions, shutdown);
       });
+      if (dashboard !== null) {
+        await dashboard.stop();
+        console.log(`Agent stopped. JSON logs: ${join(config.stateDir, 'logs', 'agent-run.ndjson')}`);
+      }
       return 0;
     }
     default:
-      console.error('Usage: node apps\\windows-agent\\dist\\cli.js <pair|preflight|run> [flags]');
+      console.error(
+        'Usage: node apps\\windows-agent\\dist\\cli.js <pair|preflight|run> [flags]\n' +
+          '  run flags: --no-ui (plain JSON logs on stdout), --launched-by logon-task',
+      );
       return 2;
   }
 }
