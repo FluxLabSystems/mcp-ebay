@@ -134,9 +134,10 @@ Inventing a number because the rows were not in context is not.
 - Current target: **C$10/lb landed**. On an auction, **max bid = target −
   shipping**, using destination-resolved shipping only.
 - `closeInspectionTriggerCadPerLb` is **7** in
-  `data/deals/search-profiles.json` (fluxology-site) — that file and
-  `multi-path-shipping-policy.json` are authoritative for routing and
-  qualification; the figures here are the run-level summary, not a
+  `data/deals/search-profiles.json` (`fluxlab-boards` repo root; ported
+  there from `fluxology-site` with the boards) — that file and
+  `multi-path-shipping-policy.json` beside it are authoritative for routing
+  and qualification; the figures here are the run-level summary, not a
   replacement.
 - **Toronto destination caveat.** Shipping is only destination-verified
   when the page actually shows **M6H 2W9**. The extraction record carries
