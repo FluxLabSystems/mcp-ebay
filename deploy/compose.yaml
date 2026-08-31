@@ -44,12 +44,8 @@ services:
 
 networks:
   fluxology-edge:
-    # The shared edge network the host's Caddy is attached to. The name
-    # differs per host generation (fluxology-edge on the original VPS,
-    # fluxlab-edge on its successor) — set EDGE_NETWORK_NAME in deploy/.env
-    # to whatever `docker network ls` shows the Caddy on.
     external: true
-    name: ${EDGE_NETWORK_NAME:-fluxology-edge}
+    name: fluxology-edge
   backend:
     internal: true
 
