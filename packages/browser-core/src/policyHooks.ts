@@ -33,4 +33,10 @@ export interface GalleryHints {
   gallerySelectors?: readonly string[];
   /** Normalize an image URL to a dedup key + best-resolution source URL. */
   normalizeImageUrl?: (url: string) => { dedupKey: string; bestUrl: string };
+  /**
+   * Gallery scope only: false excludes an image that is site chrome (a
+   * badge, a store logo) rather than a listing photo. Never applied to
+   * page scope, whose contract is everything the page renders.
+   */
+  isGalleryImage?: (url: string) => boolean;
 }

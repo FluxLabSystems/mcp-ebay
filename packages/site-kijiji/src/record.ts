@@ -47,7 +47,13 @@ export const KijijiExtractionRecordSchema = z.strictObject({
       confidence: z.number().min(0).max(1),
     })
     .nullable(),
-  /** ISO timestamp when the posted time was machine-parseable; else null. */
+  /**
+   * ISO timestamp when the posted time was machine-parseable; else null.
+   * With postedText null this came from the page's stated activation date —
+   * the only statement of it in server HTML — which is the ad's ORIGINAL
+   * posting date: a reposted or bumped ad keeps it, so an old postedAt on a
+   * seemingly fresh ad is the ad's history, not an extraction defect.
+   */
   postedAt: z.iso.datetime({ offset: true }).nullable(),
   /** Raw rendered posted text ("Posted 2 hours ago"), kept even when postedAt parses. */
   postedText: z.string().nullable(),

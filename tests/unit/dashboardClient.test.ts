@@ -35,33 +35,49 @@ describe('DashboardClient', () => {
   it('feed ids mode strips listings to identity/freshness fields', async () => {
     const root = {
       schemaVersion: 3,
-      listings: [{ id: 'a', title: 'big', description: 'long', lastSeen: 't1', lastChanged: 't2', status: 'active' }],
+      listings: [
+        { id: 'a', title: 'big', description: 'long', lastSeen: 't1', lastChanged: 't2', status: 'tracked', active: false },
+      ],
     };
     const client = clientWith(async () => jsonResponse(200, root));
     const result = await client.feed('deals', 'ids');
-    expect(result.root.listings).toEqual([{ id: 'a', lastSeen: 't1', lastChanged: 't2', status: 'active' }]);
+    // `active` rides along: an ids-mode diff must be able to tell a live
+    // record from a retired one without re-fetching the full feed.
+    expect(result.root.listings).toEqual([{ id: 'a', lastSeen: 't1', lastChanged: 't2', status: 'tracked', active: false }]);
     // Root metadata outside listings survives.
     expect((result.root as { schemaVersion: number }).schemaVersion).toBe(3);
   });
 
   it('feed filters by status, active and marketplace after fetching', async () => {
+    // Mirrors the real feed shape: `active` is the boards' boolean retirement
+    // flag, `status` a separate lifecycle vocabulary that never contains the
+    // word "active" in practice (tracked, watching, needs_revalidation, …).
     const root = {
       schemaVersion: 3,
       listings: [
-        { id: 'ebay-1', status: 'active', title: 'a' },
-        { id: 'ebay-2', status: 'ended', title: 'b' },
-        { id: 'kijiji-3', status: 'active', title: 'c' },
-        { id: 'kijiji-4', title: 'no status' },
-        { id: 'ebay-5', status: 'active', marketplace: 'kijiji', title: 'e' },
+        { id: 'ebay-1', status: 'tracked', active: true, title: 'a' },
+        { id: 'ebay-2', status: 'ended', active: false, title: 'b' },
+        { id: 'kijiji-3', status: 'watching', active: true, title: 'c' },
+        { id: 'kijiji-4', title: 'no status, no active flag' },
+        { id: 'ebay-5', status: 'tracked', active: true, marketplace: 'kijiji', title: 'e' },
       ],
     };
     const client = clientWith(async () => jsonResponse(200, root));
 
+    // A record counts as active unless explicitly retired with active:false,
+    // so the flag-less kijiji-4 is active; its status has no say in it.
     const active = await client.feed('deals', 'full', { filter: { active: true } });
-    expect(active.listingCount).toBe(3);
+    expect(active.listingCount).toBe(4);
     expect(active.totalListingCount).toBe(5);
-    // A record with no status never claimed to be active, so it is not.
-    expect((active.root.listings as { id: string }[]).map((l) => l.id)).toEqual(['ebay-1', 'kijiji-3', 'ebay-5']);
+    expect((active.root.listings as { id: string }[]).map((l) => l.id)).toEqual([
+      'ebay-1',
+      'kijiji-3',
+      'kijiji-4',
+      'ebay-5',
+    ]);
+
+    const retired = await client.feed('deals', 'full', { filter: { active: false } });
+    expect((retired.root.listings as { id: string }[]).map((l) => l.id)).toEqual(['ebay-2']);
 
     const ended = await client.feed('deals', 'full', { filter: { status: ['ENDED'] } });
     expect((ended.root.listings as { id: string }[]).map((l) => l.id)).toEqual(['ebay-2']);

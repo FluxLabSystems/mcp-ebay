@@ -266,6 +266,47 @@ describe('search compaction', () => {
     expect(Object.keys(record.candidates[0]!).sort()).toEqual(['itemId', 'title', 'url']);
   });
 
+  it('fields resolve cross-profile names, so "price" reaches eBay candidates', () => {
+    // The 2026-08-30 connector test asked eBay candidates for exactly this
+    // list and got back only title/url/itemId: the price the same call had
+    // filtered on (minPrice/maxPrice read snippetPrice fine) never survived
+    // projection because eBay spells the key snippetPrice.
+    const record = compactSearchPage(
+      searchRecord(3),
+      SearchCompactionInput.parse({ fields: ['title', 'url', 'price', 'format', 'itemId'] }),
+    ).record as { candidates: Record<string, unknown>[] };
+    expect(record.candidates[0]!.price).toEqual({ value: 40, currency: 'CAD' });
+    expect(record.candidates[0]!.format).toBe('auction');
+    expect(Object.keys(record.candidates[0]!).sort()).toEqual(['format', 'itemId', 'price', 'title', 'url']);
+  });
+
+  it('a row key the site spells natively wins over its alias', () => {
+    const kijiji = {
+      siteProfile: 'kijiji.ca.v1',
+      pageKind: 'search',
+      pageUrl: 'https://www.kijiji.ca/b-toys-games/city-of-toronto/lego/k0c108l1700273r45',
+      candidateCount: 1,
+      candidates: [
+        {
+          adId: '1712345678',
+          url: 'https://www.kijiji.ca/v-toys-games/city-of-toronto/lego/1712345678',
+          title: 'LEGO bulk',
+          price: { kind: 'amount', value: 120, currency: 'CAD', rawText: '$120.00' },
+          locationText: 'Toronto',
+        },
+      ],
+    };
+    const record = compactSearchPage(
+      kijiji,
+      SearchCompactionInput.parse({ fields: ['price', 'location'] }),
+    ).record as { candidates: Record<string, unknown>[] };
+    // Kijiji's own price shape comes back untouched under the native name...
+    expect(record.candidates[0]!.price).toEqual({ kind: 'amount', value: 120, currency: 'CAD', rawText: '$120.00' });
+    // ...and "location", which neither profile spells natively, resolves to
+    // the Kijiji locationText under the requested name.
+    expect(record.candidates[0]!.location).toBe('Toronto');
+  });
+
   it('filters by title, price band and selling format', () => {
     const base = searchRecord(60);
     const byTitle = compactSearchPage(
@@ -349,15 +390,20 @@ describe('search compaction', () => {
       hasNextPage: true,
       nextPageUrl: 'https://www.kijiji.ca/b-toys-games/city-of-toronto/lego/page-2/k0c108l1700273r45',
       totalResults: 73,
+      removedAdId: '1799999999',
     };
     const record = compactSearchPage(kijiji, DEFAULTS).record as {
       hasNextPage: boolean;
       nextPageUrl: string;
       totalResults: number;
+      removedAdId: string;
       candidates: Record<string, unknown>[];
     };
     expect(record.hasNextPage).toBe(true);
     expect(record.totalResults).toBe(73);
+    // The removed-ad marker is why the redirect landed here; compaction
+    // must not turn "this ad was removed" back into an ordinary search page.
+    expect(record.removedAdId).toBe('1799999999');
     expect(record.candidates[0]!.url).toBe(
       'https://www.kijiji.ca/v-toys-games/city-of-toronto/lego/1712345678',
     );

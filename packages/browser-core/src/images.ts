@@ -90,6 +90,9 @@ export async function enumerateImages(
       continue;
     }
     if (absolute.startsWith('data:')) continue;
+    // Gallery scope promises listing photos; a badge or store logo that
+    // happens to render inside the gallery container is not one.
+    if (scope === 'gallery' && hints.isGalleryImage !== undefined && !hints.isGalleryImage(absolute)) continue;
     const normalized = hints.normalizeImageUrl?.(absolute) ?? { dedupKey: absolute, bestUrl: absolute };
     if (seen.has(normalized.dedupKey)) continue;
     seen.add(normalized.dedupKey);

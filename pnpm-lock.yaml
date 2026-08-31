@@ -173,6 +173,8 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
+  packages/telemetry: {}
+
   tests:
     dependencies:
       '@browser-bridge/audit':
@@ -196,6 +198,9 @@ importers:
       '@browser-bridge/site-ebay':
         specifier: workspace:*
         version: link:../packages/site-ebay
+      '@browser-bridge/site-kijiji':
+        specifier: workspace:*
+        version: link:../packages/site-kijiji
       '@browser-bridge/windows-agent':
         specifier: workspace:*
         version: link:../apps/windows-agent

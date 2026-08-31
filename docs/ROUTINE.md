@@ -59,11 +59,30 @@ plan above stands at 12.
   maxPrice, formats}`. The ~200 rows that do not matter never enter
   context. Rows dropped for *lacking* the filtered field are counted in
   `warnings` (`EXCLUDED_NO_PRICE`, `EXCLUDED_UNKNOWN_FORMAT`) — read those
-  counts before concluding a marketplace had nothing.
+  counts before concluding a marketplace had nothing. `titleRegex` is
+  already matched case-insensitively; write plain patterns without inline
+  flags — JS regex has no `(?i)`, so it is rejected as an invalid group.
+- **`search.fields`** resolves both profiles' spellings: asking for
+  `price`, `format` or `location` returns eBay's `snippetPrice`,
+  `sellingFormat` and `itemLocationText` under the name you asked for, so
+  one field list serves eBay and Kijiji pages alike.
+- **The candidate scan window is 240 rows per page.** A page that renders
+  more says so with `CANDIDATES_TRUNCATED`, and `search.offset` pages only
+  through the matched set *inside* that window — it cannot reach row 241.
+  For a deeper scan, narrow the query or follow the marketplace's own
+  pagination (Kijiji's `nextPageUrl`; eBay's `_pgn`/`_ipg` URL
+  parameters), which loads a fresh page with a fresh window.
 - **`browser.extract_many`** traverses up to 25 URLs per call with a
   per-URL error slot. One dead listing is one error, not a failed batch.
-  Batches above 2 items promote to a job; polling costs 1–2 calls, not one
-  per page.
+  A page that loads but is not a listing — an eBay error/removed-item
+  page, a deleted Kijiji ad — is `ok:false` with `error.code
+  LISTING_UNAVAILABLE` and keeps its record as evidence: retire the stored
+  id it was meant to re-validate, and never upsert a slot that is not
+  `ok`. Batches above 2 items promote to a job; polling costs 1–2 calls,
+  not one per page.
+- **There is no `browser.batch`.** Multi-tool batching does not exist on
+  the bridge; the batch surface is `browser.open_and_extract` (navigate +
+  extract, one call) and `browser.extract_many` + `browser.job_status`.
 - **Candidates now carry `sellingFormat` and `bidCount`**, so a row no
   longer has to be opened just to learn whether it is an auction. Open only
   what the shortlist justifies. `sellingFormat: "unknown"` is a real
@@ -115,9 +134,10 @@ Inventing a number because the rows were not in context is not.
 - Current target: **C$10/lb landed**. On an auction, **max bid = target −
   shipping**, using destination-resolved shipping only.
 - `closeInspectionTriggerCadPerLb` is **7** in
-  `data/deals/search-profiles.json` (fluxology-site) — that file and
-  `multi-path-shipping-policy.json` are authoritative for routing and
-  qualification; the figures here are the run-level summary, not a
+  `data/deals/search-profiles.json` (`fluxlab-boards` repo root; ported
+  there from `fluxology-site` with the boards) — that file and
+  `multi-path-shipping-policy.json` beside it are authoritative for routing
+  and qualification; the figures here are the run-level summary, not a
   replacement.
 - **Toronto destination caveat.** Shipping is only destination-verified
   when the page actually shows **M6H 2W9**. The extraction record carries
@@ -140,6 +160,12 @@ or ad id**, so it can be turned into a fixture and a regression test:
 - a Kijiji ad reporting `deleted`/`unknown` while plainly live
 - a search page whose `candidateCount` is far below its stated total
 - any field that is `null` on every row of a page
+
+One near-miss to know before reporting it: an old Kijiji `postedAt`
+beside a null `postedText` is usually not a defect. With no rendered
+relative time to parse, `postedAt` is the activation date the page itself
+states, and that is the ad's *original* posting date — a reposted or
+bumped ad keeps it.
 
 Ids matter because `www.ebay.ca` refuses automated fetches from the dev box
 (HTTP 403), so a fix can only be pinned against a page someone captured

@@ -216,6 +216,27 @@ const DEFAULT_KIJIJI_CANDIDATE_FIELDS = [
   'postedText',
 ] as const;
 
+/**
+ * Caller-named fields resolved across both site profiles' candidate shapes,
+ * tried left to right when the row lacks the exact key. The filter path has
+ * always read prices and formats shape-tolerantly (readCandidatePrice,
+ * readCandidateFormat below), but the projection demanded the site's exact
+ * spelling — so `fields: ["price"]` on an eBay page silently dropped the
+ * very price the same call had just filtered on (eBay spells it
+ * snippetPrice, Kijiji spells it price). The value comes back under the
+ * name the caller asked for; a key the row carries verbatim always wins.
+ */
+const CANDIDATE_FIELD_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  price: ['snippetPrice'],
+  snippetPrice: ['price'],
+  format: ['sellingFormat', 'listingType'],
+  sellingFormat: ['listingType'],
+  listingType: ['sellingFormat'],
+  location: ['locationText', 'itemLocationText'],
+  locationText: ['itemLocationText'],
+  itemLocationText: ['locationText'],
+};
+
 /** Root keys of a candidate record that survive compaction verbatim. */
 const PRESERVED_ROOT_FIELDS = [
   'siteProfile',
@@ -224,6 +245,10 @@ const PRESERVED_ROOT_FIELDS = [
   'hasNextPage',
   'nextPageUrl',
   'totalResults',
+  // Kijiji's removed-ad marker: a deleted ad's VIP URL 302s to its category
+  // search page carrying ?adRemoved=<id>. Compacting it away would turn
+  // "this ad was removed" back into "an ordinary search page".
+  'removedAdId',
 ] as const;
 
 /**
@@ -431,7 +456,16 @@ function projectCandidate(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const key of allowed) {
-    const value = row[key];
+    let value = row[key];
+    if (value === undefined || value === null) {
+      for (const alias of CANDIDATE_FIELD_ALIASES[key] ?? []) {
+        const fallback = row[alias];
+        if (fallback !== undefined && fallback !== null) {
+          value = fallback;
+          break;
+        }
+      }
+    }
     if (value === undefined || value === null) continue;
     out[key] = key === 'url' && canonicalize && typeof value === 'string'
       ? canonicalizeCandidateUrl(value, site)

@@ -10,8 +10,9 @@
 #             tests/contract/mcpHttp.test.ts + oauth.test.ts (envelopes),
 #             tests/helpers/mcpClient.ts (2026-07-28 modern profile headers/_meta),
 #             packages/protocol/src/catalog.ts (15 browser.* tools, scopes).
-#   Connector: fluxology-site/services/fluxology-mcp/src/server.mjs + auth.mjs
+#   Connector: fluxlab-boards/services/fluxology-mcp/src/server.mjs + auth.mjs
 #             (PRM paths, challenge shape), test/protocol.test.mjs (envelopes).
+#             (The connector moved out of fluxology-site with the boards.)
 #
 # Usage: see verify-lane-b.md next to this script, or run with --help.
 set -euo pipefail
