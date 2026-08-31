@@ -66,6 +66,12 @@ $action = New-ScheduledTaskAction `
 
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 
+# Interactive logon type, stated explicitly rather than inherited from the
+# cmdlet's defaults: "run only when user is logged on" is what puts the
+# agent's console dashboard window on the desktop (both at logon and via
+# Start-ScheduledTask) and keeps Chrome out of session 0 (SDD section 13).
+$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
+
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
@@ -78,6 +84,7 @@ Register-ScheduledTask `
     -TaskName $TaskName `
     -Action $action `
     -Trigger $trigger `
+    -Principal $principal `
     -Settings $settings `
     -Description "Fluxology Browser Bridge Windows agent (outbound WSS; controls the dedicated Chrome automation profile)" `
     -Force | Out-Null
@@ -90,3 +97,4 @@ Write-Host "  node:  $NodeExe"
 Write-Host "AGENT_GATEWAY_URL set to $GatewayUrl (user environment)."
 Write-Host "Pair the device first:  node `"$AgentCliResolved`" pair --token <one-time-token>"
 Write-Host "Start now without re-logon:  Start-ScheduledTask -TaskName $TaskName"
+Write-Host "The task opens the agent's console dashboard window (q quits; set AGENT_UI_GLYPHS=ascii/unicode if the glyph detection guesses wrong)."

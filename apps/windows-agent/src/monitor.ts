@@ -108,6 +108,7 @@ export function buildConfigEntries(
     EBAY_DESTINATION_POSTAL_CODE: config.ebayDestinationPostalCode,
     AGENT_SITE_PROFILES: config.siteProfileIds.join(','),
     AGENT_TASK_NAME: config.taskName,
+    AGENT_UI_GLYPHS: config.uiGlyphs,
   };
   return (Object.keys(effective) as Array<keyof typeof effective>).map((key) => ({
     key,

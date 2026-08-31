@@ -37,13 +37,25 @@ Capability tiers, detected once at startup, keep one renderer honest across
 consoles:
 
 - **Glyphs.** Rounded panels, partial-block meters, sparklines, and braille
-  spinners wherever UTF-8 rendering is assured: any non-Windows terminal,
-  a declared one (`WT_SESSION`/`TERM_PROGRAM`/ConEmu), or a PowerShell 6+
-  host — pwsh switches the console to UTF-8 at startup and its
+  spinners wherever the hosting terminal's font covers them (Node writes
+  TTY output via WriteConsoleW, so the console codepage is not the
+  constraint — font coverage is): any non-Windows terminal, a declared one
+  (`WT_SESSION`/`TERM_PROGRAM`/ConEmu), or a PowerShell 6+ host — pwsh
+  switches the console to UTF-8 at startup and its
   `POWERSHELL_DISTRIBUTION_CHANNEL` variable marks the children it spawns,
-  so pwsh-in-conhost qualifies. A bare legacy conhost under cmd/Windows
-  PowerShell 5.1 degrades to ASCII, because its OEM codepage would garble
-  multibyte glyphs.
+  so pwsh-in-conhost qualifies. The window the logon task opens
+  (`Start-ScheduledTask`, or at logon) has none of those markers because
+  Task Scheduler starts node.exe directly, so a marker-less win32 console
+  additionally consults the user's "default terminal application" choice —
+  one `reg.exe query` of `HKCU\Console\%%Startup` DelegationTerminal at
+  startup, classified the way the OS does (conhost GUID → classic; any
+  other registered GUID → modern; all-zeros/absent "let Windows decide" →
+  Terminal from Windows 11 22H2 on). Classic conhost degrades to ASCII;
+  `AGENT_UI_GLYPHS` (auto/unicode/ascii, in the typed config and on the
+  dashboard's config screen) overrides the heuristic entirely. The
+  installer also registers the task with an explicit Interactive principal
+  so the visible console window is guaranteed by registration rather than
+  cmdlet defaults.
 - **Color.** 24-bit truecolor (a dark-console palette with gradient meters)
   on every Windows console — conhost has done RGB since well before the
   Win10 1809 floor Node 22 already requires — and wherever

@@ -21,6 +21,7 @@ import {
   interpretKey,
   meter,
   parseLogLine,
+  queryDefaultTerminal,
   queryLogonTask,
   renderDashboard,
   resolveUiMode,
@@ -174,6 +175,7 @@ describe('buildConfigEntries', () => {
     expect(byKey.get('AGENT_NAME')).toMatchObject({ value: 'laptop', source: 'env' });
     expect(byKey.get('AGENT_SITE_PROFILES')).toMatchObject({ value: 'ebay.ca.v1,kijiji.ca.v1', source: 'default' });
     expect(byKey.get('AGENT_TASK_NAME')).toMatchObject({ value: DEFAULT_LOGON_TASK_NAME, source: 'default' });
+    expect(byKey.get('AGENT_UI_GLYPHS')).toMatchObject({ value: 'auto', source: 'default' });
     expect(byKey.get('AGENT_PROFILE_DIR')?.source).toBe('default');
     expect(byKey.get('AGENT_PROFILE_DIR')?.value).toContain('ebay-research');
     // No secret-bearing keys exist in the agent schema; the screen shows
@@ -237,6 +239,31 @@ describe('resolveUiMode / detectCharset / detectColorMode', () => {
     // A PowerShell 6+ host switches the console to UTF-8 and marks its
     // children, so pwsh-in-conhost still gets the full glyph set.
     expect(detectCharset({ POWERSHELL_DISTRIBUTION_CHANNEL: 'MSI:Windows' }, 'win32').dotOk).toBe('●');
+  });
+
+  it('marker-less windows (the logon task) go by the default-terminal setting; AGENT_UI_GLYPHS wins', () => {
+    // Start-ScheduledTask launches node.exe with no terminal env markers.
+    expect(detectCharset({}, 'win32', { defaultTerminal: 'modern' }).dotOk).toBe('●');
+    expect(detectCharset({}, 'win32', { defaultTerminal: 'legacy' }).dotOk).toBe('*');
+    expect(detectCharset({}, 'win32', { preference: 'unicode', defaultTerminal: 'legacy' }).dotOk).toBe('●');
+    expect(detectCharset({ WT_SESSION: '1' }, 'win32', { preference: 'ascii' }).dotOk).toBe('*');
+  });
+
+  it('classifies the DelegationTerminal registry value like the OS does', () => {
+    const WT = 'HKEY_CURRENT_USER\\Console\\%%Startup\n    DelegationTerminal    REG_SZ    {E12CFF52-A866-4C77-9A90-F570A7AA2C6B}\n';
+    const CONHOST = 'DelegationTerminal    REG_SZ    {B23D10C0-E52E-411E-9D5B-C09FDF709C7D}';
+    const DECIDE = 'DelegationTerminal    REG_SZ    {00000000-0000-0000-0000-000000000000}';
+    const probe = (readRegistry: () => string | null, osBuild: number) =>
+      queryDefaultTerminal({ platform: 'win32', readRegistry, osBuild });
+    expect(probe(() => WT, 19_045)).toBe('modern');
+    expect(probe(() => CONHOST, 26_100)).toBe('legacy');
+    // "Let Windows decide" (or no value at all) means Terminal only from
+    // Windows 11 22H2 on.
+    expect(probe(() => DECIDE, 26_100)).toBe('modern');
+    expect(probe(() => DECIDE, 19_045)).toBe('legacy');
+    expect(probe(() => null, 22_621)).toBe('modern');
+    expect(probe(() => null, 19_045)).toBe('legacy');
+    expect(queryDefaultTerminal({ platform: 'linux' })).toBe('unknown');
   });
 
   it('picks truecolor where assured, 16-color otherwise, none under NO_COLOR', () => {

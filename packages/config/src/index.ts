@@ -237,6 +237,13 @@ export const AgentEnvSchema = z.object({
    * Override only when install-logon-task.ps1 was run with -TaskName.
    */
   AGENT_TASK_NAME: z.string().min(1).default(DEFAULT_LOGON_TASK_NAME),
+  /**
+   * Dashboard glyph set. 'auto' detects the hosting terminal (a
+   * Task-Scheduler-launched node.exe carries no terminal env markers, so
+   * auto also consults the Windows default-terminal setting); force
+   * 'unicode' or 'ascii' when the detection guesses wrong for a console.
+   */
+  AGENT_UI_GLYPHS: z.enum(['auto', 'unicode', 'ascii']).default('auto'),
 });
 
 export interface AgentConfig {
@@ -253,6 +260,8 @@ export interface AgentConfig {
   siteProfileIds: string[];
   /** Windows scheduled-task name the dashboard's TASK pane probes. */
   taskName: string;
+  /** Dashboard glyph preference from AGENT_UI_GLYPHS. */
+  uiGlyphs: 'auto' | 'unicode' | 'ascii';
 }
 
 export const DEFAULT_PROFILE_LEAF = ['Fluxology', 'BrowserBridge', 'profiles', 'ebay-research'] as const;
@@ -315,5 +324,6 @@ export function loadAgentConfig(
     ebayDestinationPostalCode: parsed.EBAY_DESTINATION_POSTAL_CODE,
     siteProfileIds,
     taskName: parsed.AGENT_TASK_NAME,
+    uiGlyphs: parsed.AGENT_UI_GLYPHS,
   };
 }

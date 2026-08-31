@@ -33,7 +33,7 @@ import { AgentStatusStore, buildConfigEntries, type LaunchedBy } from './monitor
 import { pairDevice } from './pairing.js';
 import { createPagePolicy } from './policyEngine.js';
 import { SessionManager } from './sessionManager.js';
-import { AgentTui, resolveUiMode } from './tui.js';
+import { AgentTui, detectCharset, queryDefaultTerminal, resolveUiMode } from './tui.js';
 import { AGENT_VERSION } from './version.js';
 
 /** Site profiles compiled into this agent build, keyed by versioned id. */
@@ -111,7 +111,19 @@ function createDashboard(config: AgentConfig, identity: DeviceIdentity, launched
     logger,
     jobs,
     start(sessions: SessionManager, onQuit: () => void): void {
-      tui = new AgentTui({ store, onQuit, onRefreshTask: probeTask });
+      // Resolve glyphs here rather than by env markers alone: a
+      // Task-Scheduler-launched window has none, but the machine's
+      // default-terminal setting still says whether Windows Terminal will
+      // be the one drawing it.
+      tui = new AgentTui({
+        store,
+        onQuit,
+        onRefreshTask: probeTask,
+        charset: detectCharset(process.env, process.platform, {
+          preference: config.uiGlyphs,
+          defaultTerminal: queryDefaultTerminal(),
+        }),
+      });
       tui.start();
       probeTask();
       const sampler = setInterval(() => {

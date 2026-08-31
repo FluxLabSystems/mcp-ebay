@@ -11,12 +11,12 @@
  *
  * Output adapts to what the terminal can actually show, detected once:
  * - glyphs: rounded panels, partial-block meters, sparklines, and braille
- *   spinners wherever UTF-8 rendering is assured — any non-Windows
- *   terminal, Windows Terminal/VS Code/ConEmu, or a console whose host is
- *   PowerShell 6+ (pwsh sets the console codepage to UTF-8 at startup and
- *   its POWERSHELL_DISTRIBUTION_CHANNEL variable marks the children it
- *   spawns). A bare legacy conhost under cmd/Windows PowerShell keeps the
- *   ASCII set, because its OEM codepage would garble multibyte glyphs.
+ *   spinners wherever the hosting terminal's font covers them — any
+ *   non-Windows terminal, a declared one (Windows Terminal/VS Code/ConEmu,
+ *   PowerShell 6+ marking its children), or a window with no env markers
+ *   at all whose machine's default terminal is a modern host, which is
+ *   what a Task-Scheduler-launched node.exe window is (detectCharset +
+ *   queryDefaultTerminal). Classic conhost keeps the ASCII set.
  * - color: 24-bit truecolor on Windows consoles (conhost has supported RGB
  *   since well before the Win10 1809 floor Node 22 already requires) and
  *   wherever COLORTERM/WT_SESSION/ConEmu/VS Code says so; a 16-color
@@ -27,6 +27,8 @@
  * owns only terminal plumbing — raw mode, the alternate screen buffer,
  * repaint scheduling, and key dispatch. Tests drive both with fakes.
  */
+import { execFileSync } from 'node:child_process';
+import { release } from 'node:os';
 import type {
   AgentStatusSnapshot,
   AgentStatusStore,
@@ -114,17 +116,90 @@ const ASCII_CHARSET: Charset = {
   track: '.',
 };
 
+export type GlyphPreference = 'auto' | 'unicode' | 'ascii';
+
+/** What the OS will host a fresh console window with. */
+export type DefaultTerminal = 'modern' | 'legacy' | 'unknown';
+
+/** HKCU\Console\%%Startup DelegationTerminal value for classic conhost. */
+const CONHOST_DELEGATION_GUID = 'B23D10C0-E52E-411E-9D5B-C09FDF709C7D';
+const ZERO_GUID = '00000000-0000-0000-0000-000000000000';
+/** First Windows 11 build (22H2) where "let Windows decide" means Terminal. */
+const WIN11_TERMINAL_DEFAULT_BUILD = 22_621;
+
+export interface QueryDefaultTerminalOptions {
+  platform?: NodeJS.Platform;
+  /** Injectable for tests: raw `reg.exe query` output, or null on failure. */
+  readRegistry?: () => string | null;
+  /** Injectable for tests: the Windows build number. */
+  osBuild?: number;
+}
+
+function readDelegationRegistry(): string | null {
+  try {
+    return execFileSync(
+      'reg.exe',
+      ['query', 'HKCU\\Console\\%%Startup', '/v', 'DelegationTerminal'],
+      { encoding: 'utf8', windowsHide: true, timeout: 5_000 },
+    );
+  } catch {
+    return null;
+  }
+}
+
+function windowsBuild(): number {
+  const build = Number.parseInt(release().split('.')[2] ?? '0', 10);
+  return Number.isFinite(build) ? build : 0;
+}
+
 /**
- * Legacy conhost renders UTF-8 through whatever OEM codepage is active, so
- * win32 gets the unicode glyphs only when the terminal declares itself
- * (Windows Terminal, VS Code, ConEmu) or the host shell is PowerShell 6+,
- * which switches the console to UTF-8 at startup and marks its children
- * with POWERSHELL_DISTRIBUTION_CHANNEL. Everything non-Windows does.
+ * Which host renders a *new* console window on this machine — the case the
+ * logon task is in: Task Scheduler starts node.exe directly, so none of
+ * the terminal env markers exist even when Windows Terminal ends up
+ * drawing the window. The user's "default terminal application" choice
+ * lives in HKCU\Console\%%Startup (DelegationTerminal): the conhost GUID
+ * means classic conhost, all-zeros means "let Windows decide" (Terminal
+ * from Windows 11 22H2 on, conhost before), and any other GUID is a
+ * modern ConPTY terminal that registered itself. A missing value reads as
+ * "let Windows decide" too. One reg.exe query, once at startup.
+ */
+export function queryDefaultTerminal(options: QueryDefaultTerminalOptions = {}): DefaultTerminal {
+  const platform = options.platform ?? process.platform;
+  if (platform !== 'win32') return 'unknown';
+  const read = options.readRegistry ?? readDelegationRegistry;
+  const build = options.osBuild ?? windowsBuild();
+  const output = read();
+  const guid = output === null ? null : /\{([0-9A-Fa-f-]{36})\}/.exec(output)?.[1]?.toUpperCase() ?? null;
+  if (guid === CONHOST_DELEGATION_GUID) return 'legacy';
+  if (guid !== null && guid !== ZERO_GUID) return 'modern';
+  return build >= WIN11_TERMINAL_DEFAULT_BUILD ? 'modern' : 'legacy';
+}
+
+export interface DetectCharsetOptions {
+  /** AGENT_UI_GLYPHS: an explicit choice beats every heuristic. */
+  preference?: GlyphPreference;
+  /** queryDefaultTerminal() result; 'unknown' adds no information. */
+  defaultTerminal?: DefaultTerminal;
+}
+
+/**
+ * Node writes TTY output through WriteConsoleW, so the console codepage
+ * never garbles these glyphs; what decides the set is whether the hosting
+ * terminal's font actually covers rounded corners, braille, and partial
+ * blocks. Windows Terminal, VS Code, ConEmu, and any PowerShell 6+ console
+ * (POWERSHELL_DISTRIBUTION_CHANNEL marks its children) do; a machine whose
+ * default terminal is a modern host does too, env markers or not — which
+ * is how a Task-Scheduler-launched window still gets the full set. Classic
+ * conhost with console fonts keeps ASCII. Everything non-Windows is
+ * unicode.
  */
 export function detectCharset(
   env: Record<string, string | undefined> = process.env,
   platform: NodeJS.Platform = process.platform,
+  options: DetectCharsetOptions = {},
 ): Charset {
+  if (options.preference === 'unicode') return UNICODE_CHARSET;
+  if (options.preference === 'ascii') return ASCII_CHARSET;
   if (platform !== 'win32') return UNICODE_CHARSET;
   if (
     env.WT_SESSION !== undefined ||
@@ -134,6 +209,7 @@ export function detectCharset(
   ) {
     return UNICODE_CHARSET;
   }
+  if (options.defaultTerminal === 'modern') return UNICODE_CHARSET;
   return ASCII_CHARSET;
 }
 

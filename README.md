@@ -170,9 +170,16 @@ VS Code (and any console declaring COLORTERM=truecolor) it renders the
 full 24-bit theme: rounded panels, gradient meters with sub-cell block
 resolution, braille spinners, and a colored sparkline — pwsh 6+ switches
 the console to UTF-8 at startup and marks its children, so even
-pwsh-in-conhost gets the full glyph set. A bare legacy conhost under
+pwsh-in-conhost gets the full glyph set. The logon-task window
+(`Start-ScheduledTask -TaskName FluxologyBrowserBridgeAgent`, or at
+logon) carries no terminal env markers because Task Scheduler starts
+node.exe directly, so detection also reads the Windows "default terminal
+application" setting: machines whose new console windows open in Windows
+Terminal get the full theme there too. A bare legacy conhost under
 cmd/Windows PowerShell 5.1 falls back to ASCII glyphs, non-truecolor
-terminals to 16-color, and NO_COLOR is honored.
+terminals to 16-color, and NO_COLOR is honored; `AGENT_UI_GLYPHS`
+(`auto`/`unicode`/`ascii`) overrides the glyph guess when it gets a
+console wrong.
 
 Keys: `q` quit (graceful shutdown) · `p` pause the log tail · `j`/`k`/arrows
 scroll, `f`/`End` re-follow · `l` cycle the minimum log level · `c` clear
