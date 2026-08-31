@@ -1,12 +1,13 @@
-# Site block for the EXISTING fluxology-caddy instance — SDD v0.5 §24.
+# Site block for the EXISTING edge Caddy on the host — SDD v0.5 §24.
 # Add to the existing Caddy configuration and validate/reload with the
 # existing deployment method. Do NOT overwrite the global Caddyfile and
-# do NOT recreate the fluxology-caddy container.
+# do NOT recreate the edge Caddy container.
 #
-# Replace browser-mcp.example.com with the deployment hostname
-# (must match PUBLIC_BASE_URL in deploy/.env).
+# The hostname must match PUBLIC_BASE_URL in deploy/.env, and the gateway
+# must share the Caddy's docker network (EDGE_NETWORK_NAME in deploy/.env)
+# so the browser-mcp-gateway alias resolves.
 
-browser-mcp.example.com {
+browser-mcp.fluxlab.systems {
     encode zstd gzip
     reverse_proxy browser-mcp-gateway:3000 {
         # Keep agent WebSockets alive across Caddy config reloads (§24).
