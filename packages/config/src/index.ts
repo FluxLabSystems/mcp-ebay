@@ -5,7 +5,12 @@
  * query-string credential is never accepted.
  */
 import * as z from 'zod/v4';
-import { ARTIFACT_TTL_DEFAULT_SECONDS, ARTIFACT_TTL_MAX_SECONDS, HEARTBEAT_INTERVAL_SECONDS } from '@browser-bridge/protocol';
+import {
+  ARTIFACT_TTL_DEFAULT_SECONDS,
+  ARTIFACT_TTL_MAX_SECONDS,
+  HEARTBEAT_INTERVAL_SECONDS,
+  type DashboardId,
+} from '@browser-bridge/protocol';
 
 const httpsUrl = z
   .url()
@@ -64,6 +69,7 @@ export const GatewayEnvSchema = z
     OFFICE_INGEST_TOKEN: z.string().min(1).optional(),
     JOBS_INGEST_TOKEN: z.string().min(1).optional(),
     VACATION_INGEST_TOKEN: z.string().min(1).optional(),
+    WARDROBE_INGEST_TOKEN: z.string().min(1).optional(),
   })
   .check((ctx) => {
     const env = ctx.value;
@@ -104,7 +110,8 @@ export const GatewayEnvSchema = z
       env.DEALS_INGEST_TOKEN !== undefined ||
       env.OFFICE_INGEST_TOKEN !== undefined ||
       env.JOBS_INGEST_TOKEN !== undefined ||
-      env.VACATION_INGEST_TOKEN !== undefined;
+      env.VACATION_INGEST_TOKEN !== undefined ||
+      env.WARDROBE_INGEST_TOKEN !== undefined;
     if (anyIngestToken && env.DASHBOARD_API_BASE_URL === undefined) {
       ctx.issues.push({
         code: 'custom',
@@ -136,7 +143,15 @@ export interface GatewayConfig {
   /** Fluxology dashboard write-path; null when DASHBOARD_API_BASE_URL is unset. */
   dashboards: {
     baseUrl: string;
-    tokens: { deals?: string; office?: string; jobs?: string };
+    /**
+     * Derived from DASHBOARD_IDS rather than written out by hand: this was a
+     * literal listing deals/office/jobs, and it silently went stale when the
+     * vacation dashboard shipped — the token reached the object at run time
+     * but never existed on the declared type, so anything reading it through
+     * GatewayConfig failed to compile. Keyed off the id list, it cannot drift
+     * again.
+     */
+    tokens: Partial<Record<DashboardId, string>>;
   } | null;
 }
 
@@ -180,6 +195,7 @@ export function loadGatewayConfig(env: Record<string, string | undefined> = proc
               ...(parsed.OFFICE_INGEST_TOKEN === undefined ? {} : { office: parsed.OFFICE_INGEST_TOKEN }),
               ...(parsed.JOBS_INGEST_TOKEN === undefined ? {} : { jobs: parsed.JOBS_INGEST_TOKEN }),
               ...(parsed.VACATION_INGEST_TOKEN === undefined ? {} : { vacation: parsed.VACATION_INGEST_TOKEN }),
+              ...(parsed.WARDROBE_INGEST_TOKEN === undefined ? {} : { wardrobe: parsed.WARDROBE_INGEST_TOKEN }),
             },
           },
     allowedHosts: [
