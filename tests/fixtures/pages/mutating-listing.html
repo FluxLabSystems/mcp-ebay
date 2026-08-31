@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<!-- Conformance fixture: an eBay-shaped listing whose extractable fields
+     rewrite themselves after load, the way a live marketplace page does
+     (hydration, ad rotation, price module refresh). The determinism cases
+     pin extraction to one revision against exactly this behavior. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Mutating fixture listing</title>
+</head>
+<body>
+  <h1 class="x-item-title__mainTitle">Stable Fixture Listing Title</h1>
+  <span class="x-price-primary">C $45.00</span>
+  <div class="ux-labels-values--shipping ux-labels-values__values">C $12.00 Canada Post to M6H 2W9</div>
+  <div id="mutation-count" data-count="0">0</div>
+  <script>
+    // Every 150 ms the page rewrites the fields the extractor reads.
+    let n = 0;
+    setInterval(() => {
+      n += 1;
+      document.querySelector('.x-price-primary').textContent = 'C $' + (45 + n) + '.00';
+      document.querySelector('.x-item-title__mainTitle').textContent =
+        'Stable Fixture Listing Title rev ' + n;
+      const counter = document.getElementById('mutation-count');
+      counter.dataset.count = String(n);
+      counter.textContent = String(n);
+    }, 150);
+  </script>
+</body>
+</html>
