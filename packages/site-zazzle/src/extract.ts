@@ -249,9 +249,13 @@ export function extractZazzleProduct(
     const domPrice = parseZazzleMoney(textOf(document, MAIN_PRICE_SELECTOR));
     if (domPrice !== null) {
       listedPrice = { ...domPrice, source: 'dom', confidence: 0.85 };
-      warnings.push(
-        'PRICE_CURRENCY_UNSTATED: price was read from the rendered "$" figure and the page stated no currency; CAD thresholds must not fire on this record.',
-      );
+      // zazzle.ca renders "C$" — an explicit statement parseZazzleMoney
+      // keeps; only a bare "$" leaves the currency genuinely unstated.
+      if (domPrice.currency === null) {
+        warnings.push(
+          'PRICE_CURRENCY_UNSTATED: price was read from the rendered "$" figure and the page stated no currency; CAD thresholds must not fire on this record.',
+        );
+      }
     } else {
       warnings.push('listedPrice could not be resolved from JSON-LD or the pricing module.');
     }
@@ -446,8 +450,9 @@ export function extractZazzleSearchResults(document: Document, pageUrl: string):
       continue;
     }
     // Off-site anchors with plausible numeric tails must not become
-    // candidates (the Kijiji fixture's lesson).
-    if (host !== 'zazzle.com' && !host.endsWith('.zazzle.com')) continue;
+    // candidates (the Kijiji fixture's lesson). Both storefront TLDs count:
+    // the CAD research surface is zazzle.ca.
+    if (!/(?:^|\.)zazzle\.(?:com|ca)$/.test(host)) continue;
     const productId = productIdFromUrl(absolute);
     if (productId === null || seen.has(productId)) continue;
     seen.add(productId);
