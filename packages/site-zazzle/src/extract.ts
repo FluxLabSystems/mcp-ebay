@@ -7,8 +7,12 @@
  *
  * C7 discipline: nothing here computes, estimates, or interpolates a value
  * the page does not state. A discount is extracted from "You save 10%",
- * never derived from two prices; a bare "$" price never becomes "USD"; an
- * unreadable field is an explicit null.
+ * never derived from two prices; an unreadable field is an explicit null.
+ * A bare "$" price never becomes a currency from the TEXT alone — but the
+ * storefront TLD is the page's own statement of pricing region (Zazzle
+ * region-locks each TLD; see storefrontCurrency), so a bare "$" on
+ * zazzle.com resolves to USD and on zazzle.ca to CAD, with an explicit
+ * C$/CA$/US$ prefix always winning.
  */
 import {
   canonicalProductUrl,
@@ -16,6 +20,7 @@ import {
   parseSavePercent,
   parseZazzleMoney,
   productIdFromUrl,
+  storefrontCurrency,
 } from './normalize.js';
 import {
   ZAZZLE_PROFILE_REVISION,
@@ -248,10 +253,13 @@ export function extractZazzleProduct(
   } else {
     const domPrice = parseZazzleMoney(textOf(document, MAIN_PRICE_SELECTOR));
     if (domPrice !== null) {
-      listedPrice = { ...domPrice, source: 'dom', confidence: 0.85 };
-      // zazzle.ca renders "C$" — an explicit statement parseZazzleMoney
-      // keeps; only a bare "$" leaves the currency genuinely unstated.
-      if (domPrice.currency === null) {
+      // Currency, in trust order: an explicit C$/CA$/US$ prefix in the
+      // rendered figure, else the storefront TLD's own pricing region
+      // (zazzle.com USD, zazzle.ca CAD). Only off both storefronts is a
+      // bare "$" genuinely unstated.
+      const currency = domPrice.currency ?? storefrontCurrency(pageUrl);
+      listedPrice = { ...domPrice, currency, source: 'dom', confidence: 0.85 };
+      if (currency === null) {
         warnings.push(
           'PRICE_CURRENCY_UNSTATED: price was read from the rendered "$" figure and the page stated no currency; CAD thresholds must not fire on this record.',
         );
@@ -269,7 +277,9 @@ export function extractZazzleProduct(
     if (Number.isFinite(value)) {
       originalPrice = {
         value,
-        currency: listedPrice?.source === 'jsonld' ? listedPrice.currency : null,
+        currency:
+          (listedPrice?.source === 'jsonld' ? listedPrice.currency : null) ??
+          storefrontCurrency(pageUrl),
         rawText: standardAmount,
         source: 'meta',
         confidence: 0.9,
@@ -278,7 +288,14 @@ export function extractZazzleProduct(
   }
   if (originalPrice === null) {
     const struck = parseZazzleMoney(textOf(document, STRIKETHROUGH_SELECTOR));
-    if (struck !== null) originalPrice = { ...struck, source: 'dom', confidence: 0.85 };
+    if (struck !== null) {
+      originalPrice = {
+        ...struck,
+        currency: struck.currency ?? storefrontCurrency(pageUrl),
+        source: 'dom',
+        confidence: 0.85,
+      };
+    }
   }
 
   // Personalization → the C4 basis discriminator. Never the favourable
@@ -370,7 +387,11 @@ export interface ZazzleSearchCandidate {
   productId: string;
   url: string;
   title: string | null;
-  /** Sale/shown price snippet. Currency null: cards state only "$". */
+  /**
+   * Sale/shown price snippet. Currency comes from an explicit C$/CA$/US$
+   * prefix when the card renders one, else from the storefront TLD
+   * (zazzle.com USD, zazzle.ca CAD); null only off both storefronts.
+   */
   price: { value: number; currency: string | null; rawText: string } | null;
   originalPrice: { value: number; currency: string | null; rawText: string } | null;
   /** Stated badge ("Save 10%"), kept raw. */
@@ -380,6 +401,15 @@ export interface ZazzleSearchCandidate {
 
 export interface ZazzleSearchPage {
   results: ZazzleSearchCandidate[];
+  /**
+   * True when the page renders Zazzle's "did not match any products" shell.
+   * Observed live 2026-09-01: a /s/ DEEP LINK can render this shell while
+   * the tab title still names the resolved category — driving the search
+   * box with the same query on the same URL returned 60 candidates — so an
+   * empty shell is ambiguous between a true zero and deep-link gating, and
+   * the caller must retry via the search box before recording zero coverage.
+   */
+  noResultsShell: boolean;
 }
 
 const CARD_ROOT_SELECTOR = '[class*="SearchResultsGridCell2_root"], li, article';
@@ -431,10 +461,44 @@ function titleFromAria(anchor: Element): string | null {
   return aria.replace(/^product:\s*/i, '') || null;
 }
 
+/**
+ * Regions whose product links describe the SESSION, not the search: the
+ * "Recently Viewed Items" rail (rendered in the page's complementary
+ * region) carries real product anchors, and on the no-results shell it was
+ * the only anchor left — so an empty search produced one phantom candidate
+ * with a null title and price (observed live 2026-09-01).
+ */
+const NON_RESULT_REGION_SELECTOR =
+  '[role="complementary"], aside, [class*="RecentlyViewed"], [class*="recentlyViewed"]';
+
+/** Zazzle's empty-results shell sentence (see ZazzleSearchPage.noResultsShell). */
+const NO_RESULTS_RE = /did\s+not\s+match\s+any\s+products/i;
+
+function inNonResultRegion(anchor: Element): boolean {
+  try {
+    return anchor.closest(NON_RESULT_REGION_SELECTOR) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function detectNoResultsShell(document: Document): boolean {
+  // documentElement fallback: statically parsed fragments (the unit-test
+  // path) can carry their content outside an empty body.
+  const raw = document.body?.textContent || document.documentElement?.textContent || '';
+  const text = raw.replace(/\s+/g, ' ');
+  // Bounded scan: the shell sentence renders in the leading content, and
+  // scanning the whole page text would also read script text (the failure
+  // mode site-ebay documented for status banners).
+  return NO_RESULTS_RE.test(text.slice(0, 4000));
+}
+
 export function extractZazzleSearchResults(document: Document, pageUrl: string): ZazzleSearchPage {
   const seen = new Set<string>();
   const results: ZazzleSearchCandidate[] = [];
+  const pageCurrency = storefrontCurrency(pageUrl);
   for (const anchor of Array.from(document.querySelectorAll('a[href]'))) {
+    if (inNonResultRegion(anchor)) continue;
     const href = anchor.getAttribute('href');
     if (!href) continue;
     let absolute: string;
@@ -462,8 +526,12 @@ export function extractZazzleSearchResults(document: Document, pageUrl: string):
       cardText(card, CARD_TITLE_SELECTOR) ??
       titleFromAria(anchor) ??
       (collapseWhitespace(card.getAttribute('title')) || null);
-    const price = parseZazzleMoney(cardText(card, CARD_SALE_PRICE_SELECTOR));
-    const originalPrice = parseZazzleMoney(cardText(card, CARD_ORIGINAL_PRICE_SELECTOR));
+    const withPageCurrency = (
+      money: ReturnType<typeof parseZazzleMoney>,
+    ): ReturnType<typeof parseZazzleMoney> =>
+      money === null || money.currency !== null ? money : { ...money, currency: pageCurrency };
+    const price = withPageCurrency(parseZazzleMoney(cardText(card, CARD_SALE_PRICE_SELECTOR)));
+    const originalPrice = withPageCurrency(parseZazzleMoney(cardText(card, CARD_ORIGINAL_PRICE_SELECTOR)));
 
     results.push({
       productId,
@@ -475,5 +543,5 @@ export function extractZazzleSearchResults(document: Document, pageUrl: string):
       order: results.length,
     });
   }
-  return { results };
+  return { results, noResultsShell: detectNoResultsShell(document) };
 }
