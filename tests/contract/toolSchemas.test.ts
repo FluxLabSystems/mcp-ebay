@@ -152,6 +152,20 @@ describe('input schema contracts (Appendix A)', () => {
     ).toBe(true);
   });
 
+  it('screenshot scale is optional and bounded to 0.1-1 (2026-09-01 operator request)', () => {
+    const schema = getToolEntry('browser.screenshot')!.inputSchema;
+    const base = { browserSessionHandle: HANDLE, tabId: TAB, mode: 'viewport' as const };
+    expect(schema.safeParse(base).success).toBe(true);
+    expect(schema.safeParse({ ...base, scale: 0.5 }).success).toBe(true);
+    expect(schema.safeParse({ ...base, scale: 1 }).success).toBe(true);
+    expect(schema.safeParse({ ...base, scale: 0.1 }).success).toBe(true);
+    // Below the floor a capture is unreadable noise; above 1 is an upscale
+    // the bridge never fabricates.
+    expect(schema.safeParse({ ...base, scale: 0.05 }).success).toBe(false);
+    expect(schema.safeParse({ ...base, scale: 1.5 }).success).toBe(false);
+    expect(schema.safeParse({ ...base, scale: '0.5' }).success).toBe(false);
+  });
+
   it('wait condition requires exactly one discriminator (Appendix A oneOf)', () => {
     const schema = getToolEntry('browser.wait')!.inputSchema;
     expect(schema.safeParse({ browserSessionHandle: HANDLE, tabId: TAB, condition: {} }).success).toBe(false);

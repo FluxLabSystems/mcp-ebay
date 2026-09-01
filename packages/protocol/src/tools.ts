@@ -111,6 +111,15 @@ export const ScreenshotInput = z
     mode: z.enum(['viewport', 'full_page', 'element']),
     elementRef: z.string().optional(),
     format: z.enum(['png', 'jpeg']).default('png'),
+    /**
+     * Linear downscale factor for cheaper captures (0.5 = half width and
+     * height, roughly a quarter of the bytes). Absent = full resolution,
+     * byte-identical to the pre-scale behavior. 2026-09-01 operator
+     * request for parity with the Claude-in-Chrome screenshot surface.
+     * NOTE: adding this field changed the advertised tool schema — a
+     * gateway redeploy plus a claude.ai connector reconnect applies.
+     */
+    scale: z.number().min(0.1).max(1).optional(),
   })
   .check((ctx) => {
     if (ctx.value.mode === 'element' && ctx.value.elementRef === undefined) {
