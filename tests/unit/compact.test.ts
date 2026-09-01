@@ -409,6 +409,21 @@ describe('search compaction', () => {
     );
     expect(record.candidates[0]!.priceText).toBeUndefined();
   });
+
+  it('preserves the zazzle empty-shell marker through compaction', () => {
+    const zazzle = {
+      siteProfile: 'zazzle.com.v1',
+      pageKind: 'search',
+      pageUrl: 'https://www.zazzle.com/s/dad+hat',
+      candidateCount: 0,
+      candidates: [],
+      noResultsShell: true,
+    };
+    const record = compactSearchPage(zazzle, DEFAULTS).record as { noResultsShell: boolean };
+    // Compacting the marker away would turn "retry via the search box"
+    // back into "the marketplace had nothing".
+    expect(record.noResultsShell).toBe(true);
+  });
 });
 
 describe('search response byte budget', () => {

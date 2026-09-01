@@ -55,6 +55,25 @@ export function parseZazzleMoney(raw: string | null | undefined): ParsedZazzleMo
   return { value, currency, rawText: match[0]!.trim() };
 }
 
+/**
+ * The currency the storefront itself prices in. Zazzle region-locks each
+ * TLD — the country selector navigates between hosts rather than repricing
+ * in place (2026-09-01 observation) — so the host is the page's own
+ * statement of pricing region, not a guess: zazzle.com prices in USD,
+ * zazzle.ca in CAD. Used to resolve a bare "$" snippet; an explicit
+ * C$/CA$/US$ prefix in the text always wins over this.
+ */
+export function storefrontCurrency(pageUrl: string): string | null {
+  try {
+    const host = new URL(pageUrl).hostname.toLowerCase();
+    if (/(?:^|\.)zazzle\.com$/.test(host)) return 'USD';
+    if (/(?:^|\.)zazzle\.ca$/.test(host)) return 'CAD';
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
 /** "You save 10%" / "Save 10%" → 10. Only when the page states it. */
 export function parseSavePercent(raw: string | null | undefined): number | null {
   if (raw === null || raw === undefined) return null;

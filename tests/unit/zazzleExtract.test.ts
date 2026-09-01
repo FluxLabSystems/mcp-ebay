@@ -149,12 +149,18 @@ describe('extractZazzleSearchResults', () => {
     );
   });
 
-  it('enriches from the card and states no currency for "$" snippets', () => {
+  it('enriches from the card, resolving bare-"$" currency from the storefront TLD', () => {
     const first = page.results[0]!;
     expect(first.title).toContain('Typography Name and Photo');
-    expect(first.price).toMatchObject({ value: 19.31, currency: null });
-    expect(first.originalPrice).toMatchObject({ value: 21.45, currency: null });
+    // The cards render only "$", but the page is zazzle.com and Zazzle
+    // region-locks each TLD, so the host states the pricing region.
+    expect(first.price).toMatchObject({ value: 19.31, currency: 'USD' });
+    expect(first.originalPrice).toMatchObject({ value: 21.45, currency: 'USD' });
     expect(first.discountText).toBe('Save 10%');
+  });
+
+  it('does not flag the fixture page as an empty-results shell', () => {
+    expect(page.noResultsShell).toBe(false);
   });
 
   it('keeps degraded cards with explicit nulls (C3 from birth)', () => {
@@ -195,6 +201,47 @@ describe('zazzle.ca money and candidates', () => {
     );
   });
 
+  // 2026-09-01 live findings: the /s/ deep-link shell and the Recently
+  // Viewed rail. The shell renders "did not match any products" for queries
+  // the search box answers with a full page, and the RV rail's product
+  // anchor was the shell's only anchor — a phantom candidate with null
+  // title and price that made the empty state look like a hit.
+  it('flags the no-results shell and excludes Recently Viewed anchors from candidates', () => {
+    const { document } = parseHTML(
+      `<main>
+         <h1>Dad Hats &amp; Caps</h1>
+         <p>Your search for "dad hat" did not match any products.</p>
+       </main>
+       <div role="complementary" class="RecentlyViewedItems_root">
+         <h2>Recently Viewed Items</h2>
+         <a href="https://www.zazzle.com/some_hat-235985008319788440"></a>
+       </div>`,
+    );
+    const shell = extractZazzleSearchResults(
+      document as unknown as Document,
+      'https://www.zazzle.com/s/dad+hat',
+    );
+    expect(shell.results).toHaveLength(0);
+    expect(shell.noResultsShell).toBe(true);
+  });
+
+  it('excludes Recently Viewed anchors even on a page with real results', () => {
+    const { document } = parseHTML(
+      `<div>
+         <a href="https://www.zazzle.com/real_hit-256993602821254375" aria-label="Product: Real Hit"></a>
+       </div>
+       <aside class="RecentlyViewedItems_root">
+         <a href="https://www.zazzle.com/stale_session_item-235985008319788440"></a>
+       </aside>`,
+    );
+    const page = extractZazzleSearchResults(
+      document as unknown as Document,
+      'https://www.zazzle.com/s/hat',
+    );
+    expect(page.results.map((row) => row.productId)).toEqual(['256993602821254375']);
+    expect(page.noResultsShell).toBe(false);
+  });
+
   it('takes a C$ figure from the pricing module as stated CAD, without the currency warning', () => {
     const { document } = parseHTML(
       `<h1>Custom Name T-Shirt</h1>
@@ -206,5 +253,23 @@ describe('zazzle.ca money and candidates', () => {
     );
     expect(record.listedPrice).toMatchObject({ value: 31.35, currency: 'CAD', source: 'dom' });
     expect(warnings.some((warning) => warning.startsWith('PRICE_CURRENCY_UNSTATED'))).toBe(false);
+  });
+
+  it('resolves a bare-"$" product price from the storefront TLD, warning only off-storefront', () => {
+    const dom = `<h1>Custom Name Hat</h1>
+       <div class="Pricing_mainPrice">$14.85</div>`;
+    const onCom = extractZazzleProduct(
+      parseHTML(dom).document as unknown as Document,
+      'https://www.zazzle.com/custom_name_hat-235985008319788440',
+    );
+    expect(onCom.record.listedPrice).toMatchObject({ value: 14.85, currency: 'USD', source: 'dom' });
+    expect(onCom.warnings.some((warning) => warning.startsWith('PRICE_CURRENCY_UNSTATED'))).toBe(false);
+
+    const offStorefront = extractZazzleProduct(
+      parseHTML(dom).document as unknown as Document,
+      'https://example.com/custom_name_hat-235985008319788440',
+    );
+    expect(offStorefront.record.listedPrice).toMatchObject({ value: 14.85, currency: null });
+    expect(offStorefront.warnings.some((warning) => warning.startsWith('PRICE_CURRENCY_UNSTATED'))).toBe(true);
   });
 });

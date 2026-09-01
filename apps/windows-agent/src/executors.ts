@@ -677,7 +677,15 @@ async function executeExtract(
           `UNCLASSIFIED_PAGE: ${pageUrl} is not a Zazzle product (…-<18-digit id>) or search (/s/, /c/) URL; returned a best-effort product-link scan. An empty candidate list here may mean the page has no products, not that extraction failed.`,
         );
       }
-      if (searchPage.results.length === 0) {
+      if (searchPage.noResultsShell) {
+        // Observed live 2026-09-01: a /s/ deep link can render this shell
+        // while the same query driven through the search box returns a full
+        // page, so an empty shell is ambiguous between a true zero and
+        // deep-link gating.
+        warnings.push(
+          'SEARCH_EMPTY_SHELL: the page says the search did not match any products. On Zazzle a /s/ deep link can render this shell even when the query has results — navigate to the storefront and drive the search box (browser.fill + Enter) with the same query before recording zero coverage.',
+        );
+      } else if (searchPage.results.length === 0) {
         warnings.push(
           'NO_LISTING_CANDIDATES: no product links found — an empty results page, or the result-card selectors need updating.',
         );
@@ -690,7 +698,8 @@ async function executeExtract(
           observedAt: source.capturedAt.toISOString(),
           candidateCount: searchPage.results.length,
           candidates: searchPage.results,
-          note: 'Candidate snippets are traversal hints (card prices state no currency); open each product URL and extract it for canonical evidence.',
+          noResultsShell: searchPage.noResultsShell,
+          note: 'Candidate snippets are traversal hints (snippet currency comes from an explicit C$/US$ prefix or the storefront TLD); open each product URL and extract it for canonical evidence.',
         },
         searchOptions,
         warnings,
