@@ -361,7 +361,7 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
           tabId,
           ...(args as object),
         });
-        const capture = await screenshot(session, tabId, input.mode, input.format, input.elementRef, budget);
+        const capture = await screenshot(session, tabId, input.mode, input.format, input.elementRef, budget, input.scale);
         const artifactId = newArtifactId();
         return {
           result: {

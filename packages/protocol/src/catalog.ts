@@ -188,7 +188,8 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     scope: SCOPE_READ,
     policyClass: 'read',
     timeoutMs: SCREENSHOT_TIMEOUT_MS,
-    description: 'Capture a viewport, full-page, or element screenshot as an image artifact.',
+    description:
+      'Capture a viewport, full-page, or element screenshot as an image artifact. Optional scale (0.1-1) downscales the capture for cheaper transfer; omit it for full resolution.',
     inputSchema: ScreenshotInput,
     outputSchema: ScreenshotOutput,
   },
