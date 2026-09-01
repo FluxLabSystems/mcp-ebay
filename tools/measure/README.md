@@ -82,7 +82,7 @@ which is handed the constants from the *built* protocol package:
 
 | constant | today | what it decides |
 | --- | --- | --- |
-| `EXTRACT_MANY_MAX_URLS` | 25 | URLs one `browser.extract_many` may carry |
+| `EXTRACT_MANY_MAX_URLS` | 25 | URLs one `browser_extract_many` may carry |
 | `MAX_INLINE_BATCH_ITEMS` | 2 | largest batch `mode:"auto"` answers inline |
 | `DEFAULT_SEARCH_COMPACTION.limit` | 40 | rows one search call returns of the page |
 

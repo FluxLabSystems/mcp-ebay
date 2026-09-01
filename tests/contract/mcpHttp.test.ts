@@ -26,9 +26,39 @@ describe('modern/stateless MCP profile (§9)', () => {
     const tools = response.body.result?.tools ?? [];
     expect(tools).toHaveLength(TOOL_CATALOG.length);
     const names = tools.map((tool) => tool.name);
-    expect(names).toContain('browser.extract');
-    const screenshot = tools.find((tool) => tool.name === 'browser.screenshot');
+    expect(names).toContain('browser_extract');
+    const screenshot = tools.find((tool) => tool.name === 'browser_screenshot');
     expect(screenshot?.inputSchema).toMatchObject({ type: 'object' });
+  });
+
+  it('serves tool names free of characters the host permission layer rewrites', async () => {
+    // 2026-09-01 root cause of the routine approval spam: claude.ai carries
+    // per-tool Always-allow policies VERBATIM under the served name, while
+    // the Claude Code CLI normalizes non [a-zA-Z0-9_-] characters to "_"
+    // before matching. A dot in a served name therefore makes every allow
+    // rule and stored policy for that tool permanently unmatchable.
+    const response = await client.listTools();
+    for (const tool of response.body.result?.tools ?? []) {
+      expect(tool.name, `tool name ${tool.name} would be rewritten by host normalization`).toMatch(
+        /^[a-zA-Z0-9_-]+$/,
+      );
+    }
+  });
+
+  it('serves annotations on the tools/list payload (not just in the catalog)', async () => {
+    // No test asserted this before 2026-09-01; a regression dropping the
+    // annotations key would have shipped invisibly.
+    const response = await client.listTools();
+    const tools = response.body.result?.tools ?? [];
+    const byName = new Map(tools.map((tool) => [tool.name, tool as { annotations?: Record<string, unknown> }]));
+    expect(byName.get('browser_extract')?.annotations).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+    });
+    expect(byName.get('browser_navigate')?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: false,
+    });
   });
 
   it('does not require initialize or Mcp-Session-Id (self-describing requests)', async () => {
@@ -63,8 +93,8 @@ describe('modern/stateless MCP profile (§9)', () => {
   it('validates Mcp-Name header against the body (§9)', async () => {
     const response = await client.request(
       'tools/call',
-      { name: 'browser.tabs', arguments: { browserSessionHandle: 'bs_0123456789abcdefgh' }, _meta: MODERN_META },
-      { toolName: 'browser.snapshot', omitMeta: true },
+      { name: 'browser_tabs', arguments: { browserSessionHandle: 'bs_0123456789abcdefgh' }, _meta: MODERN_META },
+      { toolName: 'browser_snapshot', omitMeta: true },
     );
     expect(response.status).toBe(400);
     expect(response.body.error?.message).toMatch(/disagree|mismatch|Mcp-Name/i);
@@ -89,7 +119,7 @@ describe('modern/stateless MCP profile (§9)', () => {
 
 describe('tool-call error surface (FR-12, §17)', () => {
   it('returns catalogued machine-readable errors as tool results', async () => {
-    const response = await client.callTool('browser.session_open', { deviceId: 'dev_not_connected' });
+    const response = await client.callTool('browser_session_open', { deviceId: 'dev_not_connected' });
     expect(response.status).toBe(200);
     expect(response.body.result?.isError).toBe(true);
     const text = response.body.result?.content?.[0]?.text ?? '{}';
@@ -100,7 +130,7 @@ describe('tool-call error surface (FR-12, §17)', () => {
   });
 
   it('rejects malformed tool arguments before any device dispatch', async () => {
-    const response = await client.callTool('browser.navigate', {
+    const response = await client.callTool('browser_navigate', {
       browserSessionHandle: 'bs_0123456789abcdefgh',
       tabId: 'tab_1',
       url: 'not-a-url',
@@ -111,7 +141,7 @@ describe('tool-call error surface (FR-12, §17)', () => {
   });
 
   it('SESSION_NOT_FOUND for unknown handles (§14 validation)', async () => {
-    const response = await client.callTool('browser.tabs', { browserSessionHandle: 'bs_0123456789abcdefgh' });
+    const response = await client.callTool('browser_tabs', { browserSessionHandle: 'bs_0123456789abcdefgh' });
     const text = response.body.result?.content?.[0]?.text ?? '{}';
     expect(JSON.parse(text).error.code).toBe('SESSION_NOT_FOUND');
   });

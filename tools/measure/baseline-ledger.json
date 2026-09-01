@@ -74,7 +74,7 @@
         "bytes": 40960,
         "seconds": null,
         "basis": "reported",
-        "note": "memory, tool load, dashboard.feed full (38 records, ~40 KB), session_open"
+        "note": "memory, tool load, dashboard_feed full (38 records, ~40 KB), session_open"
       },
       {
         "phase": "search_page",
@@ -104,7 +104,7 @@
   },
   "probes": [
     {
-      "id": "dashboard.feed.full",
+      "id": "dashboard_feed.full",
       "question": "What does the routine pull in just to know what it already has?",
       "basis": "modelled",
       "bytes": 41053,
@@ -115,7 +115,7 @@
       }
     },
     {
-      "id": "dashboard.feed.ids",
+      "id": "dashboard_feed.ids",
       "question": "How much of that does mode \"ids\" already avoid?",
       "basis": "measured",
       "bytes": 7873,
@@ -128,7 +128,7 @@
     },
     {
       "id": "ebay.search.fixture",
-      "question": "What does browser.extract return for the checked-in search fixture?",
+      "question": "What does browser_extract return for the checked-in search fixture?",
       "basis": "measured",
       "bytes": 898,
       "ms": 9.62,
@@ -241,11 +241,11 @@
       "reason": "The 5 shell calls that parsed the spilled search response were client-side tool calls against a local file. They are not gateway calls and leave no trace this repo can read."
     },
     {
-      "id": "browser.snapshot.bytes",
-      "reason": "browser.snapshot serializes a live accessibility tree; it has no fixture and no offline path."
+      "id": "browser_snapshot.bytes",
+      "reason": "browser_snapshot serializes a live accessibility tree; it has no fixture and no offline path."
     },
     {
-      "id": "dashboard.feed.live_bytes",
+      "id": "dashboard_feed.live_bytes",
       "reason": "The deals dashboard API is not reachable from this box and the harness holds no ingest token. The feed below is modelled at the reported size; only the mode-to-mode reduction is measured."
     }
   ]

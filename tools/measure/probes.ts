@@ -75,7 +75,7 @@ export function fixture(...parts: string[]): Promise<string> {
 }
 
 /* -------------------------------------------------------------------------
- * browser.extract response envelopes
+ * browser_extract response envelopes
  *
  * The envelope is the one apps/windows-agent/src/executors.ts builds for a
  * search/store page and for an item page; the record inside it comes from
@@ -145,7 +145,7 @@ export async function probeReachability(host: string): Promise<Record<string, un
 }
 
 /* -------------------------------------------------------------------------
- * dashboard.feed shaping
+ * dashboard_feed shaping
  *
  * There is no dashboard API to call and no ingest token here, so the feed
  * is modelled: 38 records, the count the run reported, each padded to the

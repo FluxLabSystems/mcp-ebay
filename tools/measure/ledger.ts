@@ -99,7 +99,7 @@ const PHASE_LABEL: Record<string, string> = {
   preamble: 'Preamble (feed + session_open)',
   search_page: 'One eBay search page',
   item_pages: '17 canonical item pages',
-  upsert: 'dashboard.upsert',
+  upsert: 'dashboard_upsert',
 };
 
 /** The 2026-08-29 run as the operator reported it. Never mixed into measured rows. */
@@ -110,7 +110,7 @@ const REPORTED_LEDGER: LedgerRow[] = [
     bytes: REPORTED_FEED_BYTES,
     seconds: null,
     basis: 'reported',
-    note: 'memory, tool load, dashboard.feed full (38 records, ~40 KB), session_open',
+    note: 'memory, tool load, dashboard_feed full (38 records, ~40 KB), session_open',
   },
   {
     phase: 'search_page',
@@ -152,11 +152,11 @@ const UNMEASURABLE = [
       'The 5 shell calls that parsed the spilled search response were client-side tool calls against a local file. They are not gateway calls and leave no trace this repo can read.',
   },
   {
-    id: 'browser.snapshot.bytes',
-    reason: 'browser.snapshot serializes a live accessibility tree; it has no fixture and no offline path.',
+    id: 'browser_snapshot.bytes',
+    reason: 'browser_snapshot serializes a live accessibility tree; it has no fixture and no offline path.',
   },
   {
-    id: 'dashboard.feed.live_bytes',
+    id: 'dashboard_feed.live_bytes',
     reason:
       'The deals dashboard API is not reachable from this box and the harness holds no ingest token. The feed below is modelled at the reported size; only the mode-to-mode reduction is measured.',
   },
@@ -192,7 +192,7 @@ async function main(): Promise<void> {
         }))
       : await Promise.all([probeReachability('www.ebay.ca'), probeReachability('www.kijiji.ca')]);
 
-    /* --- preamble: dashboard.feed full vs ids -------------------------- */
+    /* --- preamble: dashboard_feed full vs ids -------------------------- */
     const feedRoot = modelDealsFeed(
       REPORTED_FEED_RECORD_COUNT,
       Math.round(REPORTED_FEED_BYTES / REPORTED_FEED_RECORD_COUNT),
@@ -212,7 +212,7 @@ async function main(): Promise<void> {
     const feedFullBytes = jsonBytes(feedFull.value.root);
     const feedIdsBytes = jsonBytes(feedIds.value.root);
     probes.push({
-      id: 'dashboard.feed.full',
+      id: 'dashboard_feed.full',
       question: 'What does the routine pull in just to know what it already has?',
       basis: 'modelled',
       bytes: feedFullBytes,
@@ -223,7 +223,7 @@ async function main(): Promise<void> {
       },
     });
     probes.push({
-      id: 'dashboard.feed.ids',
+      id: 'dashboard_feed.ids',
       question: 'How much of that does mode "ids" already avoid?',
       basis: 'measured',
       bytes: feedIdsBytes,
@@ -236,14 +236,14 @@ async function main(): Promise<void> {
     });
     calls.push({
       phase: 'preamble',
-      toolName: 'dashboard.feed',
+      toolName: 'dashboard_feed',
       args: { dashboard: 'deals', mode: 'full' },
       response: feedFull.value.root,
       durationMs: feedFull.ms,
     });
     calls.push({
       phase: 'preamble',
-      toolName: 'browser.session_open',
+      toolName: 'browser_session_open',
       args: { deviceId: 'dev_measure', profileName: 'ebay-research' },
       response: {
         browserSessionHandle: 'bs_0000000000000000',
@@ -270,7 +270,7 @@ async function main(): Promise<void> {
     const fixtureBytes = jsonBytes(fixtureEnvelope);
     probes.push({
       id: 'ebay.search.fixture',
-      question: 'What does browser.extract return for the checked-in search fixture?',
+      question: 'What does browser_extract return for the checked-in search fixture?',
       basis: 'measured',
       bytes: fixtureBytes,
       ms: fixtureRun.ms,
@@ -339,7 +339,7 @@ async function main(): Promise<void> {
 
     calls.push({
       phase: 'search_page',
-      toolName: 'browser.navigate',
+      toolName: 'browser_navigate',
       args: { browserSessionHandle: 'bs_0000000000000000', tabId: 't1', url: tracked.pageUrl },
       response: {
         finalUrl: tracked.pageUrl,
@@ -352,7 +352,7 @@ async function main(): Promise<void> {
     });
     calls.push({
       phase: 'search_page',
-      toolName: 'browser.extract',
+      toolName: 'browser_extract',
       args: { browserSessionHandle: 'bs_0000000000000000', tabId: 't1', siteProfile: 'ebay.ca.v1' },
       response: trackedEnvelope,
       durationMs: trackedRun.ms,
@@ -398,7 +398,7 @@ async function main(): Promise<void> {
     for (let index = 0; index < ITEM_PAGES; index += 1) {
       calls.push({
         phase: 'item_pages',
-        toolName: 'browser.navigate',
+        toolName: 'browser_navigate',
         args: { browserSessionHandle: 'bs_0000000000000000', tabId: 't1', url: `https://www.ebay.ca/itm/12345678901${index}` },
         response: {
           finalUrl: `https://www.ebay.ca/itm/12345678901${index}`,
@@ -411,7 +411,7 @@ async function main(): Promise<void> {
       });
       calls.push({
         phase: 'item_pages',
-        toolName: 'browser.extract',
+        toolName: 'browser_extract',
         args: { browserSessionHandle: 'bs_0000000000000000', tabId: 't1', siteProfile: 'ebay.ca.v1' },
         response: itemEnvelope,
         durationMs: itemRun.ms,
@@ -454,7 +454,7 @@ async function main(): Promise<void> {
     };
     calls.push({
       phase: 'upsert',
-      toolName: 'dashboard.upsert',
+      toolName: 'dashboard_upsert',
       args: upsertPayload,
       response: { dashboard: 'deals', ok: true, result: { written: 6 } },
       durationMs: 0,

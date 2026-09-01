@@ -58,7 +58,7 @@ describe('JSON body caps (F-23)', () => {
           jsonrpc: '2.0',
           id: 1,
           method: 'tools/call',
-          params: { name: 'browser.tabs', arguments: { browserSessionHandle: hugeArgument } },
+          params: { name: 'browser_tabs', arguments: { browserSessionHandle: hugeArgument } },
         }),
       }),
     );

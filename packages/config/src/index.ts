@@ -64,7 +64,7 @@ export const GatewayEnvSchema = z
      * the internal docker network; https for a public hostname.
      */
     DASHBOARD_API_BASE_URL: z.url().optional(),
-    /** Per-dashboard ingest tokens; dashboard.upsert requires the matching one. */
+    /** Per-dashboard ingest tokens; dashboard_upsert requires the matching one. */
     DEALS_INGEST_TOKEN: z.string().min(1).optional(),
     OFFICE_INGEST_TOKEN: z.string().min(1).optional(),
     JOBS_INGEST_TOKEN: z.string().min(1).optional(),

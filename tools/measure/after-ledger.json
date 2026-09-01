@@ -72,7 +72,7 @@
         "bytes": 3683,
         "seconds": 0.001,
         "basis": "derived",
-        "note": "2 call(s): dashboard.feed{mode:\"ids\",filter,fields} + browser.session_open. Call count unchanged from Phase 1; only the payload moved. Bytes measured; seconds are extractor+compactor CPU only."
+        "note": "2 call(s): dashboard_feed{mode:\"ids\",filter,fields} + browser_session_open. Call count unchanged from Phase 1; only the payload moved. Bytes measured; seconds are extractor+compactor CPU only."
       },
       {
         "phase": "search_page",
@@ -80,7 +80,7 @@
         "bytes": 10594,
         "seconds": 0.06,
         "basis": "derived",
-        "note": "1 call(s): 1 call (browser.open_and_extract collapses navigate+extract and compacts server-side at limit 40 of 240 rows) Bytes measured; seconds are extractor+compactor CPU only."
+        "note": "1 call(s): 1 call (browser_open_and_extract collapses navigate+extract and compacts server-side at limit 40 of 240 rows) Bytes measured; seconds are extractor+compactor CPU only."
       },
       {
         "phase": "item_pages",
@@ -88,7 +88,7 @@
         "bytes": 13941,
         "seconds": 0.137,
         "basis": "derived",
-        "note": "2 call(s): 1 browser.extract_many (17 URLs > MAX_INLINE_BATCH_ITEMS 2, so mode \"auto\" promotes to a job) + 1 browser.job_status poll(s) — the FLOOR, not a prediction Bytes measured; seconds are extractor+compactor CPU only."
+        "note": "2 call(s): 1 browser_extract_many (17 URLs > MAX_INLINE_BATCH_ITEMS 2, so mode \"auto\" promotes to a job) + 1 browser_job_status poll(s) — the FLOOR, not a prediction Bytes measured; seconds are extractor+compactor CPU only."
       },
       {
         "phase": "upsert",
@@ -140,7 +140,7 @@
         "bytes": 40960,
         "seconds": null,
         "basis": "reported",
-        "note": "memory, tool load, dashboard.feed full (38 records, ~40 KB), session_open"
+        "note": "memory, tool load, dashboard_feed full (38 records, ~40 KB), session_open"
       },
       {
         "phase": "search_page",
@@ -379,7 +379,7 @@
   "weaknesses": [
     {
       "id": "item_phase.assumes_one_poll",
-      "statement": "The 2-call item phase assumes ONE browser.job_status lands after the job has already finished. Every extra poll is +1 call and +191 B.",
+      "statement": "The 2-call item phase assumes ONE browser_job_status lands after the job has already finished. Every extra poll is +1 call and +191 B.",
       "detail": "A run that polls while the job is still traversing pays more calls for the same records; see the poll-sensitivity table."
     },
     {
@@ -399,7 +399,7 @@
     },
     {
       "id": "preamble.win_mostly_predates_phase2",
-      "statement": "Most of the preamble reduction is dashboard.feed mode \"ids\", which existed before Phase 2 and which the before run simply did not use.",
+      "statement": "Most of the preamble reduction is dashboard_feed mode \"ids\", which existed before Phase 2 and which the before run simply did not use.",
       "detail": "ids alone: 80.8% off the full feed. filter{active} + fields add 57.8% on top of that, and only the second figure is Phase 2's."
     },
     {
@@ -420,13 +420,13 @@
   ],
   "probes": [
     {
-      "id": "dashboard.feed.after.projected",
+      "id": "dashboard_feed.after.projected",
       "question": "What does the preamble pull now, and how much of the saving is new?",
       "basis": "measured",
       "bytes": 3321,
       "ms": 0.642,
       "detail": {
-        "call": "dashboard.feed{mode:\"ids\", filter:{active:true}, fields:[\"lastSeen\",\"status\",\"landedCad\"]}",
+        "call": "dashboard_feed{mode:\"ids\", filter:{active:true}, fields:[\"lastSeen\",\"status\",\"landedCad\"]}",
         "fullBytes": 41053,
         "idsOnlyBytes": 7873,
         "projectedBytes": 3321,
@@ -443,7 +443,7 @@
     },
     {
       "id": "ebay.search.after.openAndExtract",
-      "question": "What does one browser.open_and_extract return for the same 240-row page?",
+      "question": "What does one browser_open_and_extract return for the same 240-row page?",
       "basis": "modelled",
       "bytes": 10441,
       "ms": 59.655,
@@ -517,7 +517,7 @@
         "fullExtractEnvelopeBytes": 1239,
         "compactRecordBytes": 558,
         "warnings": 0,
-        "note": "compactItemRecord() drops the per-field provenance/confidence envelope, which is what makes a record auditable and also most of its size. A batch keeps the flat scoring fields; the full record is still one browser.extract away."
+        "note": "compactItemRecord() drops the per-field provenance/confidence envelope, which is what makes a record auditable and also most of its size. A batch keeps the flat scoring fields; the full record is still one browser_extract away."
       }
     },
     {
@@ -584,7 +584,7 @@
       }
     },
     {
-      "id": "dashboard.upsert.after.touch",
+      "id": "dashboard_upsert.after.touch",
       "question": "What does refreshing the other eleven verified listings cost now?",
       "basis": "measured",
       "bytes": 3982,
@@ -621,19 +621,19 @@
       "origin": "carried"
     },
     {
-      "id": "browser.snapshot.bytes",
-      "reason": "browser.snapshot serializes a live accessibility tree; it has no fixture and no offline path.",
+      "id": "browser_snapshot.bytes",
+      "reason": "browser_snapshot serializes a live accessibility tree; it has no fixture and no offline path.",
       "origin": "carried"
     },
     {
-      "id": "dashboard.feed.live_bytes",
+      "id": "dashboard_feed.live_bytes",
       "reason": "The deals dashboard API is not reachable from this box and the harness holds no ingest token. The feed below is modelled at the reported size; only the mode-to-mode reduction is measured.",
       "origin": "carried"
     },
     {
       "id": "batch.job_poll_count",
       "origin": "after",
-      "reason": "A 17-URL batch promotes to a job (MAX_INLINE_BATCH_ITEMS is 2), and how many browser.job_status polls a real run spends is the job's wall-clock duration — 17 live Chrome navigations — divided by the caller's polling cadence. Neither exists on this box. The ledger charges the structural floor of 1 poll and prints a sensitivity table; it does not predict the real number."
+      "reason": "A 17-URL batch promotes to a job (MAX_INLINE_BATCH_ITEMS is 2), and how many browser_job_status polls a real run spends is the job's wall-clock duration — 17 live Chrome navigations — divided by the caller's polling cadence. Neither exists on this box. The ledger charges the structural floor of 1 poll and prints a sensitivity table; it does not predict the real number."
     },
     {
       "id": "batch.job_wall_time",

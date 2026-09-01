@@ -1,5 +1,5 @@
 /**
- * browser.extract page-kind dispatch (FR-15). The Fluxology scheduled runs
+ * browser_extract page-kind dispatch (FR-15). The Fluxology scheduled runs
  * traverse eBay search results and seller stores and Kijiji radius search
  * pages, so extract must return structured candidate records for those page
  * kinds instead of refusing everything that is not a canonical item page.
@@ -71,7 +71,7 @@ async function runExtract(pageUrl: string, html: string, siteProfile: string) {
   return executeCommand(hostFor(session), extractEnvelope(siteProfile));
 }
 
-describe('browser.extract dispatches by page kind instead of refusing', () => {
+describe('browser_extract dispatches by page kind instead of refusing', () => {
   it('eBay search results return an ordered candidate list', async () => {
     const outcome = await runExtract(
       'https://www.ebay.ca/sch/i.html?_nkw=lego+minifig+lot&_sop=10',

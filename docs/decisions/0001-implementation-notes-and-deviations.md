@@ -39,7 +39,7 @@ Win32 named mutexes without a native addon; the launcher uses an
 checking (`EPERM` counts as live). Same guarantee (single owner, fail
 with `PROFILE_IN_USE`), portable, crash-safe via stale-pid reclaim.
 
-## 4. `browser.session_open` accepts the literal `"default"` device — additive convenience
+## 4. `browser_session_open` accepts the literal `"default"` device — additive convenience
 
 The schema types `deviceId` as a plain string and an MCP client has no
 tool for listing devices (§10.2 keeps admin out of the LLM surface).
@@ -48,7 +48,7 @@ it; otherwise resolution fails with `DEVICE_OFFLINE`. Explicit ids keep
 working unchanged. Remove `registry.resolveDeviceId`'s special case to
 revert.
 
-## 5. Unmet `browser.wait` conditions raise `CONDITION_TIMEOUT`
+## 5. Unmet `browser_wait` conditions raise `CONDITION_TIMEOUT`
 
 The output schema has `satisfied: boolean`, and §17 also catalogs
 `CONDITION_TIMEOUT` (retryable). The agent reports an unmet condition at

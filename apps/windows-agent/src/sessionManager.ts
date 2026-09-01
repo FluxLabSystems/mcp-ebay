@@ -56,7 +56,7 @@ export class SessionManager {
     return this.session !== null && !this.session.isClosed ? this.session : null;
   }
 
-  /** Launch or reuse the dedicated persistent context (browser.session_open). */
+  /** Launch or reuse the dedicated persistent context (browser_session_open). */
   async open(profileName: string): Promise<SessionOpenResult> {
     const existing = this.current();
     if (existing !== null) {

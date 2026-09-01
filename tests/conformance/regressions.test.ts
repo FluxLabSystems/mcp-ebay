@@ -5,7 +5,7 @@
  *   F1  dead URLs return ok:false + LISTING_UNAVAILABLE (retryable:false)
  *   F2  Kijiji imageCount counts the gallery; the static store badge is
  *       excluded
- *   F3  dashboard.feed filter.active partitions the feed disjointly and
+ *   F3  dashboard_feed filter.active partitions the feed disjointly and
  *       completely
  *
  * F1 also runs per-profile inside the conformance harness; F2/F3 also have
@@ -83,7 +83,7 @@ describe('F2 — Kijiji imageCount matches the gallery, badge excluded', () => {
   });
 });
 
-describe('F3 — dashboard.feed filter.active partitions correctly', () => {
+describe('F3 — dashboard_feed filter.active partitions correctly', () => {
   const root = {
     schemaVersion: 3,
     listings: [

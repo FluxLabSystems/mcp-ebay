@@ -110,7 +110,7 @@ describe('bearer authentication (§10.1)', () => {
 describe('scope enforcement at the HTTP boundary (§10.2, §27.2)', () => {
   it('403 insufficient_scope when calling interact tools with browser:read only', async () => {
     const token = await mintToken({ scope: 'browser:read' });
-    const response = await clientWith(token).callTool('browser.navigate', {
+    const response = await clientWith(token).callTool('browser_navigate', {
       browserSessionHandle: 'bs_0123456789abcdefgh',
       tabId: 'tab_1',
       url: 'https://www.ebay.ca/',
@@ -120,7 +120,7 @@ describe('scope enforcement at the HTTP boundary (§10.2, §27.2)', () => {
 
   it('browser:read allows read tools', async () => {
     const token = await mintToken({ scope: 'browser:read' });
-    const response = await clientWith(token).callTool('browser.tabs', {
+    const response = await clientWith(token).callTool('browser_tabs', {
       browserSessionHandle: 'bs_0123456789abcdefgh',
     });
     expect(response.status).toBe(200); // reaches the broker → SESSION_NOT_FOUND result
@@ -130,7 +130,7 @@ describe('scope enforcement at the HTTP boundary (§10.2, §27.2)', () => {
 
   it('browser:interact satisfies read tools (§10.2)', async () => {
     const token = await mintToken({ scope: 'browser:interact' });
-    const response = await clientWith(token).callTool('browser.snapshot', {
+    const response = await clientWith(token).callTool('browser_snapshot', {
       browserSessionHandle: 'bs_0123456789abcdefgh',
       tabId: 'tab_1',
     });
@@ -139,7 +139,7 @@ describe('scope enforcement at the HTTP boundary (§10.2, §27.2)', () => {
 
   it('browser:admin alone cannot use browser tools (§10.2)', async () => {
     const token = await mintToken({ scope: 'browser:admin' });
-    const response = await clientWith(token).callTool('browser.tabs', {
+    const response = await clientWith(token).callTool('browser_tabs', {
       browserSessionHandle: 'bs_0123456789abcdefgh',
     });
     expect(response.status).toBe(403);

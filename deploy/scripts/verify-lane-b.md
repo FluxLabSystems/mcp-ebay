@@ -36,8 +36,8 @@ temp files (never argv) and are never printed.
    `dashboards:read office:write deals:write jobs:write vacation:write`). A wrong-audience
    token must be rejected 401 by both.
 6. **Optional browser smoke** (`--device <deviceId>`) —
-   `browser.session_open → browser.navigate(https://www.ebay.ca/) →
-   browser.snapshot` through the bridge. Needs a paired Windows agent online
+   `browser_session_open → browser_navigate(https://www.ebay.ca/) →
+   browser_snapshot` through the bridge. Needs a paired Windows agent online
    and a bridge token with `browser:interact`. Skipped unless requested.
 
 Every check prints a `PASS`/`FAIL`/`WARN`/`SKIP` line; one failure never

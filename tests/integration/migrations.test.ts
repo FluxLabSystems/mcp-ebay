@@ -83,7 +83,7 @@ describe.skipIf(DATABASE_URL === undefined)('PostgreSQL migrations + store (§21
       await store.artifacts.delete(artifactId);
 
       await store.audit.insert(
-        buildAuditEvent({ actionClass: 'read', outcome: 'ok', toolName: 'browser.tabs', deviceId }),
+        buildAuditEvent({ actionClass: 'read', outcome: 'ok', toolName: 'browser_tabs', deviceId }),
       );
     } finally {
       await store.close();

@@ -206,7 +206,7 @@ async function resolveExtractionSource(tab: TabState): Promise<ExtractionSource>
 /**
  * Deterministic fingerprint of what a given HTML serialization EXTRACTS to,
  * with all time-derived fields held at a fixed instant so only DOM-derived
- * content participates. Used by the browser.wait drift check: cosmetic churn
+ * content participates. Used by the browser_wait drift check: cosmetic churn
  * (tracking params, timers, ad rotation) must not bump pageRevision, while a
  * change to any extractable field must.
  */
@@ -243,7 +243,7 @@ function extractionFingerprint(html: string, pageUrl: string): string {
 }
 
 /**
- * browser.wait doubles as the caller's explicit "let the page move on"
+ * browser_wait doubles as the caller's explicit "let the page move on"
  * primitive, so after the condition holds it is the one place a
  * spontaneous page change is allowed to surface: if the extractable content
  * has drifted from the pinned source, the revision bumps and the pin is
@@ -499,7 +499,7 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
         // the private-network rules and the redirect revalidation all live
         // behind it (packages/browser-core/src/session.ts navigate()).
         const nav = await navigate(session, tabId, input.url, input.waitUntil, budget);
-        // Unlike browser.extract, an omitted `search` here means "compact
+        // Unlike browser_extract, an omitted `search` here means "compact
         // with the defaults": this tool exists to stop a results page
         // arriving as a hundred kilobytes of candidate rows.
         const outcome = await executeExtract(
@@ -683,7 +683,7 @@ async function executeExtract(
         // page, so an empty shell is ambiguous between a true zero and
         // deep-link gating.
         warnings.push(
-          'SEARCH_EMPTY_SHELL: the page says the search did not match any products. On Zazzle a /s/ deep link can render this shell even when the query has results — navigate to the storefront and drive the search box (browser.fill + Enter) with the same query before recording zero coverage.',
+          'SEARCH_EMPTY_SHELL: the page says the search did not match any products. On Zazzle a /s/ deep link can render this shell even when the query has results — navigate to the storefront and drive the search box (browser_fill + Enter) with the same query before recording zero coverage.',
         );
       } else if (searchPage.results.length === 0) {
         warnings.push(
@@ -822,7 +822,7 @@ async function executeExtract(
 /**
  * Apply the caller's candidate reduction, or leave the record exactly as
  * Phase 1 produced it when no reduction was asked for. The absent case is
- * load-bearing: browser.extract with no `search` must keep returning the
+ * load-bearing: browser_extract with no `search` must keep returning the
  * bytes it always returned.
  */
 function applySearchCompaction(
@@ -877,12 +877,12 @@ function deadListingError(url: string, record: Record<string, unknown> | null): 
  * URL's own result slot instead of the batch's.
  *
  * The navigation goes through browser-core's navigate() — the same call
- * browser.navigate makes — so `session.policy.assertUrlAllowed(url,
+ * browser_navigate makes — so `session.policy.assertUrlAllowed(url,
  * 'navigation')` runs for every URL in the batch, and the context-level
  * route interception revalidates every redirect hop and aborts protected
  * endpoints underneath it. There is deliberately no second navigation path
  * in this file: a batch tool that reimplemented navigation would be a way
- * to reach a URL that browser.navigate refuses.
+ * to reach a URL that browser_navigate refuses.
  */
 async function traverseOne(
   host: ExecutorHost,

@@ -1,5 +1,5 @@
 /**
- * Scaled-capture plumbing for browser.screenshot (2026-09-01 operator
+ * Scaled-capture plumbing for browser_screenshot (2026-09-01 operator
  * request: cheaper screenshots, parity with the Claude-in-Chrome scale
  * knob). The CDP capture itself needs a live Chrome, so what is pinned
  * here is the decision logic: when the CDP path engages at all, and the

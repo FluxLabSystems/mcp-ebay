@@ -118,8 +118,8 @@ node apps\windows-agent\dist\cli.js run
 # 4. MCP client (terminal C)
 npx @modelcontextprotocol/inspector
 # Connect: Streamable HTTP → http://127.0.0.1:3000/mcp
-# Call browser.session_open with deviceId "default" (single online device),
-# then browser.navigate → https://www.ebay.ca/ , browser.snapshot, etc.
+# Call browser_session_open with deviceId "default" (single online device),
+# then browser_navigate → https://www.ebay.ca/ , browser_snapshot, etc.
 ```
 
 First-run eBay state (SDD §32.1 step 11): with the agent's Chrome window open, log into eBay once in that profile and set the delivery destination to M6H 2W9. Then `pnpm test:live` (with `BRIDGE_LIVE_SMOKE=1` and your listing URLs in `BRIDGE_LIVE_LISTINGS`) runs the live P0/P2 checks.
@@ -201,7 +201,7 @@ non-default `-TaskName`.
 
 `POST https://<host>/mcp` speaking MCP `2026-07-28` (self-describing requests; no `initialize`, no `Mcp-Session-Id`). Scopes: `browser:read`, `browser:interact` (includes read), `browser:admin` (diagnostics only). Protected Resource Metadata: `/.well-known/oauth-protected-resource/mcp` (and root fallback). Verify with MCP Inspector or any SDK client — ChatGPT attachment is a deployment gate, not a core dependency (SDD §5, §10.3).
 
-`browser.session_open` requires the paired `deviceId` (printed by `device:list`); when exactly one device is online the literal `"default"` resolves to it.
+`browser_session_open` requires the paired `deviceId` (printed by `device:list`); when exactly one device is online the literal `"default"` resolves to it.
 
 ## Phase status vs SDD §29
 

@@ -1,6 +1,6 @@
 /**
  * Kijiji gallery hints — URL normalization, the chrome filter, and their
- * effect on browser.images gallery scope. Pinned against the 2026-08-30
+ * effect on browser_images gallery scope. Pinned against the 2026-08-30
  * connector test, where scope "gallery" on a Kijiji ad returned seven
  * images: six ad photos plus a 200×200 store badge served from the
  * ca-prod-statics bucket.

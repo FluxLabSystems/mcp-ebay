@@ -61,7 +61,7 @@ function structuredOf(response: { body: { result?: { structuredContent?: Record<
 
 describe('full stack: MCP client → gateway → agent → real browser', () => {
   it('opens a real browser session', async () => {
-    const response = await client.callTool('browser.session_open', { deviceId });
+    const response = await client.callTool('browser_session_open', { deviceId });
     expect(response.body.result?.isError).not.toBe(true);
     const structured = structuredOf(response) as { browserSessionHandle: string; tabs: Array<{ tabId: string }>; status: string };
     handle = structured.browserSessionHandle;
@@ -71,7 +71,7 @@ describe('full stack: MCP client → gateway → agent → real browser', () => 
   }, 60_000);
 
   it('navigates the fixture listing and snapshots semantic state', async () => {
-    const navigation = await client.callTool('browser.navigate', {
+    const navigation = await client.callTool('browser_navigate', {
       browserSessionHandle: handle,
       tabId,
       url: `${fixtures.baseUrl}/itm/123456789012`,
@@ -79,13 +79,13 @@ describe('full stack: MCP client → gateway → agent → real browser', () => 
     });
     expect(structuredOf(navigation)).toMatchObject({ navigationStatus: 'committed' });
 
-    const snapshot = await client.callTool('browser.snapshot', { browserSessionHandle: handle, tabId });
+    const snapshot = await client.callTool('browser_snapshot', { browserSessionHandle: handle, tabId });
     const structured = structuredOf(snapshot) as { snapshot: Array<{ name: string }>; pageRevision: number };
     expect(structured.snapshot.some((node) => node.name.includes('LEGO Friends Bulk Lot'))).toBe(true);
   }, 60_000);
 
   it('returns a PNG screenshot as inline MCP image content with descriptor', async () => {
-    const response = await client.callTool('browser.screenshot', {
+    const response = await client.callTool('browser_screenshot', {
       browserSessionHandle: handle,
       tabId,
       mode: 'viewport',
@@ -99,11 +99,11 @@ describe('full stack: MCP client → gateway → agent → real browser', () => 
   }, 60_000);
 
   it('enumerates the gallery and fetches an image end to end', async () => {
-    const images = await client.callTool('browser.images', { browserSessionHandle: handle, tabId, scope: 'gallery' });
+    const images = await client.callTool('browser_images', { browserSessionHandle: handle, tabId, scope: 'gallery' });
     const structured = structuredOf(images) as { images: Array<{ imageId: string; order: number }> };
     expect(structured.images.length).toBeGreaterThanOrEqual(3);
     const first = structured.images[0]!;
-    const fetched = await client.callTool('browser.image_get', {
+    const fetched = await client.callTool('browser_image_get', {
       browserSessionHandle: handle,
       tabId,
       imageId: first.imageId,
@@ -114,7 +114,7 @@ describe('full stack: MCP client → gateway → agent → real browser', () => 
   }, 60_000);
 
   it('extracts the structured listing record with warnings', async () => {
-    const response = await client.callTool('browser.extract', {
+    const response = await client.callTool('browser_extract', {
       browserSessionHandle: handle,
       tabId,
       siteProfile: 'ebay.ca.v1',
@@ -131,7 +131,7 @@ describe('full stack: MCP client → gateway → agent → real browser', () => 
   }, 60_000);
 
   it('waits, clicks, and keeps revisions consistent through the wire', async () => {
-    const wait = await client.callTool('browser.wait', {
+    const wait = await client.callTool('browser_wait', {
       browserSessionHandle: handle,
       tabId,
       condition: { text: 'LEGO Friends' },
@@ -139,11 +139,11 @@ describe('full stack: MCP client → gateway → agent → real browser', () => 
     });
     expect(structuredOf(wait)).toMatchObject({ satisfied: true });
 
-    const snapshot = await client.callTool('browser.snapshot', { browserSessionHandle: handle, tabId });
+    const snapshot = await client.callTool('browser_snapshot', { browserSessionHandle: handle, tabId });
     const nodes = (structuredOf(snapshot) as { snapshot: Array<{ name: string; elementRef: string | null }> }).snapshot;
     const buyNow = nodes.find((node) => node.name === 'Buy It Now');
     expect(buyNow?.elementRef).toBeTruthy();
-    const blocked = await client.callTool('browser.click', {
+    const blocked = await client.callTool('browser_click', {
       browserSessionHandle: handle,
       tabId,
       elementRef: buyNow!.elementRef!,
