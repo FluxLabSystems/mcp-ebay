@@ -175,7 +175,13 @@ function registerDashboardTool(
       outputSchema: entry.outputSchema,
       annotations: {
         readOnlyHint: entry.action === 'feed',
-        destructiveHint: false,
+        // Honest, matching fluxology-mcp's identical write tools: an upsert
+        // can retire an entire dashboard in one call via active:false, and
+        // there is no before-image downstream. Declaring false told every
+        // host the one destructive operation here needed no confirmation
+        // (fluxology-mcp found and fixed the same bug on its side;
+        // write-tool.mjs documents why).
+        destructiveHint: entry.action === 'upsert',
         idempotentHint: entry.action === 'feed',
         openWorldHint: true,
       },
@@ -269,7 +275,7 @@ function shapeStructuredContent(
   structured: Record<string, unknown>,
   artifacts: Array<{ descriptor: Record<string, unknown> }>,
 ): Record<string, unknown> {
-  if ((toolName === 'browser.screenshot' || toolName === 'browser.image_get') && artifacts.length > 0) {
+  if ((toolName === 'browser_screenshot' || toolName === 'browser_image_get') && artifacts.length > 0) {
     const { artifactId: _drop, ...rest } = structured;
     return { ...rest, artifact: artifacts[0]!.descriptor };
   }

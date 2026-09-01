@@ -182,8 +182,8 @@ scopes carries an *Audience* mapper (`oidc-audience-mapper`,
   `https://mcp.fluxology.ca/mcp`
 
 The dashboard scopes carry two audience mappers because two resource servers
-now serve the same dashboards: the Browser Bridge gateway (`dashboard.feed` /
-`dashboard.upsert`) and the standalone fluxology-mcp connector
+now serve the same dashboards: the Browser Bridge gateway (`dashboard_feed` /
+`dashboard_upsert`) and the standalone fluxology-mcp connector
 (`upsert_*_listings`), which hard-requires `https://mcp.fluxology.ca/mcp` and
 is already deployed by the fluxology-site stack. A single audience would have
 silently 401'd whichever server was not named.

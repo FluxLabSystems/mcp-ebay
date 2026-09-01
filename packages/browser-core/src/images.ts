@@ -144,7 +144,7 @@ export async function fetchImage(
   if (!entry || entry.pageRevision !== tab.revision) {
     throw new BridgeError(
       'STALE_ELEMENT',
-      `imageId ${imageId} belongs to an older page revision; re-run browser.images.`,
+      `imageId ${imageId} belongs to an older page revision; re-run browser_images.`,
       { imageId },
     );
   }

@@ -11,32 +11,32 @@
  * The two rules that decide the item-page phase both live in
  * `packages/protocol/src/catalog.ts` and `packages/protocol/src/tools.ts`:
  *
- *   EXTRACT_MANY_MAX_URLS   how many URLs one browser.extract_many accepts
+ *   EXTRACT_MANY_MAX_URLS   how many URLs one browser_extract_many accepts
  *   MAX_INLINE_BATCH_ITEMS  the largest batch mode "auto" answers inline,
  *                           = floor((EXTRACT_MANY_TIMEOUT_MS -
  *                             BATCH_INLINE_RESERVE_MS) / BATCH_ITEM_BUDGET_MS)
  *
  * Today those are 25 and 2, so a 17-item batch is one call that PROMOTES TO
  * A JOB. A promoted call returns no result slots at all — it returns a
- * jobId — so the traversal is not paid for until browser.job_status is
+ * jobId — so the traversal is not paid for until browser_job_status is
  * polled, and any honest count of the after surface has to include the
  * polls. See JOB_POLLS_FLOOR for what this harness charges and why that is
  * a floor rather than a prediction.
  */
 
 export interface BatchConstants {
-  /** EXTRACT_MANY_MAX_URLS — URLs one browser.extract_many call may carry. */
+  /** EXTRACT_MANY_MAX_URLS — URLs one browser_extract_many call may carry. */
   maxUrlsPerBatch: number;
   /** MAX_INLINE_BATCH_ITEMS — largest batch `mode:"auto"` answers inline. */
   maxInlineItems: number;
 }
 
 export interface BatchStep {
-  /** URLs in this browser.extract_many call. */
+  /** URLs in this browser_extract_many call. */
   size: number;
   /** What `mode:"auto"` resolves to for a batch this size. */
   mode: 'inline' | 'job';
-  /** browser.job_status calls charged to this step; 0 for an inline batch. */
+  /** browser_job_status calls charged to this step; 0 for an inline batch. */
   polls: number;
   /** The extract_many call plus its polls. */
   calls: number;
@@ -45,9 +45,9 @@ export interface BatchStep {
 export interface BatchPlan {
   items: number;
   steps: BatchStep[];
-  /** browser.extract_many calls. */
+  /** browser_extract_many calls. */
   batchCalls: number;
-  /** browser.job_status calls. */
+  /** browser_job_status calls. */
   pollCalls: number;
   /** Both together — what the item-page phase costs. */
   calls: number;
@@ -58,9 +58,9 @@ export interface BatchPlan {
 /**
  * One poll per promoted job, and it is a FLOOR, not an estimate.
  *
- * A promoted browser.extract_many answers immediately with
+ * A promoted browser_extract_many answers immediately with
  * `{mode:"job", status:"running", results:[]}` — apps/windows-agent/src/
- * executors.ts, executeExtractMany() — so at least one browser.job_status
+ * executors.ts, executeExtractMany() — so at least one browser_job_status
  * is structurally required before the caller holds a single record. That
  * much is derivable from the tool surface.
  *
@@ -87,7 +87,7 @@ export const AFTER_ITEM_PAGES = 17;
 export const ITEM_COUNT_SENSITIVITY = [17, 20, 25, 26, 40] as const;
 
 /**
- * Split `items` URLs into browser.extract_many calls and say, for each,
+ * Split `items` URLs into browser_extract_many calls and say, for each,
  * whether `mode:"auto"` answers it inline or promotes it to a job.
  *
  * The split is the schema bound (`urls: z.array(z.url()).min(1).max(
@@ -124,7 +124,7 @@ export function planBatches(
 
 /**
  * What the Phase 1 surface charged for the same pages: one
- * browser.navigate and one browser.extract each, every time, with no batch
+ * browser_navigate and one browser_extract each, every time, with no batch
  * to amortise and no way to recover a dead page except more calls.
  */
 export function phase1ItemPageCalls(items: number): number {

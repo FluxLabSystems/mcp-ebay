@@ -91,7 +91,7 @@ beforeAll(async () => {
   agent.connection.start();
   await agent.waitReady();
   client = new ModernMcpClient('https://browser-mcp.test.example/mcp', harness.fetch);
-  const open = await client.callTool('browser.session_open', { deviceId });
+  const open = await client.callTool('browser_session_open', { deviceId });
   expect(open.body.result?.isError).not.toBe(true);
 });
 
@@ -103,7 +103,7 @@ afterAll(async () => {
 describe('artifact delivery branches (§16, F-07)', () => {
   it('≤1 MiB artifacts travel inline on the wire and arrive as MCP image content', async () => {
     nextScreenshot = { bytes: pngBuffer(64 * 1024), mimeType: 'image/png' };
-    const response = await client.callTool('browser.screenshot', {
+    const response = await client.callTool('browser_screenshot', {
       browserSessionHandle: HANDLE,
       tabId: TAB,
       mode: 'viewport',
@@ -118,7 +118,7 @@ describe('artifact delivery branches (§16, F-07)', () => {
 
   it('1–8 MiB artifacts upload via authenticated PUT and re-inline as MCP image content', async () => {
     nextScreenshot = { bytes: pngBuffer(2 * 1024 * 1024), mimeType: 'image/png' };
-    const response = await client.callTool('browser.screenshot', {
+    const response = await client.callTool('browser_screenshot', {
       browserSessionHandle: HANDLE,
       tabId: TAB,
       mode: 'viewport',
@@ -141,7 +141,7 @@ describe('artifact delivery branches (§16, F-07)', () => {
 
   it('>8 MiB artifacts deliver as a short-TTL signed URL with hardened download headers', async () => {
     nextScreenshot = { bytes: pngBuffer(9 * 1024 * 1024), mimeType: 'image/png' };
-    const response = await client.callTool('browser.screenshot', {
+    const response = await client.callTool('browser_screenshot', {
       browserSessionHandle: HANDLE,
       tabId: TAB,
       mode: 'viewport',
@@ -172,7 +172,7 @@ describe('artifact delivery branches (§16, F-07)', () => {
 
   it('active-content artifact MIME types are refused end to end (F-06)', async () => {
     nextScreenshot = { bytes: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'), mimeType: 'image/svg+xml' };
-    const response = await client.callTool('browser.screenshot', {
+    const response = await client.callTool('browser_screenshot', {
       browserSessionHandle: HANDLE,
       tabId: TAB,
       mode: 'viewport',
@@ -185,7 +185,7 @@ describe('artifact delivery branches (§16, F-07)', () => {
 
 describe('wire-level destination threading (F-09)', () => {
   it('the gateway stamps its destination on extract envelopes; the public schema stays clean', async () => {
-    const response = await client.callTool('browser.extract', {
+    const response = await client.callTool('browser_extract', {
       browserSessionHandle: HANDLE,
       tabId: TAB,
       siteProfile: 'ebay.ca.v1',

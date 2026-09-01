@@ -53,7 +53,7 @@ describe('after-ledger derivation: the promotion rule', () => {
     );
     // The value the committed after ledger was captured against. If this
     // moves, the item-page phase changes shape: a larger inline batch
-    // deletes the browser.job_status poll the ledger currently charges.
+    // deletes the browser_job_status poll the ledger currently charges.
     expect(MAX_INLINE_BATCH_ITEMS).toBe(2);
   });
 
@@ -89,7 +89,7 @@ describe('after-ledger derivation: why a poll is structural', () => {
     expect(accepted.requested).toBe(LEDGER_ITEM_PAGES);
     expect(accepted.completed).toBe(0);
     // The whole reason the after ledger charges at least one
-    // browser.job_status: without it the caller holds a jobId and nothing.
+    // browser_job_status: without it the caller holds a jobId and nothing.
     expect(accepted.results).toEqual([]);
     expect(typeof accepted.jobId).toBe('string');
   });

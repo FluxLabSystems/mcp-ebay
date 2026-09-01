@@ -88,16 +88,24 @@ function clientWith(token: string): ModernMcpClient {
 }
 
 describe('dashboard tools over the live MCP surface', () => {
-  it('registers dashboard.feed and dashboard.upsert alongside the browser tools', async () => {
+  it('registers dashboard_feed and dashboard_upsert alongside the browser tools', async () => {
     const response = await clientWith(await mintToken('deals:write')).listTools();
     expect(response.status).toBe(200);
-    const names = (response.body.result?.tools as { name: string }[]).map((tool) => tool.name);
-    expect(names).toContain('dashboard.feed');
-    expect(names).toContain('dashboard.upsert');
+    const tools = response.body.result?.tools as { name: string; annotations?: Record<string, unknown> }[];
+    const names = tools.map((tool) => tool.name);
+    expect(names).toContain('dashboard_feed');
+    expect(names).toContain('dashboard_upsert');
+    // 2026-09-01: honest destructiveHint on the upsert — it can retire a
+    // whole dashboard via active:false, exactly like fluxology-mcp's write
+    // tools, which document why declaring false was a bug.
+    const upsert = tools.find((tool) => tool.name === 'dashboard_upsert');
+    expect(upsert?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    const feed = tools.find((tool) => tool.name === 'dashboard_feed');
+    expect(feed?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
   });
 
   it('upserts with the gateway-held ingest token; the token never reaches the caller', async () => {
-    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard.upsert', {
+    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard_upsert', {
       dashboard: 'deals',
       listings: [{ id: 'ebay-226123456789', title: 'LEGO minifig lot', priceCad: 42.5 }],
     });
@@ -112,7 +120,7 @@ describe('dashboard tools over the live MCP surface', () => {
   });
 
   it('reads the feed with write scope (write implies read)', async () => {
-    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard.feed', {
+    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard_feed', {
       dashboard: 'deals',
       mode: 'ids',
     });
@@ -126,7 +134,7 @@ describe('dashboard tools over the live MCP surface', () => {
   });
 
   it('upserts to the vacation dashboard with vacation:write only', async () => {
-    const response = await clientWith(await mintToken('vacation:write')).callTool('dashboard.upsert', {
+    const response = await clientWith(await mintToken('vacation:write')).callTool('dashboard_upsert', {
       dashboard: 'vacation',
       listings: [{ id: 'vacation-someresort-oceansuite', title: 'Ocean Suite' }],
     });
@@ -141,7 +149,7 @@ describe('dashboard tools over the live MCP surface', () => {
   });
 
   it('touch-only upserts reach the upstream as {id,lastSeen} records', async () => {
-    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard.upsert', {
+    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard_upsert', {
       dashboard: 'deals',
       touch: [{ id: 'kijiji-1111111', lastSeen: '2026-08-29T12:00:00Z' }],
     });
@@ -159,14 +167,14 @@ describe('dashboard tools over the live MCP surface', () => {
   });
 
   it('an upsert that names neither listings nor touch is refused at the schema', async () => {
-    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard.upsert', {
+    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard_upsert', {
       dashboard: 'deals',
     });
     expect(response.body.result?.isError).toBe(true);
   });
 
   it('feed filter and fields shrink what the caller has to read', async () => {
-    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard.feed', {
+    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard_feed', {
       dashboard: 'deals',
       filter: { marketplace: 'kijiji' },
       fields: ['lastSeen'],
@@ -183,7 +191,7 @@ describe('dashboard tools over the live MCP surface', () => {
   });
 
   it('a filter that matches nothing says so instead of returning the whole feed', async () => {
-    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard.feed', {
+    const response = await clientWith(await mintToken('deals:write')).callTool('dashboard_feed', {
       dashboard: 'deals',
       filter: { marketplace: 'ebay' },
     });
@@ -196,7 +204,7 @@ describe('dashboard tools over the live MCP surface', () => {
   });
 
   it('a vacation:write token cannot write the deals dashboard', async () => {
-    const response = await clientWith(await mintToken('vacation:write')).callTool('dashboard.upsert', {
+    const response = await clientWith(await mintToken('vacation:write')).callTool('dashboard_upsert', {
       dashboard: 'deals',
       listings: [{ id: 'ebay-1' }],
     });
@@ -208,7 +216,7 @@ describe('dashboard tools over the live MCP surface', () => {
 
   it('refuses an upsert from a browser-scopes-only token', async () => {
     const response = await clientWith(await mintToken('browser:read browser:interact')).callTool(
-      'dashboard.upsert',
+      'dashboard_upsert',
       { dashboard: 'deals', listings: [{ id: 'x' }] },
     );
     const text = response.body.result?.content?.[0]?.text ?? '{}';
@@ -219,7 +227,7 @@ describe('dashboard tools over the live MCP surface', () => {
   });
 
   it('refuses an upsert to a dashboard whose token the gateway does not hold', async () => {
-    const response = await clientWith(await mintToken('jobs:write')).callTool('dashboard.upsert', {
+    const response = await clientWith(await mintToken('jobs:write')).callTool('dashboard_upsert', {
       dashboard: 'jobs',
       listings: [{ id: 'job-1' }],
     });

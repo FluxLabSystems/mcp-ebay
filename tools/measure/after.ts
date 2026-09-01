@@ -7,9 +7,9 @@
  *
  * Replays THE SAME routine `ledger.ts` replays — feed, session open, one
  * 240-row eBay search page, seventeen canonical item pages, one upsert —
- * costed against the Phase 2 tool surface (browser.open_and_extract,
- * browser.extract_many, browser.job_status, server-side search compaction,
- * dashboard.feed filter/fields, dashboard.upsert touch), and prints the
+ * costed against the Phase 2 tool surface (browser_open_and_extract,
+ * browser_extract_many, browser_job_status, server-side search compaction,
+ * dashboard_feed filter/fields, dashboard_upsert touch), and prints the
  * before → after diff.
  *
  * Three rules this file exists to obey:
@@ -207,7 +207,7 @@ const PHASE_LABEL: Record<string, string> = {
   preamble: 'Preamble (feed + session_open)',
   search_page: 'One eBay search page',
   item_pages: '17 canonical item pages',
-  upsert: 'dashboard.upsert',
+  upsert: 'dashboard_upsert',
 };
 
 const SESSION_HANDLE = 'bs_0000000000000000';
@@ -234,7 +234,7 @@ const AFTER_UNMEASURABLE: Unmeasurable[] = [
     id: 'batch.job_poll_count',
     origin: 'after',
     reason:
-      'A 17-URL batch promotes to a job (MAX_INLINE_BATCH_ITEMS is 2), and how many browser.job_status polls a real run spends is the job\'s wall-clock duration — 17 live Chrome navigations — divided by the caller\'s polling cadence. Neither exists on this box. The ledger charges the structural floor of 1 poll and prints a sensitivity table; it does not predict the real number.',
+      'A 17-URL batch promotes to a job (MAX_INLINE_BATCH_ITEMS is 2), and how many browser_job_status polls a real run spends is the job\'s wall-clock duration — 17 live Chrome navigations — divided by the caller\'s polling cadence. Neither exists on this box. The ledger charges the structural floor of 1 poll and prints a sensitivity table; it does not predict the real number.',
   },
   {
     id: 'batch.job_wall_time',
@@ -354,7 +354,7 @@ async function main(): Promise<void> {
         }))
       : await Promise.all([probeReachability('www.ebay.ca'), probeReachability('www.kijiji.ca')]);
 
-    /* --- preamble: dashboard.feed, now filtered and projected ---------- */
+    /* --- preamble: dashboard_feed, now filtered and projected ---------- */
     const feedRoot = modelDealsFeed(
       REPORTED_FEED_RECORD_COUNT,
       Math.round(REPORTED_FEED_BYTES / REPORTED_FEED_RECORD_COUNT),
@@ -378,13 +378,13 @@ async function main(): Promise<void> {
     const feedIdsBytes = jsonBytes(feedIds.value.root);
     const feedProjectedBytes = jsonBytes(feedProjected.value.root);
     probes.push({
-      id: 'dashboard.feed.after.projected',
+      id: 'dashboard_feed.after.projected',
       question: 'What does the preamble pull now, and how much of the saving is new?',
       basis: 'measured',
       bytes: feedProjectedBytes,
       ms: feedProjected.ms,
       detail: {
-        call: `dashboard.feed{mode:"ids", filter:{active:true}, fields:${JSON.stringify(AFTER_FEED_FIELDS)}}`,
+        call: `dashboard_feed{mode:"ids", filter:{active:true}, fields:${JSON.stringify(AFTER_FEED_FIELDS)}}`,
         fullBytes: feedFullBytes,
         idsOnlyBytes: feedIdsBytes,
         projectedBytes: feedProjectedBytes,
@@ -403,14 +403,14 @@ async function main(): Promise<void> {
     });
     calls.push({
       phase: 'preamble',
-      toolName: 'dashboard.feed',
+      toolName: 'dashboard_feed',
       args: { dashboard: 'deals', mode: 'ids', filter: { active: true }, fields: [...AFTER_FEED_FIELDS] },
       response: feedProjected.value.root,
       durationMs: feedProjected.ms,
     });
     calls.push({
       phase: 'preamble',
-      toolName: 'browser.session_open',
+      toolName: 'browser_session_open',
       args: { deviceId: 'dev_measure', profileName: 'ebay-research' },
       response: {
         browserSessionHandle: SESSION_HANDLE,
@@ -451,7 +451,7 @@ async function main(): Promise<void> {
       : [];
     probes.push({
       id: 'ebay.search.after.openAndExtract',
-      question: 'What does one browser.open_and_extract return for the same 240-row page?',
+      question: 'What does one browser_open_and_extract return for the same 240-row page?',
       basis: 'modelled',
       bytes: compactedSearchBytes,
       ms: Number((trackedRun.ms + compactedSearch.ms).toFixed(3)),
@@ -548,7 +548,7 @@ async function main(): Promise<void> {
 
     calls.push({
       phase: 'search_page',
-      toolName: 'browser.open_and_extract',
+      toolName: 'browser_open_and_extract',
       args: {
         browserSessionHandle: SESSION_HANDLE,
         tabId: 't1',
@@ -587,7 +587,7 @@ async function main(): Promise<void> {
         compactRecordBytes: jsonBytes(itemCompactRun.value),
         warnings: itemRun.value.warnings.length,
         note:
-          'compactItemRecord() drops the per-field provenance/confidence envelope, which is what makes a record auditable and also most of its size. A batch keeps the flat scoring fields; the full record is still one browser.extract away.',
+          'compactItemRecord() drops the per-field provenance/confidence envelope, which is what makes a record auditable and also most of its size. A batch keeps the flat scoring fields; the full record is still one browser_extract away.',
       },
     });
 
@@ -602,7 +602,7 @@ async function main(): Promise<void> {
 
     const store = new jobs.BatchJobStore({ retentionMs: 600_000 });
     const job = store.create(SESSION_HANDLE, batchUrls.length, true, []);
-    // The accept response is what browser.extract_many returns for a
+    // The accept response is what browser_extract_many returns for a
     // promoted batch: a jobId and nothing else. Snapshotted before the
     // slots land, because the store mutates the job in place.
     const acceptResponse = structuredClone(jobs.jobProgress(job)) as Record<string, unknown>;
@@ -667,7 +667,7 @@ async function main(): Promise<void> {
 
     calls.push({
       phase: 'item_pages',
-      toolName: 'browser.extract_many',
+      toolName: 'browser_extract_many',
       args: {
         browserSessionHandle: SESSION_HANDLE,
         tabId: 't1',
@@ -685,7 +685,7 @@ async function main(): Promise<void> {
     for (let poll = 0; poll < batchPlan.pollCalls; poll += 1) {
       calls.push({
         phase: 'item_pages',
-        toolName: 'browser.job_status',
+        toolName: 'browser_job_status',
         args: { browserSessionHandle: SESSION_HANDLE, jobId: job.jobId, sinceIndex: 0 },
         response: pollResponse,
         durationMs: 0,
@@ -761,7 +761,7 @@ async function main(): Promise<void> {
     };
     calls.push({
       phase: 'upsert',
-      toolName: 'dashboard.upsert',
+      toolName: 'dashboard_upsert',
       args: upsertPayload,
       response: { dashboard: 'deals', ok: true, result: { written: 6 } },
       durationMs: 0,
@@ -793,7 +793,7 @@ async function main(): Promise<void> {
     await upsertClient.upsert('deals', asFullRecords, []);
     const asFullBytes = Buffer.byteLength(capturedUpsertBody, 'utf8');
     probes.push({
-      id: 'dashboard.upsert.after.touch',
+      id: 'dashboard_upsert.after.touch',
       question: 'What does refreshing the other eleven verified listings cost now?',
       basis: 'measured',
       bytes: withTouchBytes,
@@ -845,9 +845,9 @@ async function main(): Promise<void> {
 
     const phaseNote: Record<string, string> = {
       preamble:
-        'dashboard.feed{mode:"ids",filter,fields} + browser.session_open. Call count unchanged from Phase 1; only the payload moved.',
-      search_page: `1 call (browser.open_and_extract collapses navigate+extract and compacts server-side at limit ${String(searchDefaults.limit)} of ${String(tracked.rows)} rows)`,
-      item_pages: `1 browser.extract_many (${String(AFTER_ITEM_PAGES)} URLs > MAX_INLINE_BATCH_ITEMS ${String(constants.maxInlineItems)}, so mode "auto" promotes to a job) + ${String(batchPlan.pollCalls)} browser.job_status poll(s) — the FLOOR, not a prediction`,
+        'dashboard_feed{mode:"ids",filter,fields} + browser_session_open. Call count unchanged from Phase 1; only the payload moved.',
+      search_page: `1 call (browser_open_and_extract collapses navigate+extract and compacts server-side at limit ${String(searchDefaults.limit)} of ${String(tracked.rows)} rows)`,
+      item_pages: `1 browser_extract_many (${String(AFTER_ITEM_PAGES)} URLs > MAX_INLINE_BATCH_ITEMS ${String(constants.maxInlineItems)}, so mode "auto" promotes to a job) + ${String(batchPlan.pollCalls)} browser_job_status poll(s) — the FLOOR, not a prediction`,
       upsert: 'Unchanged: the same six-record write, at the same cost. touch[] is measured as a probe, not folded in here.',
     };
 
@@ -954,7 +954,7 @@ async function main(): Promise<void> {
     const weaknesses = [
       {
         id: 'item_phase.assumes_one_poll',
-        statement: `The ${String(itemPhaseRow.calls ?? 0)}-call item phase assumes ONE browser.job_status lands after the job has already finished. Every extra poll is +1 call and +${String(emptyPollBytes)} B.`,
+        statement: `The ${String(itemPhaseRow.calls ?? 0)}-call item phase assumes ONE browser_job_status lands after the job has already finished. Every extra poll is +1 call and +${String(emptyPollBytes)} B.`,
         detail: 'A run that polls while the job is still traversing pays more calls for the same records; see the poll-sensitivity table.',
       },
       {
@@ -974,7 +974,7 @@ async function main(): Promise<void> {
       },
       {
         id: 'preamble.win_mostly_predates_phase2',
-        statement: 'Most of the preamble reduction is dashboard.feed mode "ids", which existed before Phase 2 and which the before run simply did not use.',
+        statement: 'Most of the preamble reduction is dashboard_feed mode "ids", which existed before Phase 2 and which the before run simply did not use.',
         detail: `ids alone: ${String(Number((100 - (feedIdsBytes / feedFullBytes) * 100).toFixed(1)))}% off the full feed. filter{active} + fields add ${String(Number((100 - (feedProjectedBytes / feedIdsBytes) * 100).toFixed(1)))}% on top of that, and only the second figure is Phase 2's.`,
       },
       {
@@ -1206,7 +1206,7 @@ async function main(): Promise<void> {
             'real extractor, constructed page',
           ],
           [
-            `same page through browser.open_and_extract defaults (${String(searchRecord.returnedCount)} of ${String(searchRecord.candidateCount)} rows)`,
+            `same page through browser_open_and_extract defaults (${String(searchRecord.returnedCount)} of ${String(searchRecord.candidateCount)} rows)`,
             kib(compactedSearchBytes),
             `real extractor + real compactor — ${String(
               Number((100 - (compactedSearchBytes / rawSearchBytes) * 100).toFixed(1)),

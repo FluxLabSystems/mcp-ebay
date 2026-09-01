@@ -3,7 +3,7 @@
  *
  * The byte-budget test at the bottom is the point of the whole module: a
  * measured deals run on 2026-08-29 spent 8 tool calls on a single eBay
- * search page because browser.extract returned 160 KB of tracking-laden
+ * search page because browser_extract returned 160 KB of tracking-laden
  * candidate rows that spilled to a file the model then had to parse with
  * shell calls. The assertion pins the size, not the shape, so a future
  * candidate field that quietly reinflates the payload fails here.

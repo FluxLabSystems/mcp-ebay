@@ -39,7 +39,7 @@ afterEach(async () => {
 
 function observation(overrides: Partial<ToolCallObservation> = {}): ToolCallObservation {
   return {
-    toolName: 'browser.extract',
+    toolName: 'browser_extract',
     args: { browserSessionHandle: 'bs_abc', tabId: 't1', siteProfile: 'ebay.ca.v1' },
     response: { siteProfile: 'ebay.ca.v1', record: { candidateCount: 2 } },
     durationMs: 12.4,
@@ -108,7 +108,7 @@ describe('what reaches the log line', () => {
     const record = JSON.parse(lines[0]!) as Record<string, unknown>;
     expect(record).toMatchObject({
       runId: 'run_t1',
-      tool: 'browser.extract',
+      tool: 'browser_extract',
       outcome: 'ok',
       sessionId: 'bs_abc',
       requestId: 'req_1',
@@ -151,14 +151,14 @@ describe('what reaches the log line', () => {
         sessionId: `Bearer sk-live-2f4a9c1e7b0d8a6f3e5c1b9d7a4f2e6c`,
         requestId: 'req_ok-1',
         errorCode: 'NAVIGATION_TIMEOUT',
-        toolName: 'browser.navigate',
+        toolName: 'browser_navigate',
       }),
       'run_t3',
     );
     expect(record.sessionId).toBe('[unsafe]');
     expect(record.requestId).toBe('req_ok-1');
     expect(record.errorCode).toBe('NAVIGATION_TIMEOUT');
-    expect(record.tool).toBe('browser.navigate');
+    expect(record.tool).toBe('browser_navigate');
   });
 
   it('reports an unmeasurable payload as null rather than zero', () => {
@@ -270,13 +270,13 @@ describe('gateway hook', () => {
       { siteProfile: 'ebay.ca.v1', record: { candidateCount: 2 }, warnings: [] },
     );
     await broker.call(
-      'browser.extract',
+      'browser_extract',
       { browserSessionHandle: 'bs_00000000000000000000000000000001', tabId: 't1', siteProfile: 'ebay.ca.v1' },
       { subject: 'user-1', traceparent: null },
     );
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({
-      toolName: 'browser.extract',
+      toolName: 'browser_extract',
       outcome: 'ok',
       errorCode: null,
       sessionId: 'bs_00000000000000000000000000000001',
@@ -292,7 +292,7 @@ describe('gateway hook', () => {
     const broker = brokerWith(undefined, { siteProfile: 'ebay.ca.v1', record: {}, warnings: [] });
     await expect(
       broker.call(
-        'browser.extract',
+        'browser_extract',
         { browserSessionHandle: 'bs_00000000000000000000000000000001', tabId: 't1', siteProfile: 'ebay.ca.v1' },
         { subject: null, traceparent: null },
       ),

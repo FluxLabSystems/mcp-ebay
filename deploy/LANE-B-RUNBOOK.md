@@ -363,7 +363,7 @@ RATE_LIMIT_MCP_PER_MINUTE=120
 RATE_LIMIT_PAIR_PER_MINUTE=10
 EBAY_DESTINATION_POSTAL_CODE=M6H 2W9
 
-# Dashboard write-path (dashboard.feed / dashboard.upsert served by THIS
+# Dashboard write-path (dashboard_feed / dashboard_upsert served by THIS
 # gateway). The four token values already exist in the fluxology-site
 # stack's .env on this VPS — copy them from there; do not mint new ones.
 DASHBOARD_API_BASE_URL=http://fluxology-dashboard-api:8082
@@ -711,18 +711,18 @@ agents online and the two `dev_…` ids from [38]:
 Prompt, laptop first:
 
 ```text
-Using the browser-bridge tools: call browser.session_open with deviceId
-"dev_a1b2..." (laptop), then browser.navigate that session's tab to
-https://www.ebay.ca/sch/i.html?_nkw=lego+star+wars , then browser.extract the
+Using the browser-bridge tools: call browser_session_open with deviceId
+"dev_a1b2..." (laptop), then browser_navigate that session's tab to
+https://www.ebay.ca/sch/i.html?_nkw=lego+star+wars , then browser_extract the
 current page.
 ```
 
 Expected behavior:
 
-1. `browser.session_open` returns a `browserSessionHandle`; Chrome visibly
+1. `browser_session_open` returns a `browserSessionHandle`; Chrome visibly
    opens on the **laptop** with the `ebay-research` automation profile.
-2. `browser.navigate` returns the final URL, title, and a `pageRevision`.
-3. `browser.extract` returns listing candidates with prices in CAD and
+2. `browser_navigate` returns the final URL, title, and a `pageRevision`.
+3. `browser_extract` returns listing candidates with prices in CAD and
    shipping computed against destination M6H 2W9.
 
 A `/sch/` URL rather than the eBay homepage: page kind selects which
@@ -750,15 +750,15 @@ Notes:
 
 ## 7. Dashboard write-path — now served by the bridge itself
 
-**The bridge gateway serves `dashboard.feed` and `dashboard.upsert`
+**The bridge gateway serves `dashboard_feed` and `dashboard_upsert`
 directly** once 4.1's dashboard block is filled in: the realm's dashboard
 scopes (`dashboards:read`, `office:write`, `deals:write`, `jobs:write`,
 `vacation:write`) have
 their audience mappers pointed at `https://browser-mcp.fluxology.ca/mcp`, so
 the ONE connector from section 6 covers browsing **and** dashboard writes.
-Smoke it after 6.2: in a session with the connector, call `dashboard.feed`
+Smoke it after 6.2: in a session with the connector, call `dashboard_feed`
 with `{"dashboard":"deals","mode":"ids"}` — it must return the stored
-listing ids, and `dashboard.upsert` without the matching gateway token must
+listing ids, and `dashboard_upsert` without the matching gateway token must
 name the missing `*_INGEST_TOKEN` in its error.
 
 Everything below is the OPTIONAL second connector — the standalone
@@ -868,7 +868,7 @@ token matches V3 exactly — an issuer mismatch presents identically.
 
 **401/403 `insufficient_scope` on a specific tool.**
 Symptom: some tools work, others answer with a scope challenge naming the
-missing scope (e.g. `Tool browser.session_open requires scope
+missing scope (e.g. `Tool browser_session_open requires scope
 browser:interact`). The token simply lacks it — [45] shows the granted
 `scope`. In Keycloak: **Clients → claude-ai (or claude-code) → Client
 scopes** — the `browser:*` scopes must be assigned (default, or optional
@@ -878,7 +878,7 @@ scopes until expiry. Read-only tools need `browser:read`; anything that
 opens, navigates, clicks, or fills needs `browser:interact`; `browser:admin`
 is diagnostics only and is never needed by the model surface.
 
-**Agent offline (`DEVICE_OFFLINE` from `browser.session_open`).**
+**Agent offline (`DEVICE_OFFLINE` from `browser_session_open`).**
 Check in this order:
 
 ```powershell

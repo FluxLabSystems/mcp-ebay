@@ -298,7 +298,7 @@ const ATTRIBUTE_GROUP_SELECTORS = [
   'dl[data-testid="attributes"]',
   '[class*="attributeList"]',
 ];
-// Gallery container hooks live in gallery.ts so browser.images and this
+// Gallery container hooks live in gallery.ts so browser_images and this
 // extractor scope "the gallery" identically.
 const GALLERY_SELECTORS = KIJIJI_GALLERY_SELECTORS;
 

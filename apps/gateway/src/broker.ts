@@ -93,7 +93,7 @@ export class CommandBroker {
     let tabId: string | null = null;
     const commandArgs: Record<string, unknown> = { ...args };
 
-    if (toolName === 'browser.session_open') {
+    if (toolName === 'browser_session_open') {
       deviceId = this.deps.registry.resolveDeviceId(String(args.deviceId ?? ''));
       browserSessionHandle = PENDING_SESSION_HANDLE;
       delete commandArgs.deviceId;
@@ -115,9 +115,9 @@ export class CommandBroker {
       }
     }
 
-    // browser.handoff carries a user-configured wait; extend the deadline.
+    // browser_handoff carries a user-configured wait; extend the deadline.
     const timeoutMs =
-      toolName === 'browser.handoff'
+      toolName === 'browser_handoff'
         ? (Number(args.timeoutSeconds ?? 300) + 30) * 1000
         : entry.timeoutMs;
 
@@ -191,7 +191,7 @@ export class CommandBroker {
     const structured = (result.result ?? {}) as Record<string, unknown>;
 
     // session_open: remember the handle→device mapping (§14) and persist it.
-    if (toolName === 'browser.session_open' && typeof structured.browserSessionHandle === 'string') {
+    if (toolName === 'browser_session_open' && typeof structured.browserSessionHandle === 'string') {
       const handle = structured.browserSessionHandle;
       this.deps.registry.rememberSessionOwner(handle, deviceId);
       const now = new Date();

@@ -7,7 +7,7 @@
  *   determinism   identical extracts at one pageRevision are byte-identical
  *   paging        offset/limit windows at one revision walk ONE list
  *   decay         repeated extracts stay identical or the revision bumps
- *   wait-refresh  browser.wait bumps the revision iff extractable content drifted
+ *   wait-refresh  browser_wait bumps the revision iff extractable content drifted
  *   absent        unreadable fields are explicit nulls plus a warning code
  *   fields        unknown `fields` names warn instead of vanishing
  *   dead pages    LISTING_UNAVAILABLE (retryable:false) vs CHALLENGE_PAGE
@@ -302,7 +302,7 @@ export function describeProfileConformance(spec: ProfileConformanceSpec): void {
       }
     });
 
-    it('wait-refresh: browser.wait bumps the revision when extractable content drifted', async () => {
+    it('wait-refresh: browser_wait bumps the revision when extractable content drifted', async () => {
       const stub = statefulStub(spec.policyProfile, spec.searchUrl, () => spec.searchHtml('v1'));
       const before = await executeCommand(
         stub.host,

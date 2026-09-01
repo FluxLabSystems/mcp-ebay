@@ -53,7 +53,7 @@ describe('device channel lifecycle (§11, §12)', () => {
   });
 
   it('session_open runs end to end through MCP → broker → WSS → executor', async () => {
-    const response = await client.callTool('browser.session_open', { deviceId });
+    const response = await client.callTool('browser_session_open', { deviceId });
     expect(response.status).toBe(200);
     expect(response.body.result?.isError).not.toBe(true);
     const structured = response.body.result?.structuredContent as { browserSessionHandle: string; status: string };
@@ -62,26 +62,26 @@ describe('device channel lifecycle (§11, §12)', () => {
     // Handle→device mapping is persisted (§14) and audited (§26).
     const sessionRow = await harness.store.browserSessions.get(structured.browserSessionHandle);
     expect(sessionRow?.deviceId).toBe(deviceId);
-    expect(harness.store.audit.events.some((event) => event.toolName === 'browser.session_open' && event.outcome === 'ok')).toBe(
+    expect(harness.store.audit.events.some((event) => event.toolName === 'browser_session_open' && event.outcome === 'ok')).toBe(
       true,
     );
   });
 
   it('the "default" device convenience resolves when exactly one device is online', async () => {
-    const response = await client.callTool('browser.session_open', { deviceId: 'default' });
+    const response = await client.callTool('browser_session_open', { deviceId: 'default' });
     const structured = response.body.result?.structuredContent as { deviceId: string };
     expect(structured.deviceId).toBe(deviceId);
   });
 
   it('commands to unknown devices fail with DEVICE_OFFLINE', async () => {
-    const response = await client.callTool('browser.session_open', { deviceId: 'dev_ghost' });
+    const response = await client.callTool('browser_session_open', { deviceId: 'dev_ghost' });
     const text = response.body.result?.content?.[0]?.text ?? '{}';
     expect(JSON.parse(text).error.code).toBe('DEVICE_OFFLINE');
   });
 
   it('writes a linked command audit event alongside the tool event (§26, F-03)', async () => {
     const before = harness.store.audit.events.length;
-    const response = await client.callTool('browser.session_open', { deviceId });
+    const response = await client.callTool('browser_session_open', { deviceId });
     expect(response.body.result?.isError).not.toBe(true);
     const events = harness.store.audit.events.slice(before);
     const commandEvent = events.find((event) => event.actionClass === 'command');
@@ -111,10 +111,10 @@ describe('device channel lifecycle (§11, §12)', () => {
       logger: capturing,
       ebayDestinationPostalCode: 'M6H 2W9',
     });
-    await metricBroker.call('browser.session_open', { deviceId }, { subject: 'metrics', traceparent: null });
+    await metricBroker.call('browser_session_open', { deviceId }, { subject: 'metrics', traceparent: null });
     const line = lines.find((entry) => entry.metric === 'tool_call');
     expect(line).toBeDefined();
-    expect(line).toMatchObject({ toolName: 'browser.session_open', outcome: 'ok', deviceId });
+    expect(line).toMatchObject({ toolName: 'browser_session_open', outcome: 'ok', deviceId });
     expect(typeof line?.durationMs).toBe('number');
     expect(typeof line?.agentDurationMs).toBe('number');
     expect(typeof line?.requestId).toBe('string');
@@ -122,9 +122,9 @@ describe('device channel lifecycle (§11, §12)', () => {
 
   it('agent errors map to catalogued codes through the result envelope (§12.3)', async () => {
     // The stub host throws SESSION_NOT_FOUND-shaped errors for tab commands.
-    const open = await client.callTool('browser.session_open', { deviceId });
+    const open = await client.callTool('browser_session_open', { deviceId });
     const handle = (open.body.result?.structuredContent as { browserSessionHandle: string }).browserSessionHandle;
-    const response = await client.callTool('browser.snapshot', { browserSessionHandle: handle, tabId: 'tab_x' });
+    const response = await client.callTool('browser_snapshot', { browserSessionHandle: handle, tabId: 'tab_x' });
     const text = response.body.result?.content?.[0]?.text ?? '{}';
     const parsed = JSON.parse(text) as { error: { code: string } };
     expect(parsed.error.code).toBe('INTERNAL_ERROR'); // stub throws a plain error
@@ -238,7 +238,7 @@ describe('reconnect and reconciliation (§12.5)', () => {
 
   it('marks sessions closed on true disconnect and reopens them via session_open (F-04)', async () => {
     // Ensure a session row exists and is open.
-    const open = await client.callTool('browser.session_open', { deviceId });
+    const open = await client.callTool('browser_session_open', { deviceId });
     const handle = (open.body.result?.structuredContent as { browserSessionHandle: string }).browserSessionHandle;
     const openRow = await harness.store.browserSessions.get(handle);
     expect(openRow?.status).toBe('ready');
@@ -256,7 +256,7 @@ describe('reconnect and reconciliation (§12.5)', () => {
     // After reconnect, a fresh session_open reopens the handle; openedAt is
     // preserved across the upsert (PG ON CONFLICT parity, F-14).
     await agent.waitReady();
-    const reopened = await client.callTool('browser.session_open', { deviceId });
+    const reopened = await client.callTool('browser_session_open', { deviceId });
     const reopenedHandle = (reopened.body.result?.structuredContent as { browserSessionHandle: string })
       .browserSessionHandle;
     expect(reopenedHandle).toBe(handle); // stub host reuses its handle

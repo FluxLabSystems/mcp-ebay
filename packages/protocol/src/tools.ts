@@ -291,7 +291,7 @@ export const SellingFormatFilterSchema = z.enum([
 // The motivation is measured, not speculative: a deals run on 2026-08-29 spent
 // its whole per-turn tool budget on page-by-page traversal (one eBay search
 // page alone cost 8 calls and returned 160 KB of tracking-laden candidate
-// rows) and never reached dashboard.upsert, so the findings were lost.
+// rows) and never reached dashboard_upsert, so the findings were lost.
 // ---------------------------------------------------------------------------
 
 /**
@@ -445,8 +445,8 @@ export function compileTitleRegex(pattern: string): RegExp {
 /**
  * Server-side reduction of a search/candidate extraction, evaluated on the
  * agent so the ~200 rows the model does not want never cross the wire.
- * Absent on browser.extract this changes nothing (Phase 1 callers get the
- * Phase 1 payload); browser.open_and_extract applies the defaults below
+ * Absent on browser_extract this changes nothing (Phase 1 callers get the
+ * Phase 1 payload); browser_open_and_extract applies the defaults below
  * when the field is omitted, which is what keeps a 240-row page small.
  */
 export const SearchCompactionInput = z
@@ -567,14 +567,14 @@ export const HandoffOutput = z.strictObject({
   url: z.string(),
 });
 
-/** Upper bound on URLs one browser.extract_many call may traverse. */
+/** Upper bound on URLs one browser_extract_many call may traverse. */
 export const EXTRACT_MANY_MAX_URLS = 25;
 
 /**
  * One navigate-plus-extract in a single call. The Phase 1 pairing cost two
  * calls per page and the model paid it on every search page and every
- * canonical item; the output is browser.extract's output plus the two
- * fields browser.navigate contributed, so nothing is lost by collapsing it.
+ * canonical item; the output is browser_extract's output plus the two
+ * fields browser_navigate contributed, so nothing is lost by collapsing it.
  */
 export const OpenAndExtractInput = z.strictObject({
   browserSessionHandle: z.string(),
@@ -584,7 +584,7 @@ export const OpenAndExtractInput = z.strictObject({
   siteProfile: z.enum(['ebay.ca.v1', 'kijiji.ca.v1', 'zazzle.com.v1']),
   /**
    * Compaction for search/candidate pages. Omitted, this tool applies
-   * DEFAULT_SEARCH_COMPACTION — unlike browser.extract, which stays
+   * DEFAULT_SEARCH_COMPACTION — unlike browser_extract, which stays
    * uncompacted when the field is absent so Phase 1 callers see no change.
    * Ignored on item/ad pages, which have no candidate list to reduce.
    */
@@ -651,14 +651,14 @@ export type BatchExtractItem = z.infer<typeof BatchExtractItemSchema>;
  * 'completed' — every requested URL has a slot.
  * 'partial'   — the call ran out of its deadline budget and stopped early;
  *               the slots present are final, the rest were never attempted.
- * 'running'   — a job accepted the batch; poll browser.job_status.
+ * 'running'   — a job accepted the batch; poll browser_job_status.
  */
 export const BatchStatusSchema = z.enum(['completed', 'partial', 'running']);
 
 export const BatchExtractProgressShape = {
   /** How the call was served. 'auto' resolves to one of these, never itself. */
   mode: z.enum(['inline', 'job']),
-  /** Present when mode is 'job'; pass it to browser.job_status. */
+  /** Present when mode is 'job'; pass it to browser_job_status. */
   jobId: z.union([z.string(), z.null()]),
   status: BatchStatusSchema,
   requested: z.int().min(0),
@@ -676,7 +676,7 @@ export const BatchExtractProgressShape = {
  * Traverse up to EXTRACT_MANY_MAX_URLS item/ad pages in one call. Read and
  * traversal only: it navigates and extracts, and has no way to express any
  * other interaction. Each URL is navigated through the same primitive
- * browser.navigate uses, so the local URL allowlist, the private-network
+ * browser_navigate uses, so the local URL allowlist, the private-network
  * rules and the protected-endpoint interception apply per URL exactly as
  * they do to a single navigate — a batch is not a policy shortcut.
  */
@@ -876,7 +876,7 @@ export const RUN_CHECKPOINT_MAX_SEARCHED = 24;
 export const RUN_CHECKPOINT_SEARCHED_MAX_CHARS = 160;
 
 /**
- * Per-list id ceiling. 250 is half of dashboard.upsert's 500-record limit:
+ * Per-list id ceiling. 250 is half of dashboard_upsert's 500-record limit:
  * a run holding more verified ids than it could write in one upsert has
  * already outgrown a single run, and the checkpoint should not pretend
  * otherwise.
@@ -899,7 +899,7 @@ export const RUN_CHECKPOINT_MAX_BYTES = 16 * 1024;
 
 /**
  * 'running'   — the run may still be resumed.
- * 'completed' — the run reached its dashboard.upsert; resume will find it by
+ * 'completed' — the run reached its dashboard_upsert; resume will find it by
  *               id but will not offer it as the latest resumable run.
  * 'abandoned' — the run was given up on deliberately; same treatment.
  */

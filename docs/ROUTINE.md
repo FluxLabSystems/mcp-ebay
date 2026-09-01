@@ -3,7 +3,7 @@
 The scheduled LEGO deal watch runs through this bridge from a chat client
 with a **per-turn tool-call budget**. Before the batch tools existed, a run
 spent ~50 calls walking pages one at a time and hit the limit *before* its
-first `dashboard.upsert` — so a full turn of research was discarded. This
+first `dashboard_upsert` — so a full turn of research was discarded. This
 document is the run plan that stops that happening. It is normative for the
 `fluxology-deals-run` skill; where it and an older ported task spec
 disagree about *how many calls to spend*, this wins.
@@ -23,32 +23,32 @@ Amortized cost per canonical item: **≤ 0.2 calls** (batches of ≥ 10).
 
 | # | Call | Purpose |
 |---|---|---|
-| 1 | `dashboard.feed` `{dashboard:"deals", mode:"ids", filter:{active:true}}` | The diff set. `ids` + `active` is ~7.7 KB where the default `full` is ~40 KB. |
-| 2 | `browser.session_open` | |
-| 3 | `browser.open_and_extract` — eBay search, with `search.include` | One call, not `navigate`+`extract`. Server-side filter. |
-| 4 | `browser.open_and_extract` — second eBay pass or Kijiji search | |
-| 5 | `browser.extract_many` — the shortlist + re-validation ids | Up to 25 URLs. Returns a `jobId` above 2 items. |
-| 6–7 | `browser.job_status` (`sinceIndex` to read incrementally) | Poll until `status` is `completed`. |
-| **8** | **`dashboard.upsert`** | **Write now.** New + materially changed records. |
-| 9 | `browser.extract_many` — Kijiji ad batch | |
-| 10 | `browser.job_status` | |
-| 11 | `dashboard.upsert` | Second write. |
-| 12 | `dashboard.upsert` `{touch:[…]}` | lastSeen-only refresh for unchanged re-observations; fold into 11 when it fits. |
+| 1 | `dashboard_feed` `{dashboard:"deals", mode:"ids", filter:{active:true}}` | The diff set. `ids` + `active` is ~7.7 KB where the default `full` is ~40 KB. |
+| 2 | `browser_session_open` | |
+| 3 | `browser_open_and_extract` — eBay search, with `search.include` | One call, not `navigate`+`extract`. Server-side filter. |
+| 4 | `browser_open_and_extract` — second eBay pass or Kijiji search | |
+| 5 | `browser_extract_many` — the shortlist + re-validation ids | Up to 25 URLs. Returns a `jobId` above 2 items. |
+| 6–7 | `browser_job_status` (`sinceIndex` to read incrementally) | Poll until `status` is `completed`. |
+| **8** | **`dashboard_upsert`** | **Write now.** New + materially changed records. |
+| 9 | `browser_extract_many` — Kijiji ad batch | |
+| 10 | `browser_job_status` | |
+| 11 | `dashboard_upsert` | Second write. |
+| 12 | `dashboard_upsert` `{touch:[…]}` | lastSeen-only refresh for unchanged re-observations; fold into 11 when it fits. |
 
 If the budget is going to end early, drop calls from the *bottom*. Never
 drop the write.
 
 Two calls sit outside that table because they pay for themselves. Open with
-**`deals.run_resume`** when a previous turn may have been cut off: if it
+**`deals_run_resume`** when a previous turn may have been cut off: if it
 returns `pendingIds`, calls 3–4 are already spent and you go straight to
-the batch. Fold **`deals.run_checkpoint`** into the same moment as each
-`dashboard.upsert` — one extra call that turns a truncated run into a
+the batch. Fold **`deals_run_checkpoint`** into the same moment as each
+`dashboard_upsert` — one extra call that turns a truncated run into a
 resumable one. On a clean run with nothing to resume, skip both and the
 plan above stands at 12.
 
 ## Why each call is one call
 
-- **`browser.open_and_extract`** navigates and extracts in one call. On a
+- **`browser_open_and_extract`** navigates and extracts in one call. On a
   search or store page an omitted `search` argument means *compact with the
   defaults* — canonical `/itm/<id>` URLs with the `_skw`, `itmmeta`, `hash`
   and `itmprp` tracking params stripped, plus a bounded window. A 240-row
@@ -72,7 +72,7 @@ plan above stands at 12.
   For a deeper scan, narrow the query or follow the marketplace's own
   pagination (Kijiji's `nextPageUrl`; eBay's `_pgn`/`_ipg` URL
   parameters), which loads a fresh page with a fresh window.
-- **`browser.extract_many`** traverses up to 25 URLs per call with a
+- **`browser_extract_many`** traverses up to 25 URLs per call with a
   per-URL error slot. One dead listing is one error, not a failed batch.
   A page that loads but is not a listing — an eBay error/removed-item
   page, a deleted Kijiji ad — is `ok:false` with `error.code
@@ -81,8 +81,8 @@ plan above stands at 12.
   `ok`. Batches above 2 items promote to a job; polling costs 1–2 calls,
   not one per page.
 - **There is no `browser.batch`.** Multi-tool batching does not exist on
-  the bridge; the batch surface is `browser.open_and_extract` (navigate +
-  extract, one call) and `browser.extract_many` + `browser.job_status`.
+  the bridge; the batch surface is `browser_open_and_extract` (navigate +
+  extract, one call) and `browser_extract_many` + `browser_job_status`.
 - **Candidates now carry `sellingFormat` and `bidCount`**, so a row no
   longer has to be opened just to learn whether it is an auction. Open only
   what the shortlist justifies. `sellingFormat: "unknown"` is a real
@@ -94,12 +94,12 @@ plan above stands at 12.
 Writing early means a truncated run still produced something. Checkpointing
 means the *next* turn does not start from zero.
 
-- **`deals.run_checkpoint(runId, {searched, verifiedIds, pendingIds, notes})`**
+- **`deals_run_checkpoint(runId, {searched, verifiedIds, pendingIds, notes})`**
   — fold it into the same moment as each upsert. `searched` and
   `verifiedIds` union with what is stored; `pendingIds` replaces. Omitted
   fields are left alone, which is what makes a mid-turn checkpoint cheap
   enough to be worth writing.
-- **`deals.run_resume()`** — call it *before* searching. With no `runId` it
+- **`deals_run_resume()`** — call it *before* searching. With no `runId` it
   returns the most recent resumable run for this caller. If it comes back
   with `verifiedIds`, those items are already done: extract the
   `pendingIds` and skip the search that produced them.

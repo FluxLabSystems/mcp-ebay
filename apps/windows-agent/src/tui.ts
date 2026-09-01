@@ -763,7 +763,7 @@ function statusRows(ctx: Ctx, snapshot: AgentStatusSnapshot): string[] {
         ctx,
         { text: 'Browser  ', style: 'label' },
         { text: 'no session', style: 'muted' },
-        { text: '  (opens on the first browser.session_open)', style: 'muted' },
+        { text: '  (opens on the first browser_session_open)', style: 'muted' },
       ),
     );
   } else {

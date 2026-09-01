@@ -1,14 +1,14 @@
 /**
  * Agent-local batch job store — Phase 2 call-budget work, §18 (deadlines).
  *
- * A browser.extract_many batch that cannot finish inside one gateway
+ * A browser_extract_many batch that cannot finish inside one gateway
  * deadline becomes a job. The store lives here, on the agent, for the same
  * reason the executors do: this is the process that owns the browser, and a
  * job is a handle on work a single tab is still doing. Nothing about a job
  * is durable — an agent restart loses the browser too, so a job that
  * outlived its process would only ever be able to lie.
  *
- * The gateway routes a browser.job_status poll by browserSessionHandle
+ * The gateway routes a browser_job_status poll by browserSessionHandle
  * (apps/gateway/src/broker.ts call()), so the handle is part of a job's
  * identity here and a poll carrying the wrong one is a miss, not a leak.
  */
@@ -136,7 +136,7 @@ export interface BatchJobSummary {
   startedAt: number;
 }
 
-/** Shape both browser.extract_many and browser.job_status return. */
+/** Shape both browser_extract_many and browser_job_status return. */
 export function jobProgress(job: BatchJob, sinceIndex = 0): Record<string, unknown> {
   const from = Math.min(Math.max(sinceIndex, 0), job.results.length);
   const slice = job.results.slice(from);

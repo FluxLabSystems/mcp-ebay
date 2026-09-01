@@ -91,7 +91,7 @@ describe.runIf(hasBrowser)('revision pin against a real mutating page', () => {
     expect(second.pageRevision).toBe(first.pageRevision);
     expect(JSON.stringify(second.result)).toBe(JSON.stringify(first.result));
 
-    // B2: browser.wait is the refresh point — the drifted content must
+    // B2: browser_wait is the refresh point — the drifted content must
     // surface as a revision bump, and determinism must hold at the new one.
     const waited = await executeCommand(
       host,

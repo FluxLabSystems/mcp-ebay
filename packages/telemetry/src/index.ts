@@ -2,7 +2,7 @@
  * Per-call instrumentation for the MCP tool surface.
  *
  * The deals routine exhausts its per-turn tool-call budget before it ever
- * reaches dashboard.upsert, and "which call spent the budget" is not a
+ * reaches dashboard_upsert, and "which call spent the budget" is not a
  * question the audit trail answers: audit records that a call happened,
  * not how many bytes it moved. This records the shape of each call —
  * name, argument size, response size, wall time, outcome — so a call

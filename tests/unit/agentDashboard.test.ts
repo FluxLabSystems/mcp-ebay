@@ -78,8 +78,8 @@ describe('AgentStatusStore', () => {
   it('tracks command rows, totals, in-flight, and per-minute rate', () => {
     let at = 1_000_000;
     const store = testStore(() => at);
-    store.commandStarted('req_1', 'browser.navigate');
-    store.commandStarted('req_2', 'browser.snapshot');
+    store.commandStarted('req_1', 'browser_navigate');
+    store.commandStarted('req_2', 'browser_snapshot');
     expect(store.snapshot().inFlight).toBe(2);
     store.commandFinished('req_1', 'ok', 812, null);
     store.commandFinished('req_2', 'error', 102, 'POLICY_BLOCKED_URL');
@@ -103,7 +103,7 @@ describe('AgentStatusStore', () => {
   it('caps history rings and clearHistory resets history but not identity or phase', () => {
     const store = testStore();
     store.connectionReady('conn_1');
-    for (let i = 0; i < 150; i++) store.commandStarted(`req_${i}`, 'browser.extract');
+    for (let i = 0; i < 150; i++) store.commandStarted(`req_${i}`, 'browser_extract');
     for (let i = 0; i < 500; i++) store.recordLogLine(`{"level":30,"time":1,"msg":"m${i}"}`);
     let snapshot = store.snapshot();
     expect(snapshot.commands.length).toBe(120);
@@ -346,8 +346,8 @@ function populatedStore(): AgentStatusStore {
   store.gatewayActivity();
   store.sessionOpened('bs_9', 'ebay-research');
   store.updateTabs([{ tabId: 't1', url: 'https://www.ebay.ca/sch/i.html?_nkw=lego', title: 'lego | eBay', active: true }]);
-  store.commandStarted('req_run', 'browser.extract_many');
-  store.commandStarted('req_ok', 'browser.navigate');
+  store.commandStarted('req_run', 'browser_extract_many');
+  store.commandStarted('req_ok', 'browser_navigate');
   store.commandFinished('req_ok', 'ok', 812, null);
   store.updateJobs([{ jobId: 'job_1', status: 'running', requested: 25, completed: 12, failed: 1, startedAt: 1_050_000 }]);
   store.recordLogLine('{"level":40,"time":1059000,"msg":"Popup denied by URL policy","url":"https://evil.example"}');
@@ -397,7 +397,7 @@ describe('renderDashboard', () => {
     expect(text).toContain('_nkw=lego');
     expect(text).toContain('installed');
     expect(text).toContain('this run: interactive window');
-    expect(text).toContain('browser.navigate');
+    expect(text).toContain('browser_navigate');
     expect(text).toContain('812ms');
     expect(text).toContain('running');
     expect(text).toContain('job_1');
@@ -582,7 +582,7 @@ describe('AgentTui', () => {
     expect(output.written.join('')).toContain('\u001b[?1049l');
     // Store events after stop must not paint over the restored terminal.
     const writesAfterStop = output.written.length;
-    store.commandStarted('req_late', 'browser.click');
+    store.commandStarted('req_late', 'browser_click');
     expect(output.written.length).toBe(writesAfterStop);
   });
 });

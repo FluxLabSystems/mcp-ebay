@@ -1,9 +1,9 @@
 /**
- * Phase 2 batch traversal — browser.open_and_extract, browser.extract_many
- * and browser.job_status at the executor layer.
+ * Phase 2 batch traversal — browser_open_and_extract, browser_extract_many
+ * and browser_job_status at the executor layer.
  *
  * The security assertions here are the ones that matter most: a batch tool
- * must not be a way to reach a URL browser.navigate would refuse. Every URL
+ * must not be a way to reach a URL browser_navigate would refuse. Every URL
  * a batch touches goes through browser-core's navigate(), which calls
  * session.policy.assertUrlAllowed(url, 'navigation') before the page is ever
  * asked to load anything, so the tests below use the REAL ebay.ca.v1 policy
@@ -178,7 +178,7 @@ async function drainJob(host: ExecutorHost, jobId: string): Promise<BatchProgres
   throw new Error('job never finished');
 }
 
-describe('browser.open_and_extract', () => {
+describe('browser_open_and_extract', () => {
   it('navigates and extracts in one call, adding finalUrl and navigationStatus', async () => {
     const url = 'https://www.ebay.ca/itm/226123456789';
     const stub = buildStub({ pages: { [url]: ITEM_HTML } });
@@ -191,12 +191,12 @@ describe('browser.open_and_extract', () => {
     expect(result.finalUrl).toBe(url);
     expect(result.navigationStatus).toBe('committed');
     // An item page returns the full provenance record, exactly as
-    // browser.extract would; compaction is a search-page concern.
+    // browser_extract would; compaction is a search-page concern.
     expect(result.record.siteProfile).toBe('ebay.ca.v1');
     expect(result.record.observedAt).toBeDefined();
   });
 
-  it('compacts a search page by default — the thing browser.extract will not do', async () => {
+  it('compacts a search page by default — the thing browser_extract will not do', async () => {
     const url = 'https://www.ebay.ca/sch/i.html?_nkw=lego+bulk+lot';
     const stub = buildStub({ pages: { [url]: SEARCH_HTML } });
     const compacted = (
@@ -207,7 +207,7 @@ describe('browser.open_and_extract', () => {
     expect(compacted.candidates[0]!.url).toBe('https://www.ebay.ca/itm/226100000000');
     expect(compacted.candidates[0]!.shippingSnippetText).toBeUndefined();
 
-    // browser.extract on the same page, with no search object, is unchanged.
+    // browser_extract on the same page, with no search object, is unchanged.
     const plain = (
       (await executeCommand(stub.host, envelope('extract', { siteProfile: 'ebay.ca.v1' })))
         .result as { record: Record<string, unknown> }
@@ -228,7 +228,7 @@ describe('browser.open_and_extract', () => {
   });
 });
 
-describe('browser.extract_many', () => {
+describe('browser_extract_many', () => {
   const urls = [
     'https://www.ebay.ca/itm/226100000001',
     'https://www.ebay.ca/itm/226100000002',
@@ -345,7 +345,7 @@ describe('browser.extract_many', () => {
     ).result as unknown as BatchProgress;
     expect(progress.results[1]!.ok).toBe(false);
     expect(progress.results[1]!.error?.code).toBe('ORIGIN_DENIED');
-    // Plain http is refused by the same scheme rule browser.navigate uses.
+    // Plain http is refused by the same scheme rule browser_navigate uses.
     expect(progress.results[2]!.ok).toBe(false);
     expect(progress.results[2]!.error?.code).toBe('SCHEME_DENIED');
     // Only the allowed URL ever reached the browser.
@@ -380,7 +380,7 @@ describe('browser.extract_many', () => {
   });
 });
 
-describe('browser.extract_many job promotion and browser.job_status', () => {
+describe('browser_extract_many job promotion and browser_job_status', () => {
   const manyUrls = Array.from({ length: 6 }, (_, i) => `https://www.ebay.ca/itm/22610000010${i}`);
   const pages = Object.fromEntries(manyUrls.map((url) => [url, ITEM_HTML]));
 

@@ -1,7 +1,7 @@
 # Deals-routine call budget — before/after analysis
 
 The scheduled LEGO deal watch ran out of its per-turn tool-call budget
-before reaching `dashboard.upsert`. On the 2026-08-29 run it spent ~50 calls
+before reaching `dashboard_upsert`. On the 2026-08-29 run it spent ~50 calls
 and wrote **nothing**. This is what was measured, what was confirmed, what
 was rejected, and what could not be established from a dev box.
 
@@ -36,7 +36,7 @@ Same tree, same Node, same fixtures. The before side is produced by
 | Preamble (feed + session_open) | 2 | 2 | 41,348 | 3,683 | **−91.1%** |
 | One eBay search page | 2 | 1 | 159,652 | 10,594 | **−93.4%** |
 | 17 canonical item pages | 34 | 2 | 26,934 | 13,941 | −48.2% |
-| `dashboard.upsert` | 1 | 1 | 3,341 | 3,341 | 0% |
+| `dashboard_upsert` | 1 | 1 | 3,341 | 3,341 | 0% |
 | **total** | **39** | **6** | **231,275** | **31,559** | **−86.4%** |
 
 Calls are `derived` from the catalog constants (`MAX_INLINE_BATCH_ITEMS`=2,
@@ -72,10 +72,10 @@ All five were **confirmed**, each against a line that was read, not assumed.
 
 | # | Claim | Verdict | Evidence |
 |---|---|---|---|
-| 1 | No composite/batch tools; the LLM is the loop | **CONFIRMED** | 15 single-page tools in `catalog.ts`; `browser.extract` took no URL list, no limit, no offset. N pages cost 2N calls. |
+| 1 | No composite/batch tools; the LLM is the loop | **CONFIRMED** | 15 single-page tools in `catalog.ts`; `browser_extract` took no URL list, no limit, no offset. N pages cost 2N calls. |
 | 2 | Search extracts oversized | **CONFIRMED** | `site-ebay/src/traversal.ts` stored the absolutized href verbatim, `_skw`/`itmmeta`/`hash`/`itmprp` intact; the candidate array was returned uncapped. 61.3% of the payload was query string the traversal then discarded — it only ever navigates to `/itm/<id>`. |
 | 3 | Extractor defects force fallback calls | **CONFIRMED** | `site-ebay/src/extract.ts` scanned only `body.textContent.slice(0, 2000)` — nav chrome on a real page — then **failed open** to `'active'` when a title and price existed. An ended listing has both. |
-| 4 | `dashboard.feed` defaults to `full`, no `active` filter | **CONFIRMED** | `tools.ts` `mode: …default('full')`; the client fetched the whole feed with no filter parameter. 40.1 KB where 7.7 KB would do. |
+| 4 | `dashboard_feed` defaults to `full`, no `active` filter | **CONFIRMED** | `tools.ts` `mode: …default('full')`; the client fetched the whole feed with no filter parameter. 40.1 KB where 7.7 KB would do. |
 | 5 | No resumability | **CONFIRMED** | No run entity in the gateway `Store`; `AuditStore` is **insert-only with no read path**, so even the audit trail could not answer "what did this run already verify". |
 
 ### Sub-claims that were wrong

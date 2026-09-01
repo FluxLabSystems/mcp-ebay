@@ -167,7 +167,7 @@ describe('defects found on the first live extraction run', () => {
 });
 
 // Defects a LEGO deals run surfaced on 2026-08-29. Each one cost the run an
-// extra browser.snapshot call to work around, which is what exhausted the
+// extra browser_snapshot call to work around, which is what exhausted the
 // per-turn tool budget. Fixtures are synthetic reconstructions -- www.ebay.ca
 // answers this box with HTTP 403 -- and each carries a sidecar .json saying so.
 describe('defects the 2026-08-29 deals run surfaced', () => {

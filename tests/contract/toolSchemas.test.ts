@@ -35,61 +35,61 @@ const HANDLE = 'bs_0123456789abcdefgh';
 const TAB = 'tab_0123456789';
 
 const VALID_INPUTS: Record<string, Record<string, unknown>> = {
-  'browser.session_open': { deviceId: 'dev_1' },
-  'browser.tabs': { browserSessionHandle: HANDLE },
-  'browser.navigate': { browserSessionHandle: HANDLE, tabId: TAB, url: 'https://www.ebay.ca/itm/1' },
-  'browser.snapshot': { browserSessionHandle: HANDLE, tabId: TAB },
-  'browser.screenshot': { browserSessionHandle: HANDLE, tabId: TAB, mode: 'viewport' },
-  'browser.images': { browserSessionHandle: HANDLE, tabId: TAB },
-  'browser.image_get': { browserSessionHandle: HANDLE, tabId: TAB, imageId: 'img_0123456789' },
-  'browser.click': { browserSessionHandle: HANDLE, tabId: TAB, elementRef: 'el_1_0_abc' },
-  'browser.fill': { browserSessionHandle: HANDLE, tabId: TAB, elementRef: 'el_1_0_abc', value: 'M6H 2W9' },
-  'browser.select': { browserSessionHandle: HANDLE, tabId: TAB, elementRef: 'el_1_0_abc', value: 'Friends heavy' },
-  'browser.scroll': { browserSessionHandle: HANDLE, tabId: TAB, deltaY: 500 },
-  'browser.key': { browserSessionHandle: HANDLE, tabId: TAB, key: 'Enter' },
-  'browser.wait': { browserSessionHandle: HANDLE, tabId: TAB, condition: { text: 'M6H 2W9' } },
-  'browser.extract': { browserSessionHandle: HANDLE, tabId: TAB, siteProfile: 'ebay.ca.v1' },
-  'browser.open_and_extract': {
+  'browser_session_open': { deviceId: 'dev_1' },
+  'browser_tabs': { browserSessionHandle: HANDLE },
+  'browser_navigate': { browserSessionHandle: HANDLE, tabId: TAB, url: 'https://www.ebay.ca/itm/1' },
+  'browser_snapshot': { browserSessionHandle: HANDLE, tabId: TAB },
+  'browser_screenshot': { browserSessionHandle: HANDLE, tabId: TAB, mode: 'viewport' },
+  'browser_images': { browserSessionHandle: HANDLE, tabId: TAB },
+  'browser_image_get': { browserSessionHandle: HANDLE, tabId: TAB, imageId: 'img_0123456789' },
+  'browser_click': { browserSessionHandle: HANDLE, tabId: TAB, elementRef: 'el_1_0_abc' },
+  'browser_fill': { browserSessionHandle: HANDLE, tabId: TAB, elementRef: 'el_1_0_abc', value: 'M6H 2W9' },
+  'browser_select': { browserSessionHandle: HANDLE, tabId: TAB, elementRef: 'el_1_0_abc', value: 'Friends heavy' },
+  'browser_scroll': { browserSessionHandle: HANDLE, tabId: TAB, deltaY: 500 },
+  'browser_key': { browserSessionHandle: HANDLE, tabId: TAB, key: 'Enter' },
+  'browser_wait': { browserSessionHandle: HANDLE, tabId: TAB, condition: { text: 'M6H 2W9' } },
+  'browser_extract': { browserSessionHandle: HANDLE, tabId: TAB, siteProfile: 'ebay.ca.v1' },
+  'browser_open_and_extract': {
     browserSessionHandle: HANDLE,
     tabId: TAB,
     url: 'https://www.ebay.ca/sch/i.html?_nkw=lego+lot',
     siteProfile: 'ebay.ca.v1',
   },
-  'browser.extract_many': {
+  'browser_extract_many': {
     browserSessionHandle: HANDLE,
     tabId: TAB,
     urls: ['https://www.ebay.ca/itm/226123456789'],
     siteProfile: 'ebay.ca.v1',
   },
-  'browser.job_status': { browserSessionHandle: HANDLE, jobId: 'job_01JABCDEF' },
-  'browser.handoff': { browserSessionHandle: HANDLE, tabId: TAB, message: 'Please solve the challenge' },
+  'browser_job_status': { browserSessionHandle: HANDLE, jobId: 'job_01JABCDEF' },
+  'browser_handoff': { browserSessionHandle: HANDLE, tabId: TAB, message: 'Please solve the challenge' },
 };
 
 describe('tool catalog completeness (§15)', () => {
   it('exposes exactly the 18 normative tools with scopes and policy classes', () => {
     expect(TOOL_CATALOG).toHaveLength(18);
     const expectations: Array<[string, string, string]> = [
-      ['browser.session_open', SCOPE_INTERACT, 'reversible'],
-      ['browser.tabs', SCOPE_READ, 'read'],
-      ['browser.navigate', SCOPE_INTERACT, 'reversible'],
-      ['browser.snapshot', SCOPE_READ, 'read'],
-      ['browser.screenshot', SCOPE_READ, 'read'],
-      ['browser.images', SCOPE_READ, 'read'],
-      ['browser.image_get', SCOPE_READ, 'read'],
-      ['browser.click', SCOPE_INTERACT, 'reversible'],
-      ['browser.fill', SCOPE_INTERACT, 'reversible'],
-      ['browser.select', SCOPE_INTERACT, 'reversible'],
-      ['browser.scroll', SCOPE_INTERACT, 'reversible'],
-      ['browser.key', SCOPE_INTERACT, 'reversible'],
-      ['browser.wait', SCOPE_READ, 'read'],
-      ['browser.extract', SCOPE_READ, 'read'],
-      // The batch traversal tools navigate, so they carry browser.navigate's
-      // scope and policy class rather than browser.extract's. Reading them as
+      ['browser_session_open', SCOPE_INTERACT, 'reversible'],
+      ['browser_tabs', SCOPE_READ, 'read'],
+      ['browser_navigate', SCOPE_INTERACT, 'reversible'],
+      ['browser_snapshot', SCOPE_READ, 'read'],
+      ['browser_screenshot', SCOPE_READ, 'read'],
+      ['browser_images', SCOPE_READ, 'read'],
+      ['browser_image_get', SCOPE_READ, 'read'],
+      ['browser_click', SCOPE_INTERACT, 'reversible'],
+      ['browser_fill', SCOPE_INTERACT, 'reversible'],
+      ['browser_select', SCOPE_INTERACT, 'reversible'],
+      ['browser_scroll', SCOPE_INTERACT, 'reversible'],
+      ['browser_key', SCOPE_INTERACT, 'reversible'],
+      ['browser_wait', SCOPE_READ, 'read'],
+      ['browser_extract', SCOPE_READ, 'read'],
+      // The batch traversal tools navigate, so they carry browser_navigate's
+      // scope and policy class rather than browser_extract's. Reading them as
       // browser:read would let a read-only token drive the browser.
-      ['browser.open_and_extract', SCOPE_INTERACT, 'reversible'],
-      ['browser.extract_many', SCOPE_INTERACT, 'reversible'],
-      ['browser.job_status', SCOPE_READ, 'read'],
-      ['browser.handoff', SCOPE_INTERACT, 'control'],
+      ['browser_open_and_extract', SCOPE_INTERACT, 'reversible'],
+      ['browser_extract_many', SCOPE_INTERACT, 'reversible'],
+      ['browser_job_status', SCOPE_READ, 'read'],
+      ['browser_handoff', SCOPE_INTERACT, 'control'],
     ];
     for (const [name, scope, policyClass] of expectations) {
       const entry = getToolEntry(name);
@@ -120,32 +120,32 @@ describe('input schema contracts (Appendix A)', () => {
   }
 
   it('applies documented defaults', () => {
-    const sessionOpen = getToolEntry('browser.session_open')!.inputSchema.parse(VALID_INPUTS['browser.session_open']) as {
+    const sessionOpen = getToolEntry('browser_session_open')!.inputSchema.parse(VALID_INPUTS['browser_session_open']) as {
       profileName: string;
     };
     expect(sessionOpen.profileName).toBe('ebay-research');
-    const navigate = getToolEntry('browser.navigate')!.inputSchema.parse(VALID_INPUTS['browser.navigate']) as {
+    const navigate = getToolEntry('browser_navigate')!.inputSchema.parse(VALID_INPUTS['browser_navigate']) as {
       waitUntil: string;
     };
     expect(navigate.waitUntil).toBe('domcontentloaded');
-    const snapshot = getToolEntry('browser.snapshot')!.inputSchema.parse(VALID_INPUTS['browser.snapshot']) as {
+    const snapshot = getToolEntry('browser_snapshot')!.inputSchema.parse(VALID_INPUTS['browser_snapshot']) as {
       maxNodes: number;
     };
     expect(snapshot.maxNodes).toBe(3000);
-    const images = getToolEntry('browser.images')!.inputSchema.parse(VALID_INPUTS['browser.images']) as {
+    const images = getToolEntry('browser_images')!.inputSchema.parse(VALID_INPUTS['browser_images']) as {
       scope: string;
     };
     expect(images.scope).toBe('gallery');
-    const wait = getToolEntry('browser.wait')!.inputSchema.parse(VALID_INPUTS['browser.wait']) as { timeoutMs: number };
+    const wait = getToolEntry('browser_wait')!.inputSchema.parse(VALID_INPUTS['browser_wait']) as { timeoutMs: number };
     expect(wait.timeoutMs).toBe(10000);
-    const handoff = getToolEntry('browser.handoff')!.inputSchema.parse(VALID_INPUTS['browser.handoff']) as {
+    const handoff = getToolEntry('browser_handoff')!.inputSchema.parse(VALID_INPUTS['browser_handoff']) as {
       timeoutSeconds: number;
     };
     expect(handoff.timeoutSeconds).toBe(300);
   });
 
   it('screenshot element mode requires elementRef (Appendix A allOf)', () => {
-    const schema = getToolEntry('browser.screenshot')!.inputSchema;
+    const schema = getToolEntry('browser_screenshot')!.inputSchema;
     expect(schema.safeParse({ browserSessionHandle: HANDLE, tabId: TAB, mode: 'element' }).success).toBe(false);
     expect(
       schema.safeParse({ browserSessionHandle: HANDLE, tabId: TAB, mode: 'element', elementRef: 'el_1_0_a' }).success,
@@ -153,7 +153,7 @@ describe('input schema contracts (Appendix A)', () => {
   });
 
   it('screenshot scale is optional and bounded to 0.1-1 (2026-09-01 operator request)', () => {
-    const schema = getToolEntry('browser.screenshot')!.inputSchema;
+    const schema = getToolEntry('browser_screenshot')!.inputSchema;
     const base = { browserSessionHandle: HANDLE, tabId: TAB, mode: 'viewport' as const };
     expect(schema.safeParse(base).success).toBe(true);
     expect(schema.safeParse({ ...base, scale: 0.5 }).success).toBe(true);
@@ -167,7 +167,7 @@ describe('input schema contracts (Appendix A)', () => {
   });
 
   it('wait condition requires exactly one discriminator (Appendix A oneOf)', () => {
-    const schema = getToolEntry('browser.wait')!.inputSchema;
+    const schema = getToolEntry('browser_wait')!.inputSchema;
     expect(schema.safeParse({ browserSessionHandle: HANDLE, tabId: TAB, condition: {} }).success).toBe(false);
     expect(
       schema.safeParse({ browserSessionHandle: HANDLE, tabId: TAB, condition: { text: 'a', urlPattern: 'b' } }).success,
@@ -177,28 +177,28 @@ describe('input schema contracts (Appendix A)', () => {
     ).toBe(true);
   });
 
-  it('browser.key accepts only the allowed navigation keys', () => {
-    const schema = getToolEntry('browser.key')!.inputSchema;
+  it('browser_key accepts only the allowed navigation keys', () => {
+    const schema = getToolEntry('browser_key')!.inputSchema;
     expect(schema.safeParse({ browserSessionHandle: HANDLE, tabId: TAB, key: 'F12' }).success).toBe(false);
     expect(schema.safeParse({ browserSessionHandle: HANDLE, tabId: TAB, key: 'a' }).success).toBe(false);
   });
 
-  it('browser.extract accepts only the versioned site profile', () => {
-    const schema = getToolEntry('browser.extract')!.inputSchema;
+  it('browser_extract accepts only the versioned site profile', () => {
+    const schema = getToolEntry('browser_extract')!.inputSchema;
     expect(schema.safeParse({ browserSessionHandle: HANDLE, tabId: TAB, siteProfile: 'amazon.v1' }).success).toBe(false);
   });
 
-  it('browser.extract stays byte-compatible: search is optional and additive', () => {
-    const schema = getToolEntry('browser.extract')!.inputSchema;
+  it('browser_extract stays byte-compatible: search is optional and additive', () => {
+    const schema = getToolEntry('browser_extract')!.inputSchema;
     const base = { browserSessionHandle: HANDLE, tabId: TAB, siteProfile: 'ebay.ca.v1' };
     // The Phase 1 call shape parses to the Phase 1 value, with no search key.
     expect(schema.parse(base)).toEqual(base);
     expect(schema.safeParse({ ...base, search: { limit: 10, offset: 20 } }).success).toBe(true);
   });
 
-  it('browser.extract_many bounds the batch and defaults to compact sequential auto', () => {
-    const entry = getToolEntry('browser.extract_many')!;
-    const parsed = entry.inputSchema.parse(VALID_INPUTS['browser.extract_many']) as {
+  it('browser_extract_many bounds the batch and defaults to compact sequential auto', () => {
+    const entry = getToolEntry('browser_extract_many')!;
+    const parsed = entry.inputSchema.parse(VALID_INPUTS['browser_extract_many']) as {
       compact: boolean;
       concurrency: number;
       mode: string;
@@ -211,19 +211,19 @@ describe('input schema contracts (Appendix A)', () => {
     expect(EXTRACT_MANY_MAX_URLS).toBe(25);
     const tooMany = Array.from({ length: EXTRACT_MANY_MAX_URLS + 1 }, (_, i) => `https://www.ebay.ca/itm/2261234567${i}`);
     expect(
-      entry.inputSchema.safeParse({ ...VALID_INPUTS['browser.extract_many'], urls: tooMany }).success,
+      entry.inputSchema.safeParse({ ...VALID_INPUTS['browser_extract_many'], urls: tooMany }).success,
     ).toBe(false);
-    expect(entry.inputSchema.safeParse({ ...VALID_INPUTS['browser.extract_many'], urls: [] }).success).toBe(false);
+    expect(entry.inputSchema.safeParse({ ...VALID_INPUTS['browser_extract_many'], urls: [] }).success).toBe(false);
     expect(
-      entry.inputSchema.safeParse({ ...VALID_INPUTS['browser.extract_many'], concurrency: 9 }).success,
+      entry.inputSchema.safeParse({ ...VALID_INPUTS['browser_extract_many'], concurrency: 9 }).success,
     ).toBe(false);
   });
 
   it('a search titleRegex that could backtrack exponentially is a validation error', () => {
-    const schema = getToolEntry('browser.open_and_extract')!.inputSchema;
+    const schema = getToolEntry('browser_open_and_extract')!.inputSchema;
     const withRegex = (titleRegex: string): boolean =>
       schema.safeParse({
-        ...VALID_INPUTS['browser.open_and_extract'],
+        ...VALID_INPUTS['browser_open_and_extract'],
         search: { include: { titleRegex } },
       }).success;
     // Ordinary filters compile.
@@ -240,7 +240,7 @@ describe('input schema contracts (Appendix A)', () => {
     expect(withRegex('a'.repeat(SEARCH_TITLE_REGEX_MAX_LENGTH + 1))).toBe(false);
   });
 
-  it('dashboard.upsert accepts listings, touch, or both — but not neither', () => {
+  it('dashboard_upsert accepts listings, touch, or both — but not neither', () => {
     const schema = DashboardUpsertInput;
     // The Phase 1 call shape is untouched.
     expect(schema.safeParse({ dashboard: 'deals', listings: [{ id: 'ebay-1' }] }).success).toBe(true);
@@ -261,7 +261,7 @@ describe('input schema contracts (Appendix A)', () => {
     );
   });
 
-  it('dashboard.feed filter and fields are optional additions', () => {
+  it('dashboard_feed filter and fields are optional additions', () => {
     expect(DashboardFeedInput.parse({ dashboard: 'deals' })).toEqual({ dashboard: 'deals', mode: 'full' });
     expect(
       DashboardFeedInput.safeParse({
@@ -279,7 +279,7 @@ describe('output schema contracts (Appendix A)', () => {
     const tab = { tabId: TAB, url: 'https://www.ebay.ca/', title: 'eBay', active: true, pageRevision: 0 };
     expect(TabSchema.parse(tab)).toBeTruthy();
     expect(
-      getToolEntry('browser.session_open')!.outputSchema.safeParse({
+      getToolEntry('browser_session_open')!.outputSchema.safeParse({
         browserSessionHandle: HANDLE,
         deviceId: 'dev_1',
         profileName: 'ebay-research',
@@ -320,7 +320,7 @@ describe('output schema contracts (Appendix A)', () => {
     ).toBe(true);
     // additionalProperties: false on outputs
     expect(
-      getToolEntry('browser.navigate')!.outputSchema.safeParse({
+      getToolEntry('browser_navigate')!.outputSchema.safeParse({
         finalUrl: 'https://www.ebay.ca/',
         title: 'eBay',
         origin: 'https://www.ebay.ca',
@@ -340,7 +340,7 @@ describe('output schema contracts (Appendix A)', () => {
       expiresAt: null,
     };
     expect(
-      getToolEntry('browser.screenshot')!.outputSchema.safeParse({
+      getToolEntry('browser_screenshot')!.outputSchema.safeParse({
         artifact: descriptor,
         pageRevision: 2,
         width: 1280,
@@ -348,7 +348,7 @@ describe('output schema contracts (Appendix A)', () => {
       }).success,
     ).toBe(true);
     expect(
-      getToolEntry('browser.image_get')!.outputSchema.safeParse({
+      getToolEntry('browser_image_get')!.outputSchema.safeParse({
         artifact: descriptor,
         sourceUrl: 'https://i.ebayimg.com/images/g/x/s-l1600.jpg',
         pageRevision: 2,
@@ -359,7 +359,7 @@ describe('output schema contracts (Appendix A)', () => {
 
 describe('zod → JSON Schema derivation sanity', () => {
   it('strict objects emit additionalProperties: false', () => {
-    const json = z.toJSONSchema(getToolEntry('browser.tabs')!.inputSchema as z.ZodType, { io: 'input' });
+    const json = z.toJSONSchema(getToolEntry('browser_tabs')!.inputSchema as z.ZodType, { io: 'input' });
     expect((json as { additionalProperties?: boolean }).additionalProperties).toBe(false);
   });
 });
@@ -367,13 +367,13 @@ describe('zod → JSON Schema derivation sanity', () => {
 describe('deals run checkpoint tools (Phase 4)', () => {
   it('are additive: the browser and dashboard catalogs are untouched', () => {
     expect(TOOL_CATALOG).toHaveLength(18);
-    expect(DASHBOARD_TOOL_CATALOG.map((entry) => entry.name)).toEqual(['dashboard.feed', 'dashboard.upsert']);
+    expect(DASHBOARD_TOOL_CATALOG.map((entry) => entry.name)).toEqual(['dashboard_feed', 'dashboard_upsert']);
     // The run tools live in their own catalog because they are neither
     // device commands nor dashboard records; getToolEntry, which drives the
     // agent wire, must not know them.
-    expect(RUN_TOOL_CATALOG.map((entry) => entry.name)).toEqual(['deals.run_checkpoint', 'deals.run_resume']);
-    expect(getToolEntry('deals.run_checkpoint')).toBeUndefined();
-    expect(getRunToolEntry('deals.run_checkpoint')).toBeDefined();
+    expect(RUN_TOOL_CATALOG.map((entry) => entry.name)).toEqual(['deals_run_checkpoint', 'deals_run_resume']);
+    expect(getToolEntry('deals_run_checkpoint')).toBeUndefined();
+    expect(getRunToolEntry('deals_run_checkpoint')).toBeDefined();
   });
 
   it('reuse the dashboard scope machinery instead of inventing a scope', () => {
@@ -396,8 +396,8 @@ describe('deals run checkpoint tools (Phase 4)', () => {
     expect(dashboardScopeSatisfies(['browser:interact'], 'deals', runToolDashboardAction('resume'))).toBe(false);
   });
 
-  it('deals.run_checkpoint takes a runId and optional deltas, and rejects unknown fields', () => {
-    const schema = getRunToolEntry('deals.run_checkpoint')!.inputSchema;
+  it('deals_run_checkpoint takes a runId and optional deltas, and rejects unknown fields', () => {
+    const schema = getRunToolEntry('deals_run_checkpoint')!.inputSchema;
     expect(schema.safeParse({ runId: 'deals-2026-08-29' }).success).toBe(true);
     expect(
       schema.safeParse({
@@ -414,18 +414,18 @@ describe('deals run checkpoint tools (Phase 4)', () => {
   });
 
   it('status is optional, not defaulted — a default would reopen a finished run', () => {
-    const parsed = getRunToolEntry('deals.run_checkpoint')!.inputSchema.parse({ runId: 'r' }) as {
+    const parsed = getRunToolEntry('deals_run_checkpoint')!.inputSchema.parse({ runId: 'r' }) as {
       status?: string;
     };
     expect(parsed).toEqual({ runId: 'r' });
     expect(parsed.status).toBeUndefined();
-    expect(getRunToolEntry('deals.run_checkpoint')!.inputSchema.safeParse({ runId: 'r', status: 'paused' }).success).toBe(
+    expect(getRunToolEntry('deals_run_checkpoint')!.inputSchema.safeParse({ runId: 'r', status: 'paused' }).success).toBe(
       false,
     );
   });
 
   it('a runId stays a flat identifier: no whitespace, newlines, or free text', () => {
-    const schema = getRunToolEntry('deals.run_checkpoint')!.inputSchema;
+    const schema = getRunToolEntry('deals_run_checkpoint')!.inputSchema;
     const accepts = (runId: string): boolean => schema.safeParse({ runId }).success;
     expect(accepts('deals-2026-08-29')).toBe(true);
     expect(accepts('deals.2026-08-29:track-a')).toBe(true);
@@ -437,7 +437,7 @@ describe('deals run checkpoint tools (Phase 4)', () => {
   });
 
   it('bounds the payload at the schema so a checkpoint cannot become a blob', () => {
-    const schema = getRunToolEntry('deals.run_checkpoint')!.inputSchema;
+    const schema = getRunToolEntry('deals_run_checkpoint')!.inputSchema;
     const ids = (count: number): string[] => Array.from({ length: count }, (_, i) => `ebay-${i}`);
     expect(schema.safeParse({ runId: 'r', verifiedIds: ids(RUN_CHECKPOINT_MAX_IDS) }).success).toBe(true);
     expect(schema.safeParse({ runId: 'r', verifiedIds: ids(RUN_CHECKPOINT_MAX_IDS + 1) }).success).toBe(false);
@@ -451,8 +451,8 @@ describe('deals run checkpoint tools (Phase 4)', () => {
     expect(RUN_CHECKPOINT_NOTES_MAX_CHARS).toBeLessThan(RUN_CHECKPOINT_MAX_IDS * 10);
   });
 
-  it('deals.run_resume takes an optional runId and nothing else', () => {
-    const schema = getRunToolEntry('deals.run_resume')!.inputSchema;
+  it('deals_run_resume takes an optional runId and nothing else', () => {
+    const schema = getRunToolEntry('deals_run_resume')!.inputSchema;
     expect(schema.parse({})).toEqual({});
     expect(schema.safeParse({ runId: 'deals-2026-08-29' }).success).toBe(true);
     // The dashboard is fixed by the catalog entry; widening the tool past
@@ -461,7 +461,7 @@ describe('deals run checkpoint tools (Phase 4)', () => {
   });
 
   it('resume output distinguishes found, resumable, and stale', () => {
-    const schema = getRunToolEntry('deals.run_resume')!.outputSchema;
+    const schema = getRunToolEntry('deals_run_resume')!.outputSchema;
     const base = {
       found: true,
       resumable: true,

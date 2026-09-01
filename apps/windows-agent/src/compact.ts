@@ -254,7 +254,7 @@ export function compactItemRecord(
  * a triage decision actually reads — is this the right kind of lot, roughly
  * what price, auction or not, and where is it. Everything else on a row is
  * available by naming it explicitly, and a row's full detail is one
- * browser.extract_many away.
+ * browser_extract_many away.
  */
 const DEFAULT_EBAY_CANDIDATE_FIELDS = [
   'itemId',
@@ -571,7 +571,7 @@ export function compactSearchPage(
   out.compacted = true;
   out.candidates = candidates;
   out.note =
-    'Candidate snippets are traversal hints; open each URL and extract it for canonical evidence — browser.extract_many does both in one call.';
+    'Candidate snippets are traversal hints; open each URL and extract it for canonical evidence — browser_extract_many does both in one call.';
   return { record: out, warnings };
 }
 

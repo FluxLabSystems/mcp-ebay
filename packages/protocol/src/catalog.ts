@@ -62,7 +62,7 @@ export type BridgeScope = typeof SCOPE_READ | typeof SCOPE_INTERACT | typeof SCO
 export type PolicyClass = 'read' | 'reversible' | 'control';
 
 export interface ToolCatalogEntry {
-  /** Public MCP tool name, e.g. `browser.snapshot`. */
+  /** Public MCP tool name, e.g. `browser_snapshot`. */
   name: string;
   /** Agent wire command name (§12.1 `command`). */
   command: string;
@@ -85,12 +85,12 @@ export const SNAPSHOT_TIMEOUT_MS = 15_000;
 /* ------------------------------------------------------------------------- *
  * Batch response-time ceiling (§18)
  *
- * browser.extract_many has to decide, before it starts, whether a batch can
+ * browser_extract_many has to decide, before it starts, whether a batch can
  * finish inside the gateway's deadline for the call or has to become a job.
  * Both numbers it needs come from this file rather than from a guess:
  *
  *   - The deadline is this tool's own catalog timeoutMs. extract_many is
- *     given DEFAULT_TIMEOUT_MS, the tier browser.navigate and browser.extract
+ *     given DEFAULT_TIMEOUT_MS, the tier browser_navigate and browser_extract
  *     already sit in, because one batch item is exactly one navigate plus one
  *     extract and inventing a new tier for the pair would only hide that.
  *
@@ -140,7 +140,7 @@ export const EXTRACT_FAMILY_COMMANDS: ReadonlySet<string> = new Set([
 
 export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
   {
-    name: 'browser.session_open',
+    name: 'browser_session_open',
     command: 'session_open',
     scope: SCOPE_INTERACT,
     policyClass: 'reversible',
@@ -151,7 +151,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: SessionOpenOutput,
   },
   {
-    name: 'browser.tabs',
+    name: 'browser_tabs',
     command: 'tabs',
     scope: SCOPE_READ,
     policyClass: 'read',
@@ -161,7 +161,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: TabsOutput,
   },
   {
-    name: 'browser.navigate',
+    name: 'browser_navigate',
     command: 'navigate',
     scope: SCOPE_INTERACT,
     policyClass: 'reversible',
@@ -172,7 +172,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: NavigateOutput,
   },
   {
-    name: 'browser.snapshot',
+    name: 'browser_snapshot',
     command: 'snapshot',
     scope: SCOPE_READ,
     policyClass: 'read',
@@ -183,7 +183,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: SnapshotOutput,
   },
   {
-    name: 'browser.screenshot',
+    name: 'browser_screenshot',
     command: 'screenshot',
     scope: SCOPE_READ,
     policyClass: 'read',
@@ -194,7 +194,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: ScreenshotOutput,
   },
   {
-    name: 'browser.images',
+    name: 'browser_images',
     command: 'images',
     scope: SCOPE_READ,
     policyClass: 'read',
@@ -205,7 +205,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: ImagesOutput,
   },
   {
-    name: 'browser.image_get',
+    name: 'browser_image_get',
     command: 'image_get',
     scope: SCOPE_READ,
     policyClass: 'read',
@@ -216,7 +216,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: ImageGetOutput,
   },
   {
-    name: 'browser.click',
+    name: 'browser_click',
     command: 'click',
     scope: SCOPE_INTERACT,
     policyClass: 'reversible',
@@ -227,7 +227,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: ClickOutput,
   },
   {
-    name: 'browser.fill',
+    name: 'browser_fill',
     command: 'fill',
     scope: SCOPE_INTERACT,
     policyClass: 'reversible',
@@ -238,7 +238,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: FillOutput,
   },
   {
-    name: 'browser.select',
+    name: 'browser_select',
     command: 'select',
     scope: SCOPE_INTERACT,
     policyClass: 'reversible',
@@ -248,7 +248,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: SelectOutput,
   },
   {
-    name: 'browser.scroll',
+    name: 'browser_scroll',
     command: 'scroll',
     scope: SCOPE_INTERACT,
     policyClass: 'reversible',
@@ -258,7 +258,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: ScrollOutput,
   },
   {
-    name: 'browser.key',
+    name: 'browser_key',
     command: 'key',
     scope: SCOPE_INTERACT,
     policyClass: 'reversible',
@@ -268,7 +268,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: KeyOutput,
   },
   {
-    name: 'browser.wait',
+    name: 'browser_wait',
     command: 'wait',
     scope: SCOPE_READ,
     policyClass: 'read',
@@ -278,7 +278,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: WaitOutput,
   },
   {
-    name: 'browser.extract',
+    name: 'browser_extract',
     command: 'extract',
     scope: SCOPE_READ,
     policyClass: 'read',
@@ -289,9 +289,9 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: ExtractOutput,
   },
   {
-    name: 'browser.open_and_extract',
+    name: 'browser_open_and_extract',
     command: 'open_and_extract',
-    // Classified with browser.navigate, not with browser.extract: this tool
+    // Classified with browser_navigate, not with browser_extract: this tool
     // moves the tab. Reading it as browser:read/read because "it only
     // extracts afterwards" would let a browser:read token drive navigation,
     // which is precisely the widening §10.2 exists to prevent.
@@ -299,28 +299,28 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'reversible',
     timeoutMs: DEFAULT_TIMEOUT_MS,
     description:
-      'Navigate a tab to an allowed HTTPS URL and run site-profile extraction on the page it lands on, in one call. Returns exactly what browser.extract returns plus finalUrl and navigationStatus. On a search or store page the optional search object reduces the candidate list server-side (canonical URLs, limit/offset, a field allow-list, and title/price/format filters) and is applied with its defaults when omitted, so a full results page arrives compact rather than as a hundred-kilobyte candidate dump.',
+      'Navigate a tab to an allowed HTTPS URL and run site-profile extraction on the page it lands on, in one call. Returns exactly what browser_extract returns plus finalUrl and navigationStatus. On a search or store page the optional search object reduces the candidate list server-side (canonical URLs, limit/offset, a field allow-list, and title/price/format filters) and is applied with its defaults when omitted, so a full results page arrives compact rather than as a hundred-kilobyte candidate dump.',
     inputSchema: OpenAndExtractInput,
     outputSchema: OpenAndExtractOutput,
   },
   {
-    name: 'browser.extract_many',
+    name: 'browser_extract_many',
     command: 'extract_many',
     // Same reasoning as open_and_extract: a batch navigates, so it carries
     // navigate's scope and policy class. Every URL in the batch goes through
     // the same local URL policy, private-network and protected-endpoint
-    // checks a single browser.navigate does; batching is a call-count
+    // checks a single browser_navigate does; batching is a call-count
     // optimisation and never a policy shortcut.
     scope: SCOPE_INTERACT,
     policyClass: 'reversible',
     timeoutMs: EXTRACT_MANY_TIMEOUT_MS,
     description:
-      `Traverse up to ${EXTRACT_MANY_MAX_URLS} item or ad URLs in one call and return one compact record per URL. Read and traversal only: it navigates and extracts, nothing else. Each URL gets its own result slot with its own error, so one dead or blocked page never fails the batch. A page that loads but is not a listing (an error, removed-listing, or deleted-ad page) is ok:false with error.code LISTING_UNAVAILABLE and keeps its record as evidence — only upsert slots with ok:true. mode "auto" answers inline for a batch that fits this tool's deadline and otherwise returns a jobId to poll with browser.job_status.`,
+      `Traverse up to ${EXTRACT_MANY_MAX_URLS} item or ad URLs in one call and return one compact record per URL. Read and traversal only: it navigates and extracts, nothing else. Each URL gets its own result slot with its own error, so one dead or blocked page never fails the batch. A page that loads but is not a listing (an error, removed-listing, or deleted-ad page) is ok:false with error.code LISTING_UNAVAILABLE and keeps its record as evidence — only upsert slots with ok:true. mode "auto" answers inline for a batch that fits this tool's deadline and otherwise returns a jobId to poll with browser_job_status.`,
     inputSchema: ExtractManyInput,
     outputSchema: ExtractManyOutput,
   },
   {
-    name: 'browser.job_status',
+    name: 'browser_job_status',
     command: 'job_status',
     // A poll reads agent-local job state and touches no page, so it is a
     // read tool — the traversal it reports was already authorised by the
@@ -329,12 +329,12 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'read',
     timeoutMs: INTERACTION_TIMEOUT_MS,
     description:
-      'Progress and completed records for a browser.extract_many job: how many URLs are done, how many succeeded, and every result slot finished so far. Pass sinceIndex to receive only slots you have not already read. Answered outside the session command queue so a poll never waits behind the job it is polling.',
+      'Progress and completed records for a browser_extract_many job: how many URLs are done, how many succeeded, and every result slot finished so far. Pass sinceIndex to receive only slots you have not already read. Answered outside the session command queue so a poll never waits behind the job it is polling.',
     inputSchema: JobStatusInput,
     outputSchema: JobStatusOutput,
   },
   {
-    name: 'browser.handoff',
+    name: 'browser_handoff',
     command: 'handoff',
     scope: SCOPE_INTERACT,
     policyClass: 'control',
@@ -386,7 +386,7 @@ export const ALL_DASHBOARD_SCOPES: readonly string[] = [
 export type DashboardToolAction = 'feed' | 'upsert';
 
 export interface DashboardToolCatalogEntry {
-  /** Public MCP tool name, e.g. `dashboard.upsert`. */
+  /** Public MCP tool name, e.g. `dashboard_upsert`. */
   name: string;
   action: DashboardToolAction;
   /** Gateway tool-call deadline in milliseconds. */
@@ -398,7 +398,7 @@ export interface DashboardToolCatalogEntry {
 
 export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
   {
-    name: 'dashboard.feed',
+    name: 'dashboard_feed',
     action: 'feed',
     timeoutMs: 30_000,
     description:
@@ -407,7 +407,7 @@ export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
     outputSchema: DashboardFeedOutput,
   },
   {
-    name: 'dashboard.upsert',
+    name: 'dashboard_upsert',
     action: 'upsert',
     timeoutMs: 30_000,
     description:
@@ -455,7 +455,7 @@ export const RUN_TOOL_DASHBOARD: DashboardId = 'deals';
 export type RunToolAction = 'checkpoint' | 'resume';
 
 export interface RunToolCatalogEntry {
-  /** Public MCP tool name, e.g. `deals.run_checkpoint`. */
+  /** Public MCP tool name, e.g. `deals_run_checkpoint`. */
   name: string;
   action: RunToolAction;
   /** Dashboard whose scopes authorise this tool (§10.2 — no new scopes). */
@@ -481,7 +481,7 @@ const RUN_TOOL_TIMEOUT_MS = 10_000;
 
 export const RUN_TOOL_CATALOG: readonly RunToolCatalogEntry[] = [
   {
-    name: 'deals.run_checkpoint',
+    name: 'deals_run_checkpoint',
     action: 'checkpoint',
     dashboard: RUN_TOOL_DASHBOARD,
     timeoutMs: RUN_TOOL_TIMEOUT_MS,
@@ -491,7 +491,7 @@ export const RUN_TOOL_CATALOG: readonly RunToolCatalogEntry[] = [
     outputSchema: RunCheckpointOutput,
   },
   {
-    name: 'deals.run_resume',
+    name: 'deals_run_resume',
     action: 'resume',
     dashboard: RUN_TOOL_DASHBOARD,
     timeoutMs: RUN_TOOL_TIMEOUT_MS,
