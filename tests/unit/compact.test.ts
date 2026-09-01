@@ -206,7 +206,7 @@ describe('compact item records tolerate the record shape they are given', () => 
       adId: '1712345678',
       canonicalUrl: 'https://www.kijiji.ca/v-toys-games/city-of-toronto/lego/1712345678',
       title: 'LEGO bulk 10 lbs',
-      price: { kind: 'amount', value: 120 },
+      price: { kind: 'amount', value: 120, currency: 'CAD' },
       location: 'Toronto, ON M6H 2W9',
       postedAt: '2026-08-28T14:30:00Z',
       sellerName: 'Dave',

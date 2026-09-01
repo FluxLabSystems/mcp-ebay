@@ -70,14 +70,45 @@ describe('candidate snippets carry enough to triage without opening the row (def
     expect(candidate.bidCount).toBe(23);
   });
 
-  // A card is not an item page: eBay omits "Buy It Now" from plenty of
-  // fixed-price cards, so silence is genuinely ambiguous. Saying 'unknown'
-  // costs one page open; saying 'fixed_price' prices a live bid as
-  // purchasable, which is the mistake this field exists to prevent.
-  it('answers unknown rather than guessing when a card shows no format at all', () => {
+  // eBay omits "Buy It Now" from most fixed-price cards, and a 2026-09-01
+  // live run read 4 of 5 of them as unknown -- each one a page open spent
+  // learning what the card already said. An auction card always shows a bid
+  // count or a countdown, so a priced card with no auction vocabulary is
+  // fixed price by the same absence-of-signals rule the item page uses.
+  it('infers fixed price for a priced card with no auction vocabulary', () => {
     const candidate = byId(carouselCandidates(), '206468265940');
-    expect(candidate.sellingFormat).toBe('unknown');
+    expect(candidate.sellingFormat).toBe('fixed_price');
     expect(candidate.bidCount).toBeNull();
+  });
+
+  it('keeps unknown for a priced card whose countdown suggests an unreadable auction', () => {
+    const { document } = parseHTML(
+      `<div class="srp-river-results"><div class="su-card-container">
+         <a class="su-link" href="https://www.ebay.ca/itm/777888999000"><img src="x.jpg"></a>
+         <span class="s-card__title">LEGO Creator Expert Lot</span>
+         <span class="s-card__price">C $55.00</span>
+         <span class="su-styled-text">6d 4h left (Sun, 10:15 p.m.)</span>
+       </div></div>`,
+    );
+    const [candidate] = extractListingCandidates(
+      document as unknown as Document,
+      'https://www.ebay.ca/sch/i.html?_nkw=lego',
+    );
+    expect(candidate?.sellingFormat).toBe('unknown');
+  });
+
+  it('keeps unknown for a card with no readable price', () => {
+    const { document } = parseHTML(
+      `<div class="srp-river-results"><div class="su-card-container">
+         <a class="su-link" href="https://www.ebay.ca/itm/888999000111"><img src="x.jpg"></a>
+         <span class="s-card__title">LEGO Star Wars Mixed Lot</span>
+       </div></div>`,
+    );
+    const [candidate] = extractListingCandidates(
+      document as unknown as Document,
+      'https://www.ebay.ca/sch/i.html?_nkw=lego',
+    );
+    expect(candidate?.sellingFormat).toBe('unknown');
   });
 
   it('carries shipping and location snippets verbatim', () => {
@@ -101,14 +132,17 @@ describe('candidate snippets carry enough to triage without opening the row (def
     expect(candidate.isNewListing).toBe(false);
   });
 
-  // A listing title containing "buy it now" must not be read as the card's
-  // selling format.
+  // A listing title containing "buy it now" must never be BIN evidence: on
+  // an auction card it must not manufacture auction_with_bin. (A priced
+  // non-auction card with such a title still reads fixed_price, but through
+  // the absence-of-auction-signals inference, not through the title.)
   it('does not take the selling format out of the listing title', () => {
     const { document } = parseHTML(
       `<div class="srp-river-results"><div class="su-card-container">
          <a class="su-link" href="https://www.ebay.ca/itm/111222333444"><img src="x.jpg"></a>
          <span class="s-card__title">LEGO bulk lot BUY IT NOW cheap</span>
          <span class="s-card__price">C $12.00</span>
+         <span class="s-card__bids">7 bids</span>
        </div></div>`,
     );
     const [candidate] = extractListingCandidates(
@@ -116,6 +150,27 @@ describe('candidate snippets carry enough to triage without opening the row (def
       'https://www.ebay.ca/sch/i.html?_nkw=lego',
     );
     expect(candidate?.title).toBe('LEGO bulk lot BUY IT NOW cheap');
-    expect(candidate?.sellingFormat).toBe('unknown');
+    expect(candidate?.sellingFormat).toBe('auction');
+    expect(candidate?.bidCount).toBe(7);
+  });
+
+  // 2026-09-01 live run: the "New Listing" badge span abuts the title text
+  // with no whitespace, and the concatenated badge leaked into the title
+  // ("New ListingLEGO Bulk Lot 4 lbs..."), where it would break titleRegex
+  // filters anchored at the start.
+  it('strips a badge span that abuts the title text with no whitespace', () => {
+    const { document } = parseHTML(
+      `<div class="srp-river-results"><div class="su-card-container">
+         <a class="su-link" href="https://www.ebay.ca/itm/222333444555"><img src="x.jpg"></a>
+         <span class="s-card__title"><span class="LIGHT_HIGHLIGHT">New Listing</span>LEGO Bulk Lot 4 lbs Bricks</span>
+         <span class="s-card__price">C $20.00</span>
+       </div></div>`,
+    );
+    const [candidate] = extractListingCandidates(
+      document as unknown as Document,
+      'https://www.ebay.ca/sch/i.html?_nkw=lego',
+    );
+    expect(candidate?.title).toBe('LEGO Bulk Lot 4 lbs Bricks');
+    expect(candidate?.isNewListing).toBe(true);
   });
 });

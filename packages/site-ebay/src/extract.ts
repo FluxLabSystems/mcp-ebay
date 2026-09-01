@@ -118,6 +118,12 @@ const ITEM_LOCATION_SELECTORS = [
   '.ux-labels-values--itemLocation .ux-labels-values__values',
   '[data-testid="ux-labels-values--itemLocation"] .ux-labels-values__values',
   '.ux-labels-values--location .ux-labels-values__values',
+  // Newer templates nest the value one level deeper, or render the row with
+  // no __values wrapper at all; the whole-row reads work because
+  // readItemLocation strips the "Item location:"/"Located in:" label off.
+  '.ux-labels-values--itemLocation .ux-labels-values__values-content',
+  '.ux-labels-values--itemLocation',
+  '[data-testid="ux-labels-values--itemLocation"]',
   '#itemLocation',
   '.vi-acc-del-range',
 ];
@@ -540,13 +546,16 @@ function readEndTime(
 function readItemLocation(document: Document): ExtractionRecord['itemLocationText'] {
   for (const selector of ITEM_LOCATION_SELECTORS) {
     const text = textOf(document, selector);
-    if (text !== null) return { value: text.replace(/^located\s+in:?\s*/i, ''), source: 'dom', confidence: 0.95 };
+    if (text !== null) {
+      const value = text.replace(/^(?:located\s+in|item\s+location)\s*:?\s*/i, '').trim();
+      if (value.length > 0) return { value, source: 'dom', confidence: 0.95 };
+    }
   }
   // Some templates fold the location into the shipping or delivery row
-  // instead of giving it a row of its own.
+  // instead of giving it a row of its own — under either label wording.
   for (const selector of [...SHIPPING_SELECTORS, ...DELIVERY_SELECTORS]) {
     const text = textOf(document, selector);
-    const match = text === null ? null : /\blocated\s+in:?\s*([^.|]{2,80})/i.exec(text);
+    const match = text === null ? null : /\b(?:located\s+in|item\s+location)\s*:?\s*([^.|]{2,80})/i.exec(text);
     if (match !== null) return { value: match[1]!.trim(), source: 'dom', confidence: 0.8 };
   }
   return null;

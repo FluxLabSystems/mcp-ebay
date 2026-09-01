@@ -98,6 +98,19 @@ describe('title cleaning', () => {
     // "New" alone is never a badge -- only "New Listing" is -- so this survives.
     expect(cleanTitle('New Balance 990v5 Made in USA')).toBe('New Balance 990v5 Made in USA');
   });
+  it('strips a badge span that abuts the title with no whitespace (2026-09-01 live run)', () => {
+    // textContent of `<span>New Listing</span>LEGO ...` has no separating
+    // space, so the word-boundary form cannot see where the badge ends.
+    expect(cleanTitle('New ListingLEGO Bulk Lot 4 lbs Star Wars Castle')).toBe(
+      'LEGO Bulk Lot 4 lbs Star Wars Castle',
+    );
+    expect(cleanTitle('SPONSOREDVintage LEGO Space Set')).toBe('Vintage LEGO Space Set');
+  });
+  it('keeps an all-caps title that genuinely starts with NEW LISTINGS', () => {
+    // The camel strip is case-sensitive on the badge's rendered casing, so
+    // "NEW LISTING" + "S" in a shouting title is not mistaken for the badge.
+    expect(cleanTitle('NEW LISTINGS DAILY LEGO Mixed Bricks')).toBe('NEW LISTINGS DAILY LEGO Mixed Bricks');
+  });
   it('KNOWN LIMIT: a title whose real first word IS a badge phrase loses it', () => {
     // "Sponsored" is a single-word badge, so a genuine title starting with it
     // is trimmed. Accepted: eBay stamps that badge on cards far more often
