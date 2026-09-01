@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__FluxLab_Browser_Bridge",
+      "mcp__FluxLab_Dashboards"
+    ]
+  }
+}

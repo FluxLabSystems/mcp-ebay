@@ -140,7 +140,7 @@ export interface CompactKijijiAd {
   adId: string | null;
   canonicalUrl: string | null;
   title: string | null;
-  price: { kind: string | null; value: number | null } | null;
+  price: { kind: string | null; value: number | null; currency: string | null } | null;
   location: string | null;
   postedAt: string | null;
   sellerName: string | null;
@@ -156,7 +156,13 @@ export function compactKijijiAd(record: unknown): CompactKijijiAd {
     adId: readString(ad.adId),
     canonicalUrl: readString(ad.canonicalUrl),
     title: readString(ad.title),
-    price: price === null ? null : { kind: readString(price.kind), value: readNumber(price.value) },
+    // currency survives compaction: search candidates carry it, and the
+    // canonical record is the one a deals upsert prices from — a bare
+    // {kind, value} made the CAD figure a guess exactly where it mattered.
+    price:
+      price === null
+        ? null
+        : { kind: readString(price.kind), value: readNumber(price.value), currency: readString(price.currency) },
     location: readString(ad.location),
     postedAt: readString(ad.postedAt),
     sellerName: readString(ad.sellerName),

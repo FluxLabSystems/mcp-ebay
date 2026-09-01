@@ -87,13 +87,24 @@ export function parseMoney(rawText: string, defaultCurrency = 'CAD'): ParsedMone
 const TITLE_NOISE_RE = /\s*opens?\s+in\s+a\s+new\s+window\s+or\s+tab\s*/gi;
 const TITLE_BADGE_RE =
   /^(?:new listing|newly listed|sponsored|almost gone|ending soon|watching|top rated plus|best selling|hot this week)\b\s*[:\u2013\u2014-]?\s*/i;
+/**
+ * The badge span can abut the title's text node with no whitespace at all:
+ * textContent of `<span>New Listing</span>LEGO Bulk Lot` is
+ * "New ListingLEGO Bulk Lot" -- and \b cannot see that seam, so the anchored
+ * regex above leaves the badge on. The seam it CAN see is the camel boundary:
+ * the badge in its exact rendered casing followed immediately by an
+ * uppercase letter or digit. Case-sensitive on purpose: an all-caps title
+ * that genuinely starts "NEW LISTINGS ..." is "NEW LISTING" + "S" to a
+ * case-blind pattern and would lose its first two words.
+ */
+const TITLE_BADGE_CAMEL_RE = /^(?:New Listing|Newly Listed|Sponsored|SPONSORED)(?=[A-Z0-9])/;
 
 export function cleanTitle(rawText: string): string {
   let text = rawText.replace(/[\u00a0\u202f]/g, ' ').replace(/\s+/g, ' ').trim();
   text = text.replace(TITLE_NOISE_RE, ' ').replace(/\s+/g, ' ').trim();
   // Cards can carry more than one badge.
   for (;;) {
-    const stripped = text.replace(TITLE_BADGE_RE, '').trim();
+    const stripped = text.replace(TITLE_BADGE_RE, '').replace(TITLE_BADGE_CAMEL_RE, '').trim();
     if (stripped === text || stripped.length === 0) break;
     text = stripped;
   }

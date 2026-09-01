@@ -17,9 +17,12 @@ export interface ListingCandidate {
    * Selling format as far as the CARD says, which is much less than an item
    * page says. A candidate carrying no format had to be opened just to learn
    * whether it was an auction, and opening every row is what exhausts a run's
-   * tool budget. 'unknown' is a real answer here: eBay leaves the Buy It Now
-   * label off plenty of fixed-price cards, so silence is ambiguous, and
-   * reading it as fixed price would price a live bid as purchasable.
+   * tool budget. eBay leaves the Buy It Now label off most fixed-price
+   * cards, so a priced card with no auction vocabulary anywhere on it is
+   * inferred fixed_price — the same absence-of-auction-signals rule the item
+   * page uses. 'unknown' remains a real answer for a card with no price or
+   * with auction-shaped text the bid selectors could not read; it is still
+   * a traversal hint, and the item page stays the canonical evidence.
    */
   sellingFormat: SellingFormatKind;
   /** Bids the card shows; null when it shows none. */
@@ -131,8 +134,14 @@ function cardRootFor(anchor: Element): Element {
 }
 
 const CARD_BIDS_RE = /\b(\d{1,5})\s*bids?\b/i;
-const CARD_BIN_RE = /\bbuy\s+it\s+now\b/i;
-const CARD_AUCTION_RE = /\bplace\s+bid\b|\bcurrent\s+bid\b/i;
+const CARD_BIN_RE = /\bbuy\s+it\s+now\b|\bor\s+best\s+offer\b/i;
+const CARD_AUCTION_RE = /\bplace\s+bid\b|\bcurrent\s+bid\b|\bstarting\s+bid\b/i;
+/**
+ * A live countdown is an auction tell ("6d 4h left", "Ends today"). It only
+ * ever BLOCKS the fixed-price inference below — it never classifies a card
+ * as an auction on its own, because promo strips borrow the vocabulary.
+ */
+const CARD_TIMELEFT_RE = /\b(?:\d+\s*[dhms]\s+)*\d+\s*[dhms]\s+left\b|\btime\s+left\b|\bends?\s+(?:today|tonight|in)\b/i;
 const NEW_LISTING_BADGE_RE = /^\s*new\s+listing/i;
 
 function cardFormatText(card: Element, rawTitle: string | null): string {
@@ -156,6 +165,7 @@ function cardFormatText(card: Element, rawTitle: string | null): string {
 function detectCardFormat(
   card: Element,
   rawTitle: string | null,
+  hasSnippetPrice: boolean,
 ): { sellingFormat: SellingFormatKind; bidCount: number | null } {
   const blob = cardFormatText(card, rawTitle);
   const bidText = cardText(card, CARD_BID_SELECTOR);
@@ -166,6 +176,23 @@ function detectCardFormat(
   if (hasAuction && hasBin) return { sellingFormat: 'auction_with_bin', bidCount };
   if (hasAuction) return { sellingFormat: 'auction', bidCount };
   if (hasBin) return { sellingFormat: 'fixed_price', bidCount: null };
+  // Same inference the item-page extractor makes: eBay leaves the Buy It Now
+  // label off most fixed-price cards, while an auction card essentially
+  // always shows a bid count ("0 bids" included) or a countdown. A priced
+  // card with no auction vocabulary anywhere on it — the whole card is
+  // scanned here, title included, because the title can only ever make this
+  // check MORE conservative — is a fixed-price listing, not an unknown. A
+  // 2026-09-01 live run read 4 of 5 fixed-price cards as unknown, and every
+  // unknown costs a page open just to learn what the card already said.
+  const whole = normalizeText(card.textContent);
+  if (
+    hasSnippetPrice &&
+    !CARD_BIDS_RE.test(whole) &&
+    !CARD_AUCTION_RE.test(whole) &&
+    !CARD_TIMELEFT_RE.test(whole)
+  ) {
+    return { sellingFormat: 'fixed_price', bidCount: null };
+  }
   return { sellingFormat: 'unknown', bidCount: null };
 }
 
@@ -210,7 +237,7 @@ export function extractListingCandidates(document: Document, pageUrl: string): L
       const rawTitle = cardText(card, CARD_TITLE_SELECTOR) ?? (anchorText.length > 0 ? anchorText : null);
       const titleText = rawTitle === null ? null : cleanTitle(rawTitle);
       const parsedPrice = parseMoney(cardText(card, CARD_PRICE_SELECTOR) ?? '');
-      const { sellingFormat, bidCount } = detectCardFormat(card, rawTitle);
+      const { sellingFormat, bidCount } = detectCardFormat(card, rawTitle, parsedPrice !== null);
 
       candidates.push({
         itemId,

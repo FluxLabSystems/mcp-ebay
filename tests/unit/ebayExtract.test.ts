@@ -264,6 +264,30 @@ describe('defects the 2026-08-29 deals run surfaced', () => {
     expect(record.itemLocationText?.value).toBe('Mississauga, Ontario, Canada');
   });
 
+  // 2026-09-01 live run: a listing whose location row renders under the
+  // "Item location:" wording, with the value nested one level deeper than
+  // .ux-labels-values__values, came back itemLocationText: null.
+  it('reads the location from templates that label it "Item location"', () => {
+    const nested = parseHTML(
+      `<h1 class="x-item-title__mainTitle">LEGO Bulk Lot 4 lbs</h1>
+       <div class="x-price-primary">C $20.00</div>
+       <div class="ux-labels-values--itemLocation">
+         <div class="ux-labels-values__labels">Item location:</div>
+         <div class="ux-labels-values__values-content">Etobicoke, Ontario, Canada</div>
+       </div>`,
+    ).document as unknown as Document;
+    const nestedRecord = extractListing(nested, 'https://www.ebay.ca/itm/335544667788').record;
+    expect(nestedRecord.itemLocationText?.value).toBe('Etobicoke, Ontario, Canada');
+
+    const rowOnly = parseHTML(
+      `<h1 class="x-item-title__mainTitle">LEGO Bulk Lot 4 lbs</h1>
+       <div class="x-price-primary">C $20.00</div>
+       <div class="ux-labels-values--itemLocation">Item location: North York, Ontario, Canada</div>`,
+    ).document as unknown as Document;
+    const rowRecord = extractListing(rowOnly, 'https://www.ebay.ca/itm/335544667789').record;
+    expect(rowRecord.itemLocationText?.value).toBe('North York, Ontario, Canada');
+  });
+
   it('records "More than 10 available" as a floor rather than a count', () => {
     const { record } = extractListing(
       loadFixture('active-sell-one-like-this.html'),
