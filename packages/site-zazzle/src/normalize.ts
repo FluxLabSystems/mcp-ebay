@@ -32,21 +32,27 @@ export function canonicalProductUrl(rawUrl: string): string | null {
 
 export interface ParsedZazzleMoney {
   value: number;
-  /** Only set when the page states it (JSON-LD priceCurrency); never inferred from "$". */
+  /**
+   * Only set when the TEXT states it: an explicit "C$"/"CA$" prefix
+   * (zazzle.ca rendering) is CAD and "US$" is USD. A bare "$" stays null,
+   * never inferred; the original rule, unchanged.
+   */
   currency: string | null;
   rawText: string;
 }
 
-const MONEY_RE = /(?:US\s?)?\$\s?(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/;
+const MONEY_RE = /(C\s?\$|CA\s?\$|US\s?\$|\$)\s?(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/;
 
 export function parseZazzleMoney(raw: string | null | undefined): ParsedZazzleMoney | null {
   if (raw === null || raw === undefined) return null;
   const text = raw.replace(/[\u00a0\u202f]/g, ' ').trim();
   const match = MONEY_RE.exec(text);
   if (match === null) return null;
-  const value = Number.parseFloat(match[1]!.replace(/,/g, ''));
+  const value = Number.parseFloat(match[2]!.replace(/,/g, ''));
   if (!Number.isFinite(value)) return null;
-  return { value, currency: null, rawText: match[0]!.trim() };
+  const symbol = match[1]!.toUpperCase().replace(/\s/g, '');
+  const currency = symbol === 'C$' || symbol === 'CA$' ? 'CAD' : symbol === 'US$' ? 'USD' : null;
+  return { value, currency, rawText: match[0]!.trim() };
 }
 
 /** "You save 10%" / "Save 10%" → 10. Only when the page states it. */

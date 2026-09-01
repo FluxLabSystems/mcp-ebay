@@ -2,6 +2,14 @@
  * zazzle.com.v1 policy configuration — spec P1, on the §19/§20 conventions
  * the ebay/kijiji profiles established. Read-only research posture: no cart,
  * no checkout, no account actions, no "like"/collection state.
+ *
+ * The profile id is a wire literal, not a host statement: it covers
+ * zazzle.CA as well. The wardrobe triggers are CAD figures, so runs should
+ * research on zazzle.ca; zazzle.com stays reachable because the .ca site
+ * cross-links it and a US-priced record is still a record. Before
+ * 2026-09-01 the allowlist named only zazzle.com, so the site's own
+ * country selector — which navigates to the same path on the .ca host —
+ * died with Chrome's "blocked by client policies" page.
  */
 import type { SitePolicyProfile } from '@browser-bridge/policy';
 
@@ -22,17 +30,17 @@ export const ZAZZLE_DENIED_HOSTS: readonly string[] = ['entripy.com', '*.entripy
  * matches an endpoint rule.
  */
 export const ZAZZLE_TRANSACTION_ENDPOINT_PATTERNS: readonly string[] = [
-  'https?://(?:[a-z0-9-]+\\.)*zazzle\\.com/co/(?:cart|checkout|order|payment)',
-  'https?://(?:[a-z0-9-]+\\.)*zazzle\\.com/(?:.*/)?(?:checkout|payment|billing|purchase)(?:/|\\?|#|$)',
+  'https?://(?:[a-z0-9-]+\\.)*zazzle\\.(?:com|ca)/co/(?:cart|checkout|order|payment)',
+  'https?://(?:[a-z0-9-]+\\.)*zazzle\\.(?:com|ca)/(?:.*/)?(?:checkout|payment|billing|purchase)(?:/|\\?|#|$)',
   // Account / credential surfaces (defense-in-depth behind authPathPatterns).
-  'https?://(?:[a-z0-9-]+\\.)*zazzle\\.com/(?:.*/)?(?:lgn|login|log-in|signin|sign-in|register|signup|sign-up|password)(?:/|\\?|#|$)',
+  'https?://(?:[a-z0-9-]+\\.)*zazzle\\.(?:com|ca)/(?:.*/)?(?:lgn|login|log-in|signin|sign-in|register|signup|sign-up|password)(?:/|\\?|#|$)',
   // Wishlist/collection state mutation (low-consequence, still read-only MVP).
-  'https?://(?:[a-z0-9-]+\\.)*zazzle\\.com/(?:.*/)?(?:wishlist|collections?/add|favou?rites?)(?:/|\\?|#|$)',
+  'https?://(?:[a-z0-9-]+\\.)*zazzle\\.(?:com|ca)/(?:.*/)?(?:wishlist|collections?/add|favou?rites?)(?:/|\\?|#|$)',
 ];
 
 /** Auth surfaces, blocked by default and re-checked per redirect landing. */
 export const ZAZZLE_AUTH_PATH_PATTERNS: readonly string[] = [
-  'https?://(?:[a-z0-9-]+\\.)*zazzle\\.com/(?:[a-zA-Z0-9_.~%-]+/)*(?:lgn|login|log-in|signin|sign-in|register|signup|sign-up)(?:/|\\?|#|$)',
+  'https?://(?:[a-z0-9-]+\\.)*zazzle\\.(?:com|ca)/(?:[a-zA-Z0-9_.~%-]+/)*(?:lgn|login|log-in|signin|sign-in|register|signup|sign-up)(?:/|\\?|#|$)',
 ];
 
 /** Accessible-name deny patterns (lowercase substrings). */
@@ -68,6 +76,8 @@ export const zazzleSiteProfile: SitePolicyProfile = {
   allowedHosts: [
     'zazzle.com',
     '*.zazzle.com',
+    'zazzle.ca',
+    '*.zazzle.ca',
     // Product/render image CDN (rlv.zcache.com observed live).
     'zcache.com',
     '*.zcache.com',

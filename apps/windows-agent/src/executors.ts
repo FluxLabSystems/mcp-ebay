@@ -163,7 +163,7 @@ function siteForUrl(pageUrl: string): ExtractionSite {
     const host = new URL(pageUrl).hostname.toLowerCase();
     if (host === 'kijiji.ca' || host.endsWith('.kijiji.ca')) return 'kijiji';
     if (/(?:^|\.)ebay\.(?:ca|com)$/.test(host)) return 'ebay';
-    if (host === 'zazzle.com' || host.endsWith('.zazzle.com')) return 'zazzle';
+    if (/(?:^|\.)zazzle\.(?:com|ca)$/.test(host)) return 'zazzle';
     return 'generic';
   } catch {
     return 'generic';

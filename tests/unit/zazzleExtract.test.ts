@@ -13,6 +13,7 @@ import {
   classifyZazzlePage,
   extractZazzleProduct,
   extractZazzleSearchResults,
+  parseZazzleMoney,
   productIdFromUrl,
   ZazzleProductRecordSchema,
 } from '@browser-bridge/site-zazzle';
@@ -162,5 +163,48 @@ describe('extractZazzleSearchResults', () => {
     expect(degraded.price).toBeNull();
     expect(degraded.originalPrice).toBeNull();
     expect(degraded.discountText).toBeNull();
+  });
+});
+
+// 2026-09-01: zazzle.ca is the CAD research surface. Its prices render with
+// an explicit "C$" prefix, which IS a currency statement; a bare "$" still
+// is not one.
+describe('zazzle.ca money and candidates', () => {
+  it('reads the stated currency out of C$/CA$/US$ prefixes and none out of "$"', () => {
+    expect(parseZazzleMoney('C$24.60')).toEqual({ value: 24.6, currency: 'CAD', rawText: 'C$24.60' });
+    expect(parseZazzleMoney('CA$ 1,024.60')).toMatchObject({ value: 1024.6, currency: 'CAD' });
+    expect(parseZazzleMoney('US$19.31')).toMatchObject({ value: 19.31, currency: 'USD' });
+    expect(parseZazzleMoney('$19.31')).toMatchObject({ value: 19.31, currency: null });
+  });
+
+  it('keeps .ca candidates and their .ca canonical URLs, and still drops lookalike hosts', () => {
+    const { document } = parseHTML(
+      `<div>
+         <a href="https://www.zazzle.ca/pets_typography_name_t_shirt-256993602821254375?tracking=zzz"
+            aria-label="Product: Pets Typography Name T-Shirt"></a>
+         <a href="https://zazzle.ca.attacker.io/fake_product-256993602821254399"></a>
+       </div>`,
+    );
+    const page = extractZazzleSearchResults(
+      document as unknown as Document,
+      'https://www.zazzle.ca/s/custom+name+t+shirt',
+    );
+    expect(page.results).toHaveLength(1);
+    expect(page.results[0]!.url).toBe(
+      'https://www.zazzle.ca/pets_typography_name_t_shirt-256993602821254375',
+    );
+  });
+
+  it('takes a C$ figure from the pricing module as stated CAD, without the currency warning', () => {
+    const { document } = parseHTML(
+      `<h1>Custom Name T-Shirt</h1>
+       <div class="Pricing_mainPrice">C$31.35</div>`,
+    );
+    const { record, warnings } = extractZazzleProduct(
+      document as unknown as Document,
+      'https://www.zazzle.ca/custom_name_t_shirt-235985008319788440',
+    );
+    expect(record.listedPrice).toMatchObject({ value: 31.35, currency: 'CAD', source: 'dom' });
+    expect(warnings.some((warning) => warning.startsWith('PRICE_CURRENCY_UNSTATED'))).toBe(false);
   });
 });
