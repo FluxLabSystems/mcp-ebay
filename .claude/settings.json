@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "mcp__FluxLab_Browser_Bridge",
-      "mcp__FluxLab_Dashboards"
+      "mcp__FluxLab_Dashboards",
+      "mcp__FluxLab-Browser-Bridge",
+      "mcp__FluxLab-Dashboards"
     ]
   }
 }
