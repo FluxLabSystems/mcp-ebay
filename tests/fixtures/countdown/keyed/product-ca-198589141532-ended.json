@@ -1,0 +1,201 @@
+{
+ "request_info": {
+  "success": true,
+  "credits_used": null,
+  "credits_remaining": null,
+  "credits_used_this_request": null
+ },
+ "request_parameters": {
+  "type": "product",
+  "url": "https://www.ebay.ca/itm/198589141532",
+  "customer_location": "ca"
+ },
+ "request_metadata": {
+  "created_at": "2026-09-02T17:43:09.939Z",
+  "processed_at": "2026-09-02T17:43:12.977Z",
+  "total_time_taken": 3.04,
+  "ebay_url": "https://www.ebay.ca/itm/198589141532?_fcid=2"
+ },
+ "product": {
+  "is_master": false,
+  "title": "lego vintage bulk 17.6 LB All Sets No Mini Figures What U See U Get Rare 1s # 4",
+  "categories": [
+   {
+    "name": "Toys & Hobbies",
+    "link": "https://www.ebay.ca/b/Toys-Hobbies/220/bn_1865497"
+   },
+   {
+    "name": "Building Toys",
+    "link": "https://www.ebay.ca/b/Building-Toys/183446/bn_1865257"
+   },
+   {
+    "name": "LEGO (R) Building Toys",
+    "link": "https://www.ebay.ca/b/LEGO-R-Building-Toys/183447/bn_1937200"
+   },
+   {
+    "name": "LEGO (R) Bricks, Pieces & Parts",
+    "link": "https://www.ebay.ca/b/LEGO-R-Bricks-Pieces-Parts/183448/bn_16564827"
+   }
+  ],
+  "images": [
+   {
+    "link": "https://i.ebayimg.com/images/g/50MAAeSwXm5qiloj/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/pQQAAeSwIK1qik8M/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/4ucAAeSwtwVqik8M/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/-iMAAeSwTclqik8M/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/yLsAAeSwrWpqik93/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/3zoAAeSwzadqilAQ/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/81EAAeSwXeFqilCY/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/-7YAAeSwHQBqilHn/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/pC4AAeSwaGNqilKT/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/sREAAeSwrBFqilOT/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/5TIAAeSwkhFqilRv/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/0n0AAeSwndxqilTb/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/SnoAAeSw6RlqilVq/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/2mYAAeSwRjVqilXl/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/~boAAeSwT-hqilZk/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/zpkAAeSwguZqilcf/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/tcwAAeSwFLNqild9/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/MMwAAeSwALdqilgR/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/WIMAAeSw02Jqilh7/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/Gy4AAeSwR7pqilkj/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/4QEAAeSwxB9qilmf/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/GfEAAeSwTtFqiloj/s-l1600.jpg"
+   }
+  ],
+  "image_count": 22,
+  "primary_image": "https://i.ebayimg.com/thumbs/images/g/50MAAeSwXm5qiloj/s-l500.jpg",
+  "description": "lego vintage bulk 17.6 LB All Sets No Mini Figures What U See U Get Rare 1s # 4 | eBay",
+  "description_external_url": "https://itm.ebaydesc.com/itmdesc/198589141532?t=0&category=183448&seller=ourdogrocky&excSoj=1&ver=1&excTrk=1&lsite=0&ittenable=false&domain=ebay.com&descgauge=1&cspheader=1&oneClk=2&secureDesc=1&lang=en",
+  "attributes": [
+   {
+    "name": "Condition",
+    "value": "Used: An item that has been used previously. See the seller’s listing for full details and ... "
+   },
+   {
+    "name": "Brand",
+    "value": "LEGO"
+   },
+   {
+    "name": "LEGO Theme",
+    "value": "MINIFIGURES"
+   },
+   {
+    "name": "Product Line (LEGO Theme)",
+    "value": "Minifigures"
+   },
+   {
+    "name": "Type",
+    "value": "Lot"
+   },
+   {
+    "name": "Piece Type",
+    "value": "Lot"
+   },
+   {
+    "name": "Custom Bundle",
+    "value": "No"
+   },
+   {
+    "name": "Color",
+    "value": "Mixed"
+   },
+   {
+    "name": "Features",
+    "value": "Bulk Lot"
+   },
+   {
+    "name": "Age Level",
+    "value": "5+"
+   },
+   {
+    "name": "LEGO Subtheme",
+    "value": "Star Wars"
+   },
+   {
+    "name": "Vintage",
+    "value": "No"
+   },
+   {
+    "name": "Country of Origin",
+    "value": "Denmark"
+   }
+  ],
+  "brand": "LEGO",
+  "color": "Mixed"
+ },
+ "returns_policy": {
+  "raw": "No returns accepted.",
+  "returns_accepted": false
+ },
+ "stock_status": {
+  "raw": "https://schema.org/OutOfStock",
+  "status": "not_in_stock",
+  "quantity_available": 0
+ },
+ "condition": {
+  "raw": "Used",
+  "name": "used",
+  "is_new": false,
+  "is_used": true
+ },
+ "is_auction": false,
+ "offer": {
+  "price": 66,
+  "currency": "CAD"
+ },
+ "seller": {
+  "name": "OurDogRocky",
+  "link": "https://www.ebay.ca/str/ourdogrocky"
+ },
+ "shipping": {
+  "price": "Free",
+  "service": "USPS Ground Advantage",
+  "location": "Clifton, New Jersey, United States",
+  "deliveryEstimate": "Sat, Sep 5 and Thu, Sep 10",
+  "link": "https://www.ebay.ca/str/ourdogrocky",
+  "ships_to": "Albania, Algeria, American Samoa, and many other countries"
+ }
+}

@@ -1,0 +1,755 @@
+{
+ "request_info": {
+  "success": true,
+  "credits_used": null,
+  "credits_remaining": null,
+  "credits_used_this_request": null
+ },
+ "request_parameters": {
+  "type": "search",
+  "url": "https://www.ebay.ca/sch/i.html?_ssn=tweedsidesales&_nkw=lego&_sop=10&_ipg=240",
+  "customer_location": "ca",
+  "customer_zipcode": "M6H2W9"
+ },
+ "request_metadata": {
+  "created_at": "2026-09-02T17:42:39.044Z",
+  "processed_at": "2026-09-02T17:42:45.314Z",
+  "total_time_taken": 6.27,
+  "ebay_url": "https://www.ebay.ca/sch/i.html?_ssn=tweedsidesales&_nkw=lego&_sop=10&_ipg=240&_fcid=2&_stpos=M6H2W9"
+ },
+ "search_results": [
+  {
+   "position": 1,
+   "title": "LEGO 8833 Pirate Captain Collectible Minifigures Series 8 - No Hook Or Hat",
+   "epid": "178354082825",
+   "link": "https://www.ebay.ca/itm/178354082825",
+   "image": "https://i.ebayimg.com/images/g/eR4AAeSw8KJqafny/s-l500.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "rating": 5,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 6.99,
+     "raw": "C $6.99"
+    }
+   ],
+   "price": {
+    "value": 6.99,
+    "raw": "C $6.99"
+   }
+  },
+  {
+   "position": 2,
+   "title": "LEGO MINIFIGURE PIRATES OF THE CARIBBEAN Yeonman Zombie POC027",
+   "epid": "178354039704",
+   "link": "https://www.ebay.ca/itm/178354039704",
+   "image": "https://i.ebayimg.com/images/g/oG0AAeSwZl5qafbI/s-l500.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 12.99,
+     "raw": "C $12.99"
+    }
+   ],
+   "price": {
+    "value": 12.99,
+    "raw": "C $12.99"
+   }
+  },
+  {
+   "position": 3,
+   "title": "Lego  Pirates of the Caribbean Will Turner Minifigure poc026 [4182 4183 4184]",
+   "epid": "178354034026",
+   "link": "https://www.ebay.ca/itm/178354034026",
+   "image": "https://i.ebayimg.com/images/g/tjEAAeSwGjJqafXx/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 19.99,
+     "raw": "C $19.99"
+    }
+   ],
+   "price": {
+    "value": 19.99,
+    "raw": "C $19.99"
+   }
+  },
+  {
+   "position": 4,
+   "title": "LEGO Mr. Freeze Minifigure Super Heroes Batman Retired sh049 76000 DC",
+   "epid": "178349615801",
+   "link": "https://www.ebay.ca/itm/178349615801",
+   "image": "https://i.ebayimg.com/images/g/GN0AAeSwRT1qZ-7J/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 8.99,
+     "raw": "C $8.99"
+    }
+   ],
+   "price": {
+    "value": 8.99,
+    "raw": "C $8.99"
+   }
+  },
+  {
+   "position": 5,
+   "title": "LEGO Minecraft Steve Minifigure",
+   "epid": "178345911038",
+   "link": "https://www.ebay.ca/itm/178345911038",
+   "image": "https://i.ebayimg.com/images/g/LysAAeSwkB5qZlKl/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 6.49,
+     "raw": "C $6.49"
+    }
+   ],
+   "price": {
+    "value": 6.49,
+    "raw": "C $6.49"
+   }
+  },
+  {
+   "position": 6,
+   "title": "LEGO Wacky Witch minifigure 71010 CMF Series 13",
+   "epid": "178345612519",
+   "link": "https://www.ebay.ca/itm/178345612519",
+   "image": "https://i.ebayimg.com/images/g/98oAAeSwGjJqZje4/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 20,
+     "raw": "C $20.00"
+    }
+   ],
+   "price": {
+    "value": 20,
+    "raw": "C $20.00"
+   }
+  },
+  {
+   "position": 7,
+   "title": "Lego Assorted Doors/ Windshields And Windows  Lot",
+   "epid": "178308667970",
+   "link": "https://www.ebay.ca/itm/178308667970",
+   "image": "https://i.ebayimg.com/images/g/-ekAAeSwO9NokJ6l/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "shipping_cost": 8.54,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 10,
+     "raw": "C $10.00"
+    }
+   ],
+   "price": {
+    "value": 10,
+    "raw": "C $10.00"
+   }
+  },
+  {
+   "position": 8,
+   "title": "Lego Ninjago  71772 The Crystal King Incomplete",
+   "epid": "178279022981",
+   "link": "https://www.ebay.ca/itm/178279022981",
+   "image": "https://i.ebayimg.com/images/g/KWUAAeSwIzRplaRE/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "shipping_cost": 18.27,
+   "rating": 5,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 25,
+     "raw": "C $25.00"
+    }
+   ],
+   "price": {
+    "value": 25,
+    "raw": "C $25.00"
+   }
+  },
+  {
+   "position": 9,
+   "title": "LEGO  Hector Barbossa (2011, Minifigure Pirates Of The Caribbean, 4181 Incomplet",
+   "epid": "178275903426",
+   "link": "https://www.ebay.ca/itm/178275903426",
+   "image": "https://i.ebayimg.com/images/g/x8IAAeSwt8NqRntx/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 20,
+     "raw": "C $20.00"
+    }
+   ],
+   "price": {
+    "value": 20,
+    "raw": "C $20.00"
+   }
+  },
+  {
+   "position": 10,
+   "title": "Lego Marvel Mini Figure Lot Of 8 Plus 3 Incomplete",
+   "epid": "178273750819",
+   "link": "https://www.ebay.ca/itm/178273750819",
+   "image": "https://i.ebayimg.com/images/g/flwAAeSwDoNqRZBd/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "shipping_cost": 8.29,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 40,
+     "raw": "C $40.00"
+    }
+   ],
+   "price": {
+    "value": 40,
+    "raw": "C $40.00"
+   }
+  },
+  {
+   "position": 11,
+   "title": "Lego Wind Up Toy Soldier (Minifigure, COL162, Incomplete",
+   "epid": "178273562870",
+   "link": "https://www.ebay.ca/itm/178273562870",
+   "image": "https://i.ebayimg.com/images/g/M6MAAeSwvkBqRXz1/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 14,
+     "raw": "C $14.00"
+    }
+   ],
+   "price": {
+    "value": 14,
+    "raw": "C $14.00"
+   }
+  },
+  {
+   "position": 12,
+   "title": "Lego Series 6 Minifigures: Butcher",
+   "epid": "178136572185",
+   "link": "https://www.ebay.ca/itm/178136572185",
+   "image": "https://i.ebayimg.com/images/g/UDYAAeSw12VqBxeF/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 15,
+     "raw": "C $15.00"
+    }
+   ],
+   "price": {
+    "value": 15,
+    "raw": "C $15.00"
+   }
+  },
+  {
+   "position": 13,
+   "title": "Lego CMF Collection Series 8 Mini Figure Diver Col118",
+   "epid": "178136556597",
+   "link": "https://www.ebay.ca/itm/178136556597",
+   "image": "https://i.ebayimg.com/images/g/TRkAAeSw-8pqBxW1/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 17,
+     "raw": "C $17.00"
+    }
+   ],
+   "price": {
+    "value": 17,
+    "raw": "C $17.00"
+   }
+  },
+  {
+   "position": 14,
+   "title": "LEGO Crazy Scientist Series 4 Minifigure col04-16- Missing Hair",
+   "epid": "178134379727",
+   "link": "https://www.ebay.ca/itm/178134379727",
+   "image": "https://i.ebayimg.com/images/g/VQwAAeSwAFFqBfpm/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 13,
+     "raw": "C $13.00"
+    }
+   ],
+   "price": {
+    "value": 13,
+    "raw": "C $13.00"
+   }
+  },
+  {
+   "position": 15,
+   "title": "Kai Ninjago Legacy 71705 71753 71741 71739 LEGO Minifigure Figure Red Ninja",
+   "epid": "178130954090",
+   "link": "https://www.ebay.ca/itm/178130954090",
+   "image": "https://i.ebayimg.com/images/g/MpAAAeSwXf5qBGsL/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 7.99,
+     "raw": "C $7.99"
+    }
+   ],
+   "price": {
+    "value": 7.99,
+    "raw": "C $7.99"
+   }
+  },
+  {
+   "position": 16,
+   "title": "LEGO Super Heroes Corvus Glaive Minifigure - sh0511",
+   "epid": "178128342680",
+   "link": "https://www.ebay.ca/itm/178128342680",
+   "image": "https://i.ebayimg.com/images/g/qI4AAeSwVNVqAyvM/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 27,
+     "raw": "C $27.00"
+    }
+   ],
+   "price": {
+    "value": 27,
+    "raw": "C $27.00"
+   }
+  },
+  {
+   "position": 17,
+   "title": "LEGO Duplo Disney Mickey Mouse Suit",
+   "epid": "178128238507",
+   "link": "https://www.ebay.ca/itm/178128238507",
+   "image": "https://i.ebayimg.com/images/g/NMMAAeSwur5qAyCL/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 8.99,
+     "raw": "C $8.99"
+    }
+   ],
+   "price": {
+    "value": 8.99,
+    "raw": "C $8.99"
+   }
+  },
+  {
+   "position": 18,
+   "title": "FRIENDS Central Perk Joey Tribbianni Minifigure 21319 Mini Fig",
+   "epid": "178126678764",
+   "link": "https://www.ebay.ca/itm/178126678764",
+   "image": "https://i.ebayimg.com/images/g/LukAAeSwOhNqAm1O/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 13.99,
+     "raw": "C $13.99"
+    }
+   ],
+   "price": {
+    "value": 13.99,
+    "raw": "C $13.99"
+   }
+  },
+  {
+   "position": 19,
+   "title": "LEGO Series 5 Lizard Man Minifigure Minifig",
+   "epid": "178124002204",
+   "link": "https://www.ebay.ca/itm/178124002204",
+   "image": "https://i.ebayimg.com/images/g/RUoAAeSw7aZqAS5P/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 17.99,
+     "raw": "C $17.99"
+    }
+   ],
+   "price": {
+    "value": 17.99,
+    "raw": "C $17.99"
+   }
+  },
+  {
+   "position": 20,
+   "title": "Authentic LEGO Disney 100 71038 Robin Hood",
+   "epid": "178109523164",
+   "link": "https://www.ebay.ca/itm/178109523164",
+   "image": "https://i.ebayimg.com/images/g/j5IAAeSweFVp-tBU/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 9.99,
+     "raw": "C $9.99"
+    }
+   ],
+   "price": {
+    "value": 9.99,
+    "raw": "C $9.99"
+   }
+  },
+  {
+   "position": 21,
+   "title": "LEGO Ideas Rabbit Minifigure With Carrot From Winnie The Pooh Disney 21326",
+   "epid": "178108867500",
+   "link": "https://www.ebay.ca/itm/178108867500",
+   "image": "https://i.ebayimg.com/images/g/PI8AAeSwisJp-ol9/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 13.99,
+     "raw": "C $13.99"
+    }
+   ],
+   "price": {
+    "value": 13.99,
+    "raw": "C $13.99"
+   }
+  },
+  {
+   "position": 22,
+   "title": "Lego Minifigure 71024 Collectible Disney Series 2 Dewey Duck",
+   "epid": "178108781905",
+   "link": "https://www.ebay.ca/itm/178108781905",
+   "image": "https://i.ebayimg.com/images/g/mQwAAeSw5GNp-n-P/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "rating": 5,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 12.99,
+     "raw": "C $12.99"
+    }
+   ],
+   "price": {
+    "value": 12.99,
+    "raw": "C $12.99"
+   }
+  },
+  {
+   "position": 23,
+   "title": "LEGO Minifigures - Minifigure Disney Series 2  CHIP (71012)",
+   "epid": "178108564592",
+   "link": "https://www.ebay.ca/itm/178108564592",
+   "image": "https://i.ebayimg.com/images/g/6WsAAeSwICVp-mo5/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 10,
+     "raw": "C $10.00"
+    }
+   ],
+   "price": {
+    "value": 10,
+    "raw": "C $10.00"
+   }
+  },
+  {
+   "position": 24,
+   "title": "LEGO Marvel sh0420 Spider-Man Homecoming Minifigure 76082 76083 40343 76130",
+   "epid": "178087568437",
+   "link": "https://www.ebay.ca/itm/178087568437",
+   "image": "https://i.ebayimg.com/images/g/lpcAAeSwptlpVu~1/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "shipping_cost": 3.99,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 7.49,
+     "raw": "C $7.49"
+    }
+   ],
+   "price": {
+    "value": 7.49,
+    "raw": "C $7.49"
+   }
+  },
+  {
+   "position": 25,
+   "title": "LEGO TECHNIC: Race Plane (42117) Incomplete",
+   "epid": "177876039138",
+   "link": "https://www.ebay.ca/itm/177876039138",
+   "image": "https://i.ebayimg.com/images/g/Lh0AAeSwrpRplzRN/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "shipping_cost": 8.29,
+   "rating": 5,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 10,
+     "raw": "C $10.00"
+    }
+   ],
+   "price": {
+    "value": 10,
+    "raw": "C $10.00"
+   }
+  },
+  {
+   "position": 26,
+   "title": "LEGO 71719 NINJAGO: Zane's Mino Creature Only - Incomplete",
+   "epid": "177876020058",
+   "link": "https://www.ebay.ca/itm/177876020058",
+   "image": "https://i.ebayimg.com/images/g/pkEAAeSwAPJplzI5/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "shipping_cost": 18.02,
+   "rating": 4.5,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 30.99,
+     "raw": "C $30.99"
+    }
+   ],
+   "price": {
+    "value": 30.99,
+    "raw": "C $30.99"
+   }
+  },
+  {
+   "position": 27,
+   "title": "LEGO NINJAGO: Ninja Sub Speeder (71752) Incomplete",
+   "epid": "177873096719",
+   "link": "https://www.ebay.ca/itm/177873096719",
+   "image": "https://i.ebayimg.com/images/g/NtIAAeSwBAhplbX2/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "shipping_cost": 17.94,
+   "rating": 5,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 16,
+     "raw": "C $16.00"
+    }
+   ],
+   "price": {
+    "value": 16,
+    "raw": "C $16.00"
+   }
+  },
+  {
+   "position": 28,
+   "title": "LEGO NINJAGO: Incomplete Sets (71763)  ( 71745) ( 71768)",
+   "epid": "177872931822",
+   "link": "https://www.ebay.ca/itm/177872931822",
+   "image": "https://i.ebayimg.com/images/g/DfUAAeSw~KBplaWy/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "shipping_cost": 16.81,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 26.99,
+     "raw": "C $26.99"
+    }
+   ],
+   "price": {
+    "value": 26.99,
+    "raw": "C $26.99"
+   }
+  },
+  {
+   "position": 29,
+   "title": "Lego: Star Wars The Video Game For PC, 2005 Disc Only",
+   "epid": "177616616261",
+   "link": "https://www.ebay.ca/itm/177616616261",
+   "image": "https://i.ebayimg.com/images/g/wogAAeSw92xo~6BT/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 7.49,
+     "raw": "C $7.49"
+    }
+   ],
+   "price": {
+    "value": 7.49,
+    "raw": "C $7.49"
+   }
+  },
+  {
+   "position": 30,
+   "title": "LEGO FRIENDS: Stephanie's Sailing Adventure (41716) - Sailboat incomplete",
+   "epid": "177577458602",
+   "link": "https://www.ebay.ca/itm/177577458602",
+   "image": "https://i.ebayimg.com/images/g/QNoAAeSwvYxpF7KS/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "shipping_cost": 18.52,
+   "rating": 5,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 13.99,
+     "raw": "C $13.99"
+    }
+   ],
+   "price": {
+    "value": 13.99,
+    "raw": "C $13.99"
+   }
+  },
+  {
+   "position": 31,
+   "title": "Lego Base Plates Mixed Lot Various Colors & Sizes 65 Pieces 1lb",
+   "epid": "177529774298",
+   "link": "https://www.ebay.ca/itm/177529774298",
+   "image": "https://i.ebayimg.com/images/g/DjoAAeSwCeFojllf/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "shipping_cost": 16.56,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 12.99,
+     "raw": "C $12.99"
+    }
+   ],
+   "price": {
+    "value": 12.99,
+    "raw": "C $12.99"
+   }
+  }
+ ],
+ "pagination": {
+  "total_results": 31
+ }
+}

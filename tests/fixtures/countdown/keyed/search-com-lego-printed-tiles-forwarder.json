@@ -1,0 +1,1756 @@
+{
+ "request_info": {
+  "success": true,
+  "credits_used": null,
+  "credits_remaining": null,
+  "credits_used_this_request": null
+ },
+ "request_parameters": {
+  "type": "search",
+  "ebay_domain": "ebay.com",
+  "search_term": "lego printed tiles lot",
+  "customer_location": "us",
+  "customer_zipcode": "34249",
+  "num": "60"
+ },
+ "request_metadata": {
+  "created_at": "2026-09-02T17:42:45.848Z",
+  "processed_at": "2026-09-02T17:42:59.883Z",
+  "total_time_taken": 14.04,
+  "ebay_url": "https://www.ebay.com/sch/i.html?_nkw=lego+printed+tiles+lot&_sacat=0&_dmd=1&_ipg=60&_fcid=1&_stpos=34249"
+ },
+ "search_results": [
+  {
+   "position": 1,
+   "title": "LEGO - LEGO Printed Decorated Brick, Tile Lot Of 103. Decorated Pieces",
+   "epid": "278274493605",
+   "link": "https://www.ebay.com/itm/278274493605",
+   "image": "https://i.ebayimg.com/images/g/DQUAAeSwg5hqfRvV/s-l500.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "tanstan",
+    "review_count": "1100",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 6.45,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 18.85,
+     "raw": "$18.85"
+    }
+   ],
+   "price": {
+    "value": 18.85,
+    "raw": "$18.85"
+   }
+  },
+  {
+   "position": 2,
+   "title": "Lego Lot of Assorted Unique Printed Tiles. 1x1, 1x2, 2x2, 2x4, etc.",
+   "epid": "398236816953",
+   "link": "https://www.ebay.com/itm/398236816953",
+   "image": "https://i.ebayimg.com/images/g/aH4AAeSwI49qCmKR/s-l500.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "8cbcq_76",
+    "review_count": "422",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.48,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 25,
+     "raw": "$25.00"
+    }
+   ],
+   "price": {
+    "value": 25,
+    "raw": "$25.00"
+   }
+  },
+  {
+   "position": 3,
+   "title": "Authentic LEGO Sticker & Printed Tiles Lot: Computer, License Plate, Disney, etc",
+   "epid": "147504410470",
+   "link": "https://www.ebay.com/itm/147504410470",
+   "image": "https://i.ebayimg.com/images/g/3z8AAeSw4PZqfwFY/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "jdxavierfox",
+    "review_count": "373",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.4,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 19.99,
+     "raw": "$19.99"
+    }
+   ],
+   "price": {
+    "value": 19.99,
+    "raw": "$19.99"
+   }
+  },
+  {
+   "position": 4,
+   "title": "LEGO LOT 130 PARTS Decorated Decal Sticker Printed BRICKS TILES RANDOM",
+   "epid": "137652799327",
+   "link": "https://www.ebay.com/itm/137652799327",
+   "image": "https://i.ebayimg.com/images/g/-3MAAeSwZfZqNx01/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": true,
+   "item_location": "located in united states",
+   "shipping_cost": 5.97,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 24,
+     "raw": "$24.00"
+    }
+   ],
+   "price": {
+    "value": 24,
+    "raw": "$24.00"
+   }
+  },
+  {
+   "position": 5,
+   "title": "Lego Mixed  Lot of  - 24 Printed Tiles",
+   "epid": "398320230201",
+   "link": "https://www.ebay.com/itm/398320230201",
+   "image": "https://i.ebayimg.com/images/g/znwAAeSwaclqjJq8/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "brickweb_2026",
+    "review_count": "76",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.7,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 9.99,
+     "raw": "$9.99"
+    }
+   ],
+   "price": {
+    "value": 9.99,
+    "raw": "$9.99"
+   }
+  },
+  {
+   "position": 6,
+   "title": "LEGO - Printed Tiles Lot 1x1 1x2 2x2 - Decorated Flat Plate Smooth Round Square  to",
+   "epid": "331982822376",
+   "link": "https://www.ebay.com/itm/331982822376",
+   "image": "https://i.ebayimg.com/images/g/h0EAAOSwYIxX-TnX/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": true,
+   "item_location": "located in united states",
+   "shipping_cost": 7.95,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 2.29,
+     "raw": "$2.29"
+    },
+    {
+     "value": 17.99,
+     "raw": "$17.99"
+    }
+   ],
+   "price": {
+    "value": 2.29,
+    "raw": "$2.29"
+   }
+  },
+  {
+   "position": 7,
+   "title": "LEGO 2x2 Tile Lot (50) - Rare Printed Maps, Avengers, Spider-Man & Tech Displays",
+   "epid": "800015513785",
+   "link": "https://www.ebay.com/itm/800015513785",
+   "image": "https://i.ebayimg.com/images/g/5J4AAeSwiwRqBP9E/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "amysclosettx",
+    "review_count": "203",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 6.96,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 26.99,
+     "raw": "$26.99"
+    }
+   ],
+   "price": {
+    "value": 26.99,
+    "raw": "$26.99"
+   }
+  },
+  {
+   "position": 8,
+   "title": "Huge LEGO Lot Of Assorted Printed Tiles & Unique Exclusive Pieces Vintage 4+ Lbs",
+   "epid": "227481445372",
+   "link": "https://www.ebay.com/itm/227481445372",
+   "image": "https://i.ebayimg.com/images/g/nngAAeSwZuRqhKc0/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": true,
+   "item_location": "located in united states",
+   "shipping_cost": 14.85,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 49.99,
+     "raw": "$49.99"
+    }
+   ],
+   "price": {
+    "value": 49.99,
+    "raw": "$49.99"
+   }
+  },
+  {
+   "position": 9,
+   "title": "LEGO - LEGO Printed Brick, Tile Lot - Printed Shapes - 30 Piece Lot",
+   "epid": "168653633132",
+   "link": "https://www.ebay.com/itm/168653633132",
+   "image": "https://i.ebayimg.com/images/g/msgAAeSw09dpi6h0/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "jerzee908",
+    "review_count": "3600",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": true,
+   "item_location": "located in united states",
+   "shipping_cost": 5.99,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 8.99,
+     "raw": "$8.99"
+    }
+   ],
+   "price": {
+    "value": 8.99,
+    "raw": "$8.99"
+   }
+  },
+  {
+   "position": 10,
+   "title": "Lego Lots assorted printed and stickered LEGO tiles",
+   "epid": "267747433748",
+   "link": "https://www.ebay.com/itm/267747433748",
+   "image": "https://i.ebayimg.com/images/g/h6EAAeSwRydqcfss/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "jiajing0",
+    "review_count": "494",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.89,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 19,
+     "raw": "$19.00"
+    }
+   ],
+   "price": {
+    "value": 19,
+    "raw": "$19.00"
+   }
+  },
+  {
+   "position": 11,
+   "title": "LEGO PRINTED TILES Various Lot of 71 PARTS",
+   "epid": "318810482647",
+   "link": "https://www.ebay.com/itm/318810482647",
+   "image": "https://i.ebayimg.com/images/g/-UIAAeSwUxNqlwBq/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "korea8806",
+    "review_count": "3500",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.24,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 49.97,
+     "raw": "$49.97"
+    }
+   ],
+   "price": {
+    "value": 49.97,
+    "raw": "$49.97"
+   }
+  },
+  {
+   "position": 12,
+   "title": "LEGO HUGE LOT of 140 Decorated Stickers Sticker Printed BRICK TILES etc (Lot 9)",
+   "epid": "188840502928",
+   "link": "https://www.ebay.com/itm/188840502928",
+   "image": "https://i.ebayimg.com/images/g/0PgAAeSwBD9qjeoQ/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "shipbricks",
+    "review_count": "4100",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 4.99,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 19.94,
+     "raw": "$19.94"
+    }
+   ],
+   "price": {
+    "value": 19.94,
+    "raw": "$19.94"
+   }
+  },
+  {
+   "position": 13,
+   "title": "LEGO 2x2 Tile Lot (50) - Printed Newspaper, Pizza, Joker Wanted & City Details",
+   "epid": "800015507132",
+   "link": "https://www.ebay.com/itm/800015507132",
+   "image": "https://i.ebayimg.com/images/g/CkYAAeSw9cNqBP4j/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "amysclosettx",
+    "review_count": "203",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 6.96,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 24.99,
+     "raw": "$24.99"
+    }
+   ],
+   "price": {
+    "value": 24.99,
+    "raw": "$24.99"
+   }
+  },
+  {
+   "position": 14,
+   "title": "Lot Of LEGO Printed And Stickered Tiles",
+   "epid": "168555896523",
+   "link": "https://www.ebay.com/itm/168555896523",
+   "image": "https://i.ebayimg.com/images/g/JVkAAeSwuzZqYSFB/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": true,
+   "item_location": "located in united states",
+   "shipping_cost": 6,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 12.75,
+     "raw": "$12.75"
+    }
+   ],
+   "price": {
+    "value": 12.75,
+    "raw": "$12.75"
+   }
+  },
+  {
+   "position": 15,
+   "title": "LEGO City/Friends Lot of 43 Printed & Sticker Tiles: Signs, Placards, Billboards",
+   "epid": "147422675954",
+   "link": "https://www.ebay.com/itm/147422675954",
+   "image": "https://i.ebayimg.com/images/g/jNkAAeSwOiBqTRcl/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "jdxavierfox",
+    "review_count": "373",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.4,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 24.99,
+     "raw": "$24.99"
+    }
+   ],
+   "price": {
+    "value": 24.99,
+    "raw": "$24.99"
+   }
+  },
+  {
+   "position": 16,
+   "title": "Huge LEGO Lot Of Multicolor Assorted Printed Tiles Money Signs, Long Short Tiles",
+   "epid": "137582790093",
+   "link": "https://www.ebay.com/itm/137582790093",
+   "image": "https://i.ebayimg.com/images/g/8lcAAeSw0VtqcSEy/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": true,
+   "item_location": "located in united states",
+   "shipping_cost": 8.07,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 75.95,
+     "raw": "$75.95"
+    }
+   ],
+   "price": {
+    "value": 75.95,
+    "raw": "$75.95"
+   }
+  },
+  {
+   "position": 17,
+   "title": "LEGO - 12 pcs Map & Compass Printed Tiles North South West Treasure Lot 1x1 2x2",
+   "epid": "232110091069",
+   "link": "https://www.ebay.com/itm/232110091069",
+   "image": "https://i.ebayimg.com/images/g/KEcAAOSw32BgSBn1/s-l140.jpg",
+   "condition": "Brand New",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": true,
+   "item_location": "located in united states",
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 11.99,
+     "raw": "$11.99"
+    }
+   ],
+   "price": {
+    "value": 11.99,
+    "raw": "$11.99"
+   }
+  },
+  {
+   "position": 18,
+   "title": "LEGO Printed Tiles Lot 150+ Pieces Signs Panels Police Speed Computers",
+   "epid": "158178746126",
+   "link": "https://www.ebay.com/itm/158178746126",
+   "image": "https://i.ebayimg.com/images/g/0mYAAeSwg5NqMdSO/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "drfreeze2",
+    "review_count": "2600",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 10.95,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 12.95,
+     "raw": "$12.95"
+    }
+   ],
+   "price": {
+    "value": 12.95,
+    "raw": "$12.95"
+   }
+  },
+  {
+   "position": 19,
+   "title": "Lego Lot of 20 1x2 Tiles with printed pattern design combine shipping to save 3",
+   "epid": "198563765214",
+   "link": "https://www.ebay.com/itm/198563765214",
+   "image": "https://i.ebayimg.com/images/g/B8AAAeSwCQJqe0Gl/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": true,
+   "item_location": "located in united states",
+   "shipping_cost": 8.6,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 9.49,
+     "raw": "$9.49"
+    }
+   ],
+   "price": {
+    "value": 9.49,
+    "raw": "$9.49"
+   }
+  },
+  {
+   "position": 20,
+   "title": "LEGO Bulk 5lb Washed -Most Themes, Includes Prints/Window/doors/wheels/tiles/etc",
+   "epid": "820076688798",
+   "link": "https://www.ebay.com/itm/820076688798",
+   "image": "https://i.ebayimg.com/images/g/MLwAAeSwuTdql663/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "collectzorz-2025",
+    "review_count": "466",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 9.56,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 37.99,
+     "raw": "$37.99"
+    }
+   ],
+   "price": {
+    "value": 37.99,
+    "raw": "$37.99"
+   }
+  },
+  {
+   "position": 21,
+   "title": "LEGO HUGE LOT of 180 Decorated Stickers Sticker Printed BRICK TILES etc (Lot 4)",
+   "epid": "188840206779",
+   "link": "https://www.ebay.com/itm/188840206779",
+   "image": "https://i.ebayimg.com/images/g/vJQAAeSwk1Jqjdbh/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "shipbricks",
+    "review_count": "4100",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 4.99,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 19.94,
+     "raw": "$19.94"
+    }
+   ],
+   "price": {
+    "value": 19.94,
+    "raw": "$19.94"
+   }
+  },
+  {
+   "position": 22,
+   "title": "LEGO Random Lot of 50+ Decorated Stickers Sticker Printed BRICK TILES Pieces",
+   "epid": "366638821317",
+   "link": "https://www.ebay.com/itm/366638821317",
+   "image": "https://i.ebayimg.com/images/g/oLQAAeSwWhdqk4l5/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "pick_n_game",
+    "review_count": "246",
+    "positive_feedback_percent": 99.5
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.7,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 11.95,
+     "raw": "$11.95"
+    }
+   ],
+   "price": {
+    "value": 11.95,
+    "raw": "$11.95"
+   }
+  },
+  {
+   "position": 23,
+   "title": "Lego Lot of Assorted Unique Printed Tiles.",
+   "epid": "397960613702",
+   "link": "https://www.ebay.com/itm/397960613702",
+   "image": "https://i.ebayimg.com/images/g/aH4AAeSwI49qCmKR/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "8cbcq_76",
+    "review_count": "422",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.48,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 25,
+     "raw": "$25.00"
+    }
+   ],
+   "price": {
+    "value": 25,
+    "raw": "$25.00"
+   }
+  },
+  {
+   "position": 24,
+   "title": "LEGO HUGE LOT of 200 Decorated Stickers Sticker Printed BRICK TILES etc (Lot 11)",
+   "epid": "188032636153",
+   "link": "https://www.ebay.com/itm/188032636153",
+   "image": "https://i.ebayimg.com/images/g/5QQAAeSwDSxphihq/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "shipbricks",
+    "review_count": "4100",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 4.99,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 19.94,
+     "raw": "$19.94"
+    }
+   ],
+   "price": {
+    "value": 19.94,
+    "raw": "$19.94"
+   }
+  },
+  {
+   "position": 25,
+   "title": "Genuine LEGO Printed Face Parts Lot 26pc Eyes Smiles Coral Tiles 11027",
+   "epid": "398344788680",
+   "link": "https://www.ebay.com/itm/398344788680",
+   "image": "https://i.ebayimg.com/images/g/eLIAAeSw131qleeg/s-l140.jpg",
+   "condition": "Brand New",
+   "seller_info": {
+    "name": "kjm_8292",
+    "review_count": "14",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 18.99,
+     "raw": "$18.99"
+    }
+   ],
+   "price": {
+    "value": 18.99,
+    "raw": "$18.99"
+   }
+  },
+  {
+   "position": 26,
+   "title": "LEGO Printed, Tile, And Cloth Pieces Lot DC Angry Birds Jurassic Park And More",
+   "epid": "366631011399",
+   "link": "https://www.ebay.com/itm/366631011399",
+   "image": "https://i.ebayimg.com/images/g/XNgAAeSwM2lqj4ZE/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "calc2.0",
+    "review_count": "442",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.4,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 5,
+     "raw": "$5.00"
+    }
+   ],
+   "price": {
+    "value": 5,
+    "raw": "$5.00"
+   }
+  },
+  {
+   "position": 27,
+   "title": "LEGO Minecraft Mixed Lot Minifigures, Printed Bricks & Tiles, Accessories",
+   "epid": "267771562961",
+   "link": "https://www.ebay.com/itm/267771562961",
+   "image": "https://i.ebayimg.com/images/g/7G4AAeSwEQFqlKOi/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "paladin102",
+    "review_count": "899",
+    "positive_feedback_percent": 98.4
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 9.99,
+     "raw": "$9.99"
+    },
+    {
+     "value": 25,
+     "raw": "$25.00"
+    }
+   ],
+   "price": {
+    "value": 9.99,
+    "raw": "$9.99"
+   }
+  },
+  {
+   "position": 28,
+   "title": "LEGO Printed Tile Lot (52) - Custom City Town Signs Cafe Bank Jail Food Money",
+   "epid": "800029058576",
+   "link": "https://www.ebay.com/itm/800029058576",
+   "image": "https://i.ebayimg.com/images/g/wRAAAeSwSptqCSfn/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "amysclosettx",
+    "review_count": "203",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 6.96,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 24.99,
+     "raw": "$24.99"
+    }
+   ],
+   "price": {
+    "value": 24.99,
+    "raw": "$24.99"
+   }
+  },
+  {
+   "position": 29,
+   "title": "100 Genuine LEGO Printed Parts Lot City Police Ninjago Space Panels Tiles MOC",
+   "epid": "307099752161",
+   "link": "https://www.ebay.com/itm/307099752161",
+   "image": "https://i.ebayimg.com/images/g/rGsAAeSwLQFqbeBB/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "ldutt.2007",
+    "review_count": "702",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.83,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 16.99,
+     "raw": "$16.99"
+    }
+   ],
+   "price": {
+    "value": 16.99,
+    "raw": "$16.99"
+   }
+  },
+  {
+   "position": 30,
+   "title": "LEGO Printed Police Bricks & Tile Pieces Lot of 4 Yellow White Red Plastic",
+   "epid": "407185748684",
+   "link": "https://www.ebay.com/itm/407185748684",
+   "image": "https://i.ebayimg.com/images/g/MmIAAeSwpN5qlydm/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "card_hunters_1",
+    "review_count": "14",
+    "positive_feedback_percent": 93.8
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.4,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 6.99,
+     "raw": "$6.99"
+    }
+   ],
+   "price": {
+    "value": 6.99,
+    "raw": "$6.99"
+   }
+  },
+  {
+   "position": 31,
+   "title": "Lego Lot of 8 2x2 Printed Tiles Jurassic Park, Drill Rock, Heroica Red Shield",
+   "epid": "287453599017",
+   "link": "https://www.ebay.com/itm/287453599017",
+   "image": "https://i.ebayimg.com/images/g/oNIAAeSwVDJqUa8G/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "tanstan",
+    "review_count": "1100",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.45,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 16.45,
+     "raw": "$16.45"
+    }
+   ],
+   "price": {
+    "value": 16.45,
+    "raw": "$16.45"
+   }
+  },
+  {
+   "position": 32,
+   "title": "LEGO City & Friends Lot of 110 Printed & Sticker Decal Decorative Tiles, Pieces",
+   "epid": "147422814961",
+   "link": "https://www.ebay.com/itm/147422814961",
+   "image": "https://i.ebayimg.com/images/g/4VwAAeSwC9NqTUkl/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "jdxavierfox",
+    "review_count": "373",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.4,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 29.99,
+     "raw": "$29.99"
+    }
+   ],
+   "price": {
+    "value": 29.99,
+    "raw": "$29.99"
+   }
+  },
+  {
+   "position": 33,
+   "title": "LEGO Assorted Printed Sticker Bricks and Tiles Large Lot - Vintage & Recent",
+   "epid": "327232652380",
+   "link": "https://www.ebay.com/itm/327232652380",
+   "image": "https://i.ebayimg.com/images/g/spIAAeSw7vNqPcdP/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "trstnkn",
+    "review_count": "1900",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 29.99,
+     "raw": "$29.99"
+    }
+   ],
+   "price": {
+    "value": 29.99,
+    "raw": "$29.99"
+   }
+  },
+  {
+   "position": 34,
+   "title": "Lot of 21 VINTAGE 1988 Lego Printed Tiles, Slopes, Computers, screens, 3660p01",
+   "epid": "178453748317",
+   "link": "https://www.ebay.com/itm/178453748317",
+   "image": "https://i.ebayimg.com/images/g/EWcAAeSwOCtqkeJX/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "greenstarpicks",
+    "review_count": "225",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.7,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 24,
+     "raw": "$24.00"
+    }
+   ],
+   "price": {
+    "value": 24,
+    "raw": "$24.00"
+   }
+  },
+  {
+   "position": 35,
+   "title": "78x LEGO Black Printed Parts Lot Batman Space Police Tiles Slopes Panels",
+   "epid": "800117029872",
+   "link": "https://www.ebay.com/itm/800117029872",
+   "image": "https://i.ebayimg.com/images/g/OKsAAeSwjQhqG3pa/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "parcus_7",
+    "review_count": "1900",
+    "positive_feedback_percent": 99.7
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 7.5,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 17.85,
+     "raw": "$17.85"
+    }
+   ],
+   "price": {
+    "value": 17.85,
+    "raw": "$17.85"
+   }
+  },
+  {
+   "position": 36,
+   "title": "LEGO HUGE LOT of 190 Decorated Stickers Printed BRICK TILES etc (Lot 25)",
+   "epid": "188422656285",
+   "link": "https://www.ebay.com/itm/188422656285",
+   "image": "https://i.ebayimg.com/images/g/54UAAeSwrWdqFGFB/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "shipbricks",
+    "review_count": "4100",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 4.99,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 24.49,
+     "raw": "$24.49"
+    }
+   ],
+   "price": {
+    "value": 24.49,
+    "raw": "$24.49"
+   }
+  },
+  {
+   "position": 37,
+   "title": "Lego Printed & Stickered Pieces Part Tiles & Bricks Lot Of 100+",
+   "epid": "377001293702",
+   "link": "https://www.ebay.com/itm/377001293702",
+   "image": "https://i.ebayimg.com/images/g/qoMAAeSwS5lppHfv/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "dluv_34",
+    "review_count": "495",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 6.99,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 20,
+     "raw": "$20.00"
+    }
+   ],
+   "price": {
+    "value": 20,
+    "raw": "$20.00"
+   }
+  },
+  {
+   "position": 38,
+   "title": "Random Lego Lot Printed Tiles, Accessories Unique Lego Parts Handheld Items Bulk",
+   "epid": "236248703508",
+   "link": "https://www.ebay.com/itm/236248703508",
+   "image": "https://i.ebayimg.com/images/g/oR0AAeSw4KVokkFb/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "james-collections",
+    "review_count": "54",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 4.99,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 15.99,
+     "raw": "$15.99"
+    }
+   ],
+   "price": {
+    "value": 15.99,
+    "raw": "$15.99"
+   }
+  },
+  {
+   "position": 39,
+   "title": "LEGO printed tiles & pieces - Lot of 8",
+   "epid": "406928447682",
+   "link": "https://www.ebay.com/itm/406928447682",
+   "image": "https://i.ebayimg.com/images/g/I5sAAeSwZqJqBwbT/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "lindseyhill99",
+    "review_count": "64",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.83,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 10,
+     "raw": "$10.00"
+    }
+   ],
+   "price": {
+    "value": 10,
+    "raw": "$10.00"
+   }
+  },
+  {
+   "position": 40,
+   "title": "Lot Of LEGO Printed And Stickered Tiles Pizza Clock Nurse Dog Sleeping Bag",
+   "epid": "168555899077",
+   "link": "https://www.ebay.com/itm/168555899077",
+   "image": "https://i.ebayimg.com/images/g/il8AAeSwlslqYSGE/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": true,
+   "item_location": "located in united states",
+   "shipping_cost": 6,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 15.3,
+     "raw": "$15.30"
+    }
+   ],
+   "price": {
+    "value": 15.3,
+    "raw": "$15.30"
+   }
+  },
+  {
+   "position": 41,
+   "title": "Lego Lot of 12 pieces  2x2 Tiles w/ printed  decorated pattern different sets e",
+   "epid": "198094443976",
+   "link": "https://www.ebay.com/itm/198094443976",
+   "image": "https://i.ebayimg.com/images/g/xzEAAeSw5Ehpi2wE/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": true,
+   "item_location": "located in united states",
+   "shipping_cost": 8.6,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 8.99,
+     "raw": "$8.99"
+    }
+   ],
+   "price": {
+    "value": 8.99,
+    "raw": "$8.99"
+   }
+  },
+  {
+   "position": 42,
+   "title": "Lego Vintage & more Printed Pieces Part Tiles & Bricks Lot",
+   "epid": "407109065951",
+   "link": "https://www.ebay.com/itm/407109065951",
+   "image": "https://i.ebayimg.com/images/g/3TAAAeSw0Vtqa7cy/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "nadroma62",
+    "review_count": "965",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 6.75,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 31.99,
+     "raw": "$31.99"
+    }
+   ],
+   "price": {
+    "value": 31.99,
+    "raw": "$31.99"
+   }
+  },
+  {
+   "position": 43,
+   "title": "Lego - Lot Of 18 Specialty 2 X 4 Tiles Stickers & Printed. 87079",
+   "epid": "147498464971",
+   "link": "https://www.ebay.com/itm/147498464971",
+   "image": "https://i.ebayimg.com/images/g/QloAAeSwTy5qUrVc/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "polarcache",
+    "review_count": "914",
+    "positive_feedback_percent": 99.7
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": true,
+   "item_location": "located in united states",
+   "shipping_cost": 6.99,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 7.42,
+     "raw": "$7.42"
+    }
+   ],
+   "price": {
+    "value": 7.42,
+    "raw": "$7.42"
+   }
+  },
+  {
+   "position": 44,
+   "title": "LEGO HUGE LOT of 150 Decorated Stickers Sticker Printed BRICK TILES (Lot 7)",
+   "epid": "188032491321",
+   "link": "https://www.ebay.com/itm/188032491321",
+   "image": "https://i.ebayimg.com/images/g/FQIAAeSwIABphhWo/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "shipbricks",
+    "review_count": "4100",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 4.99,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 19.94,
+     "raw": "$19.94"
+    }
+   ],
+   "price": {
+    "value": 19.94,
+    "raw": "$19.94"
+   }
+  },
+  {
+   "position": 45,
+   "title": "LEGO City Printed Tile Lot Mixed Lot Fire Coast Guard Air Cargo Racing Specialty",
+   "epid": "318751834971",
+   "link": "https://www.ebay.com/itm/318751834971",
+   "image": "https://i.ebayimg.com/images/g/RC4AAeSwj8NqhSWJ/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "sweacityselling",
+    "review_count": "1400",
+    "positive_feedback_percent": 99.9
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.89,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 25,
+     "raw": "$25.00"
+    }
+   ],
+   "price": {
+    "value": 25,
+    "raw": "$25.00"
+   }
+  },
+  {
+   "position": 46,
+   "title": "LEGO Printed Tiles & some accessories pieces, for MOC builds",
+   "epid": "358830975849",
+   "link": "https://www.ebay.com/itm/358830975849",
+   "image": "https://i.ebayimg.com/images/g/0ksAAeSwycZqYSDi/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "saowai_0",
+    "review_count": "14",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.48,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 6,
+     "raw": "$6.00"
+    }
+   ],
+   "price": {
+    "value": 6,
+    "raw": "$6.00"
+   }
+  },
+  {
+   "position": 47,
+   "title": "LEGO 2x2 Printed Slope Tiles Space Control Panel Lot - (35) Computer Radar",
+   "epid": "800014398620",
+   "link": "https://www.ebay.com/itm/800014398620",
+   "image": "https://i.ebayimg.com/images/g/z-gAAeSwWi9qBKuD/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "amysclosettx",
+    "review_count": "203",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 6.96,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 24.99,
+     "raw": "$24.99"
+    }
+   ],
+   "price": {
+    "value": 24.99,
+    "raw": "$24.99"
+   }
+  },
+  {
+   "position": 48,
+   "title": "Lego Printed Piece Lot- Tiles, Signs, Panels, Solar Panels, Ninjago, Minifig Fac",
+   "epid": "178446058515",
+   "link": "https://www.ebay.com/itm/178446058515",
+   "image": "https://i.ebayimg.com/images/g/C9MAAeSwmmlp7~aI/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "noscentral",
+    "review_count": "654",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.7,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 23.74,
+     "raw": "$23.74"
+    }
+   ],
+   "price": {
+    "value": 23.74,
+    "raw": "$23.74"
+   }
+  },
+  {
+   "position": 49,
+   "title": "Lego Mix Lot of Printed Parts / Piece   Tiles and Slopes ( 22  Pieces )",
+   "epid": "158163032832",
+   "link": "https://www.ebay.com/itm/158163032832",
+   "image": "https://i.ebayimg.com/images/g/a4AAAeSw5TlqdZw3/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "tiger85",
+    "review_count": "5800",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 6.87,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 10.97,
+     "raw": "$10.97"
+    }
+   ],
+   "price": {
+    "value": 10.97,
+    "raw": "$10.97"
+   }
+  },
+  {
+   "position": 50,
+   "title": "Lego Lot Of 2 2x2 Round Records Record Music Printed Tile Tiles Black New 1252",
+   "epid": "167813872872",
+   "link": "https://www.ebay.com/itm/167813872872",
+   "image": "https://i.ebayimg.com/images/g/oJ4AAeSwhlNo1DuW/s-l140.jpg",
+   "condition": "Brand New",
+   "seller_info": {
+    "name": "leviathansportinggoods",
+    "review_count": "2500",
+    "positive_feedback_percent": 99.9
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 7.89,
+     "raw": "$7.89"
+    }
+   ],
+   "price": {
+    "value": 7.89,
+    "raw": "$7.89"
+   }
+  },
+  {
+   "position": 51,
+   "title": "3.7oz Lot Lego Printed Tiles Pieces Parts Smooth Tops. Eyes, Food Graphics Plain",
+   "epid": "377397220267",
+   "link": "https://www.ebay.com/itm/377397220267",
+   "image": "https://i.ebayimg.com/images/g/~5IAAeSwcGlqcybD/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "ellens-fun-finds",
+    "review_count": "682",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.73,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 14.9,
+     "raw": "$14.90"
+    }
+   ],
+   "price": {
+    "value": 14.9,
+    "raw": "$14.90"
+   }
+  },
+  {
+   "position": 52,
+   "title": "LEGO LOT Of 372 PARTS Decorated Decal Sticker Printed BRICK TILE Star Wars Space",
+   "epid": "307111290904",
+   "link": "https://www.ebay.com/itm/307111290904",
+   "image": "https://i.ebayimg.com/images/g/7cEAAeSwWUhqdLIm/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "sincerelysakura",
+    "review_count": "3400",
+    "positive_feedback_percent": 99.9
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 40,
+     "raw": "$40.00"
+    }
+   ],
+   "price": {
+    "value": 40,
+    "raw": "$40.00"
+   }
+  },
+  {
+   "position": 53,
+   "title": "Lego Lot of 20 1x2 Tiles with printed pattern design combine shipping to save 2",
+   "epid": "198563791292",
+   "link": "https://www.ebay.com/itm/198563791292",
+   "image": "https://i.ebayimg.com/images/g/JmAAAeSwTF5qe0Ij/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": true,
+   "item_location": "located in united states",
+   "shipping_cost": 8.6,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 9.49,
+     "raw": "$9.49"
+    }
+   ],
+   "price": {
+    "value": 9.49,
+    "raw": "$9.49"
+   }
+  },
+  {
+   "position": 54,
+   "title": "LEGO Caution Hazard Lot - (65) Printed Tiles Bricks Stripe Warning Yellow Plates",
+   "epid": "800014439129",
+   "link": "https://www.ebay.com/itm/800014439129",
+   "image": "https://i.ebayimg.com/images/g/1X4AAeSwMc9qBK2d/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "amysclosettx",
+    "review_count": "203",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 6.96,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 27.99,
+     "raw": "$27.99"
+    }
+   ],
+   "price": {
+    "value": 27.99,
+    "raw": "$27.99"
+   }
+  },
+  {
+   "position": 55,
+   "title": "Lego 2x4 Tiles - LOT OF 15 - Prints or Stickers - All Different Disigns/Patterns",
+   "epid": "398111746651",
+   "link": "https://www.ebay.com/itm/398111746651",
+   "image": "https://i.ebayimg.com/images/g/vgkAAeSwvBFqP1CU/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "clouis_95",
+    "review_count": "787",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.8,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 15,
+     "raw": "$15.00"
+    }
+   ],
+   "price": {
+    "value": 15,
+    "raw": "$15.00"
+   }
+  },
+  {
+   "position": 56,
+   "title": "LEGO 40 Printed Tile Lot  Harry Potter Mario Porsche McLaren City Town Signs",
+   "epid": "800029067293",
+   "link": "https://www.ebay.com/itm/800029067293",
+   "image": "https://i.ebayimg.com/images/g/pVoAAeSwAyNqCSkx/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "amysclosettx",
+    "review_count": "203",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 6.96,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 29.99,
+     "raw": "$29.99"
+    }
+   ],
+   "price": {
+    "value": 29.99,
+    "raw": "$29.99"
+   }
+  },
+  {
+   "position": 57,
+   "title": "Lego Lot Of 8 1x1 Round Flat Printed Tiles Tile Bee Wasp Hornet Insect New",
+   "epid": "168216503541",
+   "link": "https://www.ebay.com/itm/168216503541",
+   "image": "https://i.ebayimg.com/images/g/l-YAAeSwZAFprhR4/s-l140.jpg",
+   "condition": "Brand New",
+   "seller_info": {
+    "name": "leviathansportinggoods",
+    "review_count": "2500",
+    "positive_feedback_percent": 99.9
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 9.19,
+     "raw": "$9.19"
+    }
+   ],
+   "price": {
+    "value": 9.19,
+    "raw": "$9.19"
+   }
+  },
+  {
+   "position": 58,
+   "title": "Lego Printed Tile Lot",
+   "epid": "127919031041",
+   "link": "https://www.ebay.com/itm/127919031041",
+   "image": "https://i.ebayimg.com/images/g/W3kAAeSwOgVqLHkW/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "harteseller",
+    "review_count": "165",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 5.97,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 35,
+     "raw": "$35.00"
+    }
+   ],
+   "price": {
+    "value": 35,
+    "raw": "$35.00"
+   }
+  },
+  {
+   "position": 59,
+   "title": "LEGO (85) - Printed Bricks, Tail Fins Slopes Tiles - Police City Service Lot 2x2",
+   "epid": "800016273961",
+   "link": "https://www.ebay.com/itm/800016273961",
+   "image": "https://i.ebayimg.com/images/g/fY0AAeSw0lVqBTM6/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "seller_info": {
+    "name": "amysclosettx",
+    "review_count": "203",
+    "positive_feedback_percent": 100
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "shipping_cost": 7.57,
+   "sponsored": false,
+   "best_offer": true,
+   "prices": [
+    {
+     "value": 26.99,
+     "raw": "$26.99"
+    }
+   ],
+   "price": {
+    "value": 26.99,
+    "raw": "$26.99"
+   }
+  },
+  {
+   "position": 60,
+   "title": "Lego 1x1 Square Flat Printed Tiles Tile Radium New Glow In Dark White Print Ra",
+   "epid": "167974398579",
+   "link": "https://www.ebay.com/itm/167974398579",
+   "image": "https://i.ebayimg.com/images/g/A5cAAeSwKJppLw-T/s-l140.jpg",
+   "condition": "Brand New",
+   "seller_info": {
+    "name": "leviathansportinggoods",
+    "review_count": "2500",
+    "positive_feedback_percent": 99.9
+   },
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united states",
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 6.99,
+     "raw": "$6.99"
+    }
+   ],
+   "price": {
+    "value": 6.99,
+    "raw": "$6.99"
+   }
+  }
+ ],
+ "search_information": {
+  "original_search_term": "lego printed tiles lot"
+ },
+ "pagination": {
+  "has_next_page": true,
+  "next_page": 2,
+  "current_page": 1,
+  "total_results": 818
+ }
+}

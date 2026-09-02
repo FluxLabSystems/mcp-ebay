@@ -1,0 +1,118 @@
+{
+ "request_info": {
+  "success": true,
+  "credits_used": null,
+  "credits_remaining": null,
+  "credits_used_this_request": null
+ },
+ "request_parameters": {
+  "type": "product",
+  "url": "https://www.ebay.ca/itm/287557851282",
+  "customer_location": "ca"
+ },
+ "request_metadata": {
+  "created_at": "2026-09-02T17:43:00.710Z",
+  "processed_at": "2026-09-02T17:43:09.040Z",
+  "total_time_taken": 8.33,
+  "ebay_url": "https://www.ebay.ca/itm/287557851282?_fcid=2"
+ },
+ "product": {
+  "is_master": false,
+  "title": "LEGO Vintage Castle & Viking Minifigure Weapons Accessories Lot - Shields, Helme",
+  "categories": [
+   {
+    "name": "Toys & Hobbies",
+    "link": "https://www.ebay.ca/b/Toys-Hobbies/220/bn_1865497"
+   },
+   {
+    "name": "Building Toys",
+    "link": "https://www.ebay.ca/b/Building-Toys/183446/bn_1865257"
+   },
+   {
+    "name": "LEGO (R) Building Toys",
+    "link": "https://www.ebay.ca/b/LEGO-R-Building-Toys/183447/bn_1937200"
+   },
+   {
+    "name": "LEGO (R) Bricks, Pieces & Parts",
+    "link": "https://www.ebay.ca/b/LEGO-R-Bricks-Pieces-Parts/183448/bn_16564827"
+   }
+  ],
+  "images": [
+   {
+    "link": "https://i.ebayimg.com/images/g/tQkAAeSwhFRqlpr0/s-l1600.png"
+   }
+  ],
+  "image_count": 1,
+  "primary_image": "https://i.ebayimg.com/thumbs/images/g/tQkAAeSwhFRqlpr0/s-l500.jpg",
+  "description": "LEGO Vintage Castle & Viking Minifigure Weapons Accessories Lot - Shields, Helme | eBay",
+  "description_external_url": "https://itm.ebaydesc.com/itmdesc/287557851282?t=0&category=183448&seller=bageltremors&excSoj=1&ver=1&excTrk=1&lsite=3&ittenable=false&domain=ebay.com&descgauge=1&cspheader=1&oneClk=2&secureDesc=1&lang=en",
+  "attributes": [
+   {
+    "name": "Condition",
+    "value": "Used"
+   },
+   {
+    "name": "Seller Notes",
+    "value": "“Used (Good condition, minimal play wear, authentic LEGO pieces).”"
+   },
+   {
+    "name": "Brand",
+    "value": "LEGO"
+   },
+   {
+    "name": "LEGO Theme",
+    "value": "Castle"
+   },
+   {
+    "name": "Features",
+    "value": "Vintage"
+   },
+   {
+    "name": "Material",
+    "value": "Plastic"
+   },
+   {
+    "name": "Country of Origin",
+    "value": "Denmark"
+   }
+  ],
+  "brand": "LEGO"
+ },
+ "returns_policy": {
+  "raw": "No returns accepted.",
+  "returns_accepted": false
+ },
+ "stock_status": {
+  "raw": "https://schema.org/InStock",
+  "status": "in_stock",
+  "quantity_available": 0
+ },
+ "condition": {
+  "raw": "Used",
+  "name": "used",
+  "is_new": false,
+  "is_used": true
+ },
+ "is_auction": false,
+ "offer": {
+  "price": 15,
+  "currency": "CAD"
+ },
+ "seller": {
+  "name": "bageltremors",
+  "link": "https://www.ebay.ca/sch/bageltremors/m.html?item=287557851282&rt=nc&_trksid=p4429486.m3561.l161211"
+ },
+ "promotion": {
+  "why_buy": [
+   "This item was listed in the last 3 days."
+  ]
+ },
+ "shipping": {
+  "price": "GBP 21.56 ",
+  "service": "International Priority Shipping",
+  "location": "Steyning, United Kingdom",
+  "deliveryEstimate": "Wed, Sep 23 and Wed, Oct 7",
+  "link": "https://www.ebay.ca/sch/bageltremors/m.html?item=287557851282&rt=nc&_trksid=p4429486.m3561.l161211",
+  "ships_to": "Antigua and Barbuda, Aruba, Australia, and many other countries"
+ }
+}

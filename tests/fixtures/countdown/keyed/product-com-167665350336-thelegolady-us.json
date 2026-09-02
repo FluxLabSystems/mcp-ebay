@@ -1,0 +1,141 @@
+{
+ "request_info": {
+  "success": true,
+  "credits_used": null,
+  "credits_remaining": null,
+  "credits_used_this_request": null
+ },
+ "request_parameters": {
+  "type": "product",
+  "url": "https://www.ebay.com/itm/167665350336",
+  "customer_location": "us"
+ },
+ "request_metadata": {
+  "created_at": "2026-09-02T17:44:04.880Z",
+  "processed_at": "2026-09-02T17:44:13.501Z",
+  "total_time_taken": 8.62,
+  "ebay_url": "https://www.ebay.com/itm/167665350336?_fcid=1"
+ },
+ "product": {
+  "is_master": false,
+  "title": "Genuine LEGO | Street Skater Torso col057 | Series 4 Collectible | 973pb0843c01",
+  "categories": [
+   {
+    "name": "Toys & Hobbies",
+    "link": "https://www.ebay.com/b/Toys-Hobbies/220/bn_1865497"
+   },
+   {
+    "name": "Building Toys",
+    "link": "https://www.ebay.com/b/Building-Toys/183446/bn_1865257"
+   },
+   {
+    "name": "LEGO (R) Building Toys",
+    "link": "https://www.ebay.com/b/LEGO-R-Building-Toys/183447/bn_1937200"
+   },
+   {
+    "name": "LEGO (R) Minifigures",
+    "link": "https://www.ebay.com/b/LEGO-R-Minifigures/263012/bn_7118539159"
+   }
+  ],
+  "images": [
+   {
+    "link": "https://i.ebayimg.com/images/g/oqEAAeSwQkRof70s/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/sK4AAeSw1ypof70s/s-l1600.jpg"
+   }
+  ],
+  "image_count": 2,
+  "primary_image": "https://i.ebayimg.com/thumbs/images/g/oqEAAeSwQkRof70s/s-l500.jpg",
+  "description": "Genuine LEGO | Street Skater Torso col057 | Series 4 Collectible | 973pb0843c01 | eBay",
+  "description_external_url": "https://itm.ebaydesc.com/itmdesc/167665350336?t=1753193269000&category=263012&seller=thelegolady&excSoj=1&ver=1&excTrk=1&lsite=3&ittenable=true&domain=ebay.com&descgauge=1&cspheader=1&oneClk=2&secureDesc=1&lang=en",
+  "attributes": [
+   {
+    "name": "Condition",
+    "value": "Used"
+   },
+   {
+    "name": "Seller Notes",
+    "value": "“Very good, clean condition.”"
+   },
+   {
+    "name": "LEGO Theme",
+    "value": "Collectible"
+   },
+   {
+    "name": "Brand",
+    "value": "LEGO"
+   },
+   {
+    "name": "Type",
+    "value": "Minifigure"
+   },
+   {
+    "name": "Release Year",
+    "value": "2011"
+   },
+   {
+    "name": "LEGO Character",
+    "value": "Street Skater"
+   },
+   {
+    "name": "Packaging",
+    "value": "Ziplock Bag"
+   },
+   {
+    "name": "Minifigure Number",
+    "value": "col057"
+   },
+   {
+    "name": "MPN",
+    "value": "Does Not Apply"
+   },
+   {
+    "name": "Features",
+    "value": "Washed/Sanitized"
+   },
+   {
+    "name": "LEGO Subtheme",
+    "value": "Series 4"
+   },
+   {
+    "name": "Country of Origin",
+    "value": "Denmark"
+   }
+  ],
+  "brand": "LEGO",
+  "model_number": "Does Not Apply"
+ },
+ "returns_policy": {
+  "raw": "Seller does not accept returns.",
+  "returns_accepted": false
+ },
+ "stock_status": {
+  "raw": "https://schema.org/InStock",
+  "status": "in_stock",
+  "quantity_available": 0
+ },
+ "condition": {
+  "raw": "Used",
+  "name": "used",
+  "is_new": false,
+  "is_used": true
+ },
+ "is_auction": false,
+ "offer": {
+  "price": 1.5,
+  "currency": "USD"
+ },
+ "seller": {
+  "name": "thelegolady",
+  "link": "https://www.ebay.com/sch/thelegolady/m.html?item=167665350336&rt=nc&_trksid=p4429486.m3561.l161211"
+ },
+ "shipping": {
+  "price": "GBP 12.00 ",
+  "service": "Royal Mail International Tracked",
+  "location": "Holmfirth, United Kingdom",
+  "deliveryEstimate": "Wed, Sep 9 and Thu, Sep 17",
+  "link": "https://www.ebay.com/sch/thelegolady/m.html?item=167665350336&rt=nc&_trksid=p4429486.m3561.l161211",
+  "ships_to": "Worldwide"
+ }
+}

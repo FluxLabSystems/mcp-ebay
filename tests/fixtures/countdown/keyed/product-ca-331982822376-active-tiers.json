@@ -1,0 +1,117 @@
+{
+ "request_info": {
+  "success": true,
+  "credits_used": null,
+  "credits_remaining": null,
+  "credits_used_this_request": null
+ },
+ "request_parameters": {
+  "type": "product",
+  "url": "https://www.ebay.ca/itm/331982822376",
+  "customer_location": "ca"
+ },
+ "request_metadata": {
+  "created_at": "2026-09-02T17:43:23.793Z",
+  "processed_at": "2026-09-02T17:43:27.495Z",
+  "total_time_taken": 3.7,
+  "ebay_url": "https://www.ebay.ca/itm/331982822376?_fcid=2"
+ },
+ "product": {
+  "is_master": false,
+  "title": "LEGO - Printed Tiles Lot 1x1 1x2 2x2 - Decorated Flat Plate Smooth Round Square",
+  "categories": [
+   {
+    "name": "Toys & Hobbies",
+    "link": "https://www.ebay.ca/b/Toys-Hobbies/220/bn_1865497"
+   },
+   {
+    "name": "Building Toys",
+    "link": "https://www.ebay.ca/b/Building-Toys/183446/bn_1865257"
+   },
+   {
+    "name": "LEGO (R) Building Toys",
+    "link": "https://www.ebay.ca/b/LEGO-R-Building-Toys/183447/bn_1937200"
+   },
+   {
+    "name": "LEGO (R) Bricks, Pieces & Parts",
+    "link": "https://www.ebay.ca/b/LEGO-R-Bricks-Pieces-Parts/183448/bn_16564827"
+   }
+  ],
+  "images": [
+   {
+    "link": "https://i.ebayimg.com/images/g/h0EAAOSwYIxX-TnX/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/t7QAAOSwyQtVqBLx/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/qM0AAOSwBp9aaitw/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/l4gAAOSwy1Naait1/s-l1600.jpg"
+   }
+  ],
+  "image_count": 4,
+  "primary_image": "https://i.ebayimg.com/thumbs/images/g/h0EAAOSwYIxX-TnX/s-l500.jpg",
+  "description": "LEGO - Printed Tiles Lot 1x1 1x2 2x2 - Decorated Flat Plate Smooth Round Square | eBay",
+  "description_external_url": "https://itm.ebaydesc.com/itmdesc/331982822376?t=1639768351000&category=183448&seller=almtshop88&excSoj=1&ver=1&excTrk=1&lsite=0&ittenable=false&domain=ebay.com&descgauge=1&cspheader=1&oneClk=2&secureDesc=1&variationId=541028810009&lang=en",
+  "attributes": [
+   {
+    "name": "Condition",
+    "value": "Used"
+   },
+   {
+    "name": "Seller Notes",
+    "value": "“Lot includes mostly brand new parts as well as parts in very good used condition. Lots are random ... "
+   },
+   {
+    "name": "Brand",
+    "value": "LEGO"
+   },
+   {
+    "name": "Country of Origin",
+    "value": "Denmark"
+   }
+  ],
+  "brand": "LEGO"
+ },
+ "returns_policy": {
+  "raw": "30 days return. Seller pays for return shipping.",
+  "returns_accepted": true
+ },
+ "stock_status": {
+  "raw": "https://schema.org/InStock",
+  "status": "in_stock",
+  "quantity_available": 5,
+  "quantity_sold": 121
+ },
+ "condition": {
+  "raw": "Used",
+  "name": "used",
+  "is_new": false,
+  "is_used": true
+ },
+ "is_auction": false,
+ "offer": {
+  "price": 2.29,
+  "currency": "CAD"
+ },
+ "seller": {
+  "name": "Bluebird Brick Designs",
+  "link": "https://www.ebay.ca/str/almtshop88"
+ },
+ "promotion": {
+  "why_buy": [
+   "Free returns.",
+   "121 have already sold."
+  ]
+ },
+ "shipping": {
+  "price": "7.95 ",
+  "service": "Standard Shipping",
+  "location": "Reno, Nevada, United States",
+  "deliveryEstimate": "Thu, Sep 10 and Wed, Sep 16",
+  "link": "https://www.ebay.ca/str/almtshop88",
+  "ships_to": "Albania, Algeria, American Samoa, and many other countries"
+ }
+}
