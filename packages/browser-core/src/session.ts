@@ -4,7 +4,7 @@
  * wraps one persistent Chrome context; tabs and element refs are explicit
  * application state, never MCP transport state.
  */
-import type { BrowserContext, Page, Route, Request } from 'playwright';
+import type { BrowserContext, Frame, Page, Route, Request } from 'playwright';
 import { BridgeError, newBrowserSessionHandle, newTabId, type Tab } from '@browser-bridge/protocol';
 import type { PagePolicy } from './policyHooks.js';
 
@@ -76,6 +76,11 @@ class SerialQueue {
   }
 }
 
+/** What became of a popup a page opened (see BrowserSessionRuntime.popupOutcome). */
+export type PopupOutcome =
+  | { kind: 'adopted'; tabId: string; url: string }
+  | { kind: 'denied'; url: string };
+
 export interface SessionEvents {
   onContextClosed?: (handle: string) => void;
   onDownloadBlocked?: (url: string) => void;
@@ -89,6 +94,13 @@ export class BrowserSessionRuntime {
   readonly policy: PagePolicy;
   private readonly context: BrowserContext;
   private readonly tabs = new Map<string, TabState>();
+  private readonly popupDecisions = new WeakMap<Page, Promise<PopupOutcome>>();
+  /**
+   * Popup URLs the route layer refused before their page existed, in
+   * order; the next 'page' event consumes the head. Commands run serially
+   * per session (enqueue), so a click's own popup is the one it sees.
+   */
+  private readonly deniedPopupUrls: string[] = [];
   private readonly pageToTab = new WeakMap<Page, TabState>();
   private readonly queue = new SerialQueue();
   private closed = false;
@@ -144,19 +156,49 @@ export class BrowserSessionRuntime {
   private installContextHandlers(): void {
     this.context.on('page', (page) => {
       // Popup / window.open: validate the target before adopting (§19.1).
-      void (async () => {
+      // The decision is recorded per page so the action that opened the
+      // popup can report its fate (click() → PopupOutcome).
+      const decision = (async (): Promise<PopupOutcome> => {
         const url = page.url();
+        // A popup whose first request the route layer aborted surfaces
+        // here on Chrome's error page (chrome-error://chromewebdata/), not
+        // on the URL that was refused. Report the refused URL — it is the
+        // one a reader can act on — and close the shell.
+        const refused = this.deniedPopupUrls.shift();
+        if (refused !== undefined) {
+          await page.close().catch(() => undefined);
+          return { kind: 'denied', url: refused };
+        }
         if (url && url !== 'about:blank') {
-          const decision = await this.policy.checkUrl(url, 'popup');
-          if (!decision.allowed) {
+          const verdict = await this.policy.checkUrl(url, 'popup');
+          if (!verdict.allowed) {
             this.events.onPopupDenied?.(url);
             await page.close().catch(() => undefined);
-            return;
+            return { kind: 'denied', url };
           }
         }
-        this.adoptPage(page);
+        const tab = this.adoptPage(page);
+        return { kind: 'adopted', tabId: tab.tabId, url: page.url() };
       })();
+      this.popupDecisions.set(page, decision);
+      void decision;
     });
+  }
+
+  /**
+   * The recorded fate of a popup page: adopted as a tab, or denied by the
+   * URL policy and closed. Resolves once the context handler has decided;
+   * a page this session never saw as a popup (or one whose request was
+   * aborted before it surfaced) resolves null after `timeoutMs`.
+   */
+  async popupOutcome(page: Page, timeoutMs: number): Promise<PopupOutcome | null> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const decision = this.popupDecisions.get(page);
+      if (decision !== undefined) return decision;
+      if (Date.now() >= deadline) return null;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
   }
 
   private adoptPage(page: Page): TabState {
@@ -210,17 +252,36 @@ export class BrowserSessionRuntime {
         return;
       }
 
+      // A popup's very first request has no frame yet: request.frame()
+      // THROWS ("issued before the frame is created"). Before 2026-09-02
+      // that throw escaped this handler, the request was neither continued
+      // nor aborted, the popup never loaded, and no 'page'/'popup' event
+      // ever fired — a target=_blank control clicked through the bridge
+      // produced no tab at all (wardrobe fire: Zazzle's "Personalize this
+      // design (opens in new tab)"). Such a request is by definition a
+      // popup's main-frame navigation; validate it as one.
+      const frame = frameOf(request);
+
       if (this.policy.isProtectedEndpoint(url)) {
         this.events.onRequestAborted?.(url, 'protected-endpoint');
-        const frame = request.frame();
-        const page = frame.page();
-        const tab = this.pageToTab.get(page);
+        const tab = frame === null ? undefined : this.pageToTab.get(frame.page());
         if (tab) tab.lastBlock = { url, code: 'ACTION_BLOCKED' };
         await route.abort('blockedbyclient').catch(() => undefined);
         return;
       }
 
-      const frame = request.frame();
+      if (frame === null) {
+        const decision = await this.policy.checkUrl(url, 'popup');
+        if (!decision.allowed) {
+          this.deniedPopupUrls.push(url);
+          this.events.onPopupDenied?.(url);
+          await route.abort('blockedbyclient').catch(() => undefined);
+          return;
+        }
+        await route.continue().catch(() => undefined);
+        return;
+      }
+
       const page = frame.page();
       const isMainNavigation = request.isNavigationRequest() && frame === page.mainFrame();
       const context = isMainNavigation ? (request.redirectedFrom() ? 'redirect' : 'navigation') : 'subresource';
@@ -288,6 +349,15 @@ export class BrowserSessionRuntime {
   async close(): Promise<void> {
     this.closed = true;
     await this.context.close().catch(() => undefined);
+  }
+}
+
+/** The frame a request belongs to, or null for a popup's pre-frame first request. */
+function frameOf(request: Request): Frame | null {
+  try {
+    return request.frame();
+  } catch {
+    return null;
   }
 }
 

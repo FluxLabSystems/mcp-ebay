@@ -222,7 +222,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'reversible',
     timeoutMs: INTERACTION_TIMEOUT_MS,
     description:
-      'Click a semantic target by elementRef if local policy permits. Protected transaction/account controls are always blocked locally.',
+      'Click a semantic target by elementRef if local policy permits. Protected transaction/account controls are always blocked locally. A control that opens a new tab reports it as openedTab (use that tabId with the other browser_* tools; changed stays false because the original tab did not change) or, when the popup targets a host outside the site allowlist, as popupDenied with the refused URL.',
     inputSchema: ClickInput,
     outputSchema: ClickOutput,
   },

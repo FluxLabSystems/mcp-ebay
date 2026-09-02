@@ -12,6 +12,8 @@ interface LiveElementInfo {
   accessibleName: string;
   role: string;
   href: string | null;
+  /** The anchor/form target attribute; "_blank" announces a popup. */
+  target: string | null;
   formAction: string | null;
   text: string;
   field: {
@@ -58,6 +60,7 @@ async function inspectElement(locator: Locator): Promise<LiveElementInfo> {
       accessibleName: name,
       role: el.getAttribute('role') ?? tag,
       href: el.getAttribute('href'),
+      target: el.getAttribute('target'),
       formAction: form ? form.getAttribute('action') : null,
       text,
       tag,
@@ -91,8 +94,23 @@ function toActionContext(info: LiveElementInfo, pageUrl: string): ActionContext 
 export interface ClickResult {
   pageRevision: number;
   url: string;
+  /** Whether the ORIGINAL tab changed; false for a click that only opened a popup. */
   changed: boolean;
+  /** A popup the click opened and the session adopted as a tab. */
+  openedTab: { tabId: string; url: string } | null;
+  /** A popup the URL policy refused (host outside the site allowlist) and closed. */
+  popupDenied: string | null;
 }
+
+/**
+ * How long a click waits for a popup to surface. A control announcing
+ * target=_blank gets the longer window; anything else gets a short grace
+ * so an in-place click is not taxed for a popup it never opens.
+ */
+const POPUP_WAIT_ANNOUNCED_MS = 2500;
+const POPUP_WAIT_GRACE_MS = 400;
+/** How long to wait for the context handler's adopt/deny decision once a popup exists. */
+const POPUP_DECISION_MS = 5000;
 
 export async function click(
   session: BrowserSessionRuntime,
@@ -109,11 +127,25 @@ export async function click(
   }
   const beforeRevision = tab.revision;
   const beforeUrl = tab.page.url();
+  // Listen for the popup BEFORE clicking: Playwright emits 'popup' on the
+  // opener page as soon as the new page exists, and a listener attached
+  // afterwards misses it. The 2026-09-02 wardrobe fire lost a "(opens in
+  // new tab)" click exactly that way — nothing reported the popup at all.
+  const popupWait = info.target === '_blank' ? POPUP_WAIT_ANNOUNCED_MS : POPUP_WAIT_GRACE_MS;
+  const popupPromise = tab.page.waitForEvent('popup', { timeout: popupWait }).catch(() => null);
   await locator.first().click({ timeout: timeoutMs });
   await tab.page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => undefined);
   const changed = tab.revision !== beforeRevision || tab.page.url() !== beforeUrl;
   if (!changed) tab.dirty = true;
-  return { pageRevision: tab.revision, url: tab.page.url(), changed };
+  const popup = await popupPromise;
+  let openedTab: ClickResult['openedTab'] = null;
+  let popupDenied: string | null = null;
+  if (popup !== null) {
+    const outcome = await session.popupOutcome(popup, POPUP_DECISION_MS);
+    if (outcome?.kind === 'adopted') openedTab = { tabId: outcome.tabId, url: outcome.url };
+    else if (outcome?.kind === 'denied') popupDenied = outcome.url;
+  }
+  return { pageRevision: tab.revision, url: tab.page.url(), changed, openedTab, popupDenied };
 }
 
 export interface FillResult {
