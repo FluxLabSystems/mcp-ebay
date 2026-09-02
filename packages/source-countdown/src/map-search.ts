@@ -228,8 +228,10 @@ export function mapSearchRows(input: MapSearchRowsInput): Mapped<ApiListingCandi
     );
   }
   if (candidates.length > 0) {
+    // Names the shape, not a null: the compact rows the gateway returns
+    // carry no bidCount key at all (its default field list omits it).
     warnings.push(
-      `${COUNTDOWN_WARNING.BID_COUNT_UNAVAILABLE_FROM_SOURCE}: search rows carry no bid count or time left; bidCount is null on every candidate.`,
+      `${COUNTDOWN_WARNING.BID_COUNT_UNAVAILABLE_FROM_SOURCE}: search rows carry no bid count or time left; bids and end times come only from the Bridge item page`,
     );
   }
   return { value: candidates, warnings };

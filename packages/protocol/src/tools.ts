@@ -1059,7 +1059,8 @@ export type EbayApiDestination = z.infer<typeof EbayApiDestinationSchema>;
  * de-duplicated by item id: an unfiltered vendor search reports
  * is_auction: false on live auctions (plan §1.3), so the filter a row was
  * retrieved under is the only trustworthy source of its selling format.
- * credits.used reports both requests.
+ * credits.usedThisRequest reports both requests; credits.used is the
+ * account's month-to-date total, not this call's spend.
  */
 export const EbayApiListingTypeSchema = z.enum(['all', 'buy_it_now', 'auction', 'accepts_offers']);
 export type EbayApiListingType = z.infer<typeof EbayApiListingTypeSchema>;
@@ -1353,13 +1354,27 @@ export const EbayApiSearchInput = z
 export type EbayApiSearchInputType = z.infer<typeof EbayApiSearchInput>;
 
 /**
- * The vendor's request_info, carried on every source-tool result. Null when
- * the vendor omitted a figure; never zero-filled, since "0 remaining" and
- * "did not say" differ and the reserve gate reads this.
+ * The vendor's credit figures, carried on every source-tool result. Null
+ * when the vendor omitted a figure; never zero-filled, since "0 remaining"
+ * and "did not say" differ and the reserve gate reads this.
+ *
+ * Three fields, because the vendor's own counters are account-level, not
+ * per-call (the 2026-09-02 live check: three parallel one-credit calls all
+ * reported `used: 15`):
+ * - `used` is the account's month-to-date total as the vendor reported it
+ *   (request_info.credits_used). It is NOT what this call spent.
+ * - `remaining` is the balance after the last vendor response this call
+ *   received — the figure for the completion report.
+ * - `usedThisRequest` is what this tool call spent: the vendor's
+ *   credits_used_this_request summed across every vendor request the call
+ *   issued (both halves of a split search, every item in a batch, the one
+ *   seller request). Null only when the vendor omitted the per-request
+ *   figure on every response.
  */
 export const EbayApiCreditsSchema = z.strictObject({
   used: z.union([z.int(), z.null()]),
   remaining: z.union([z.int(), z.null()]),
+  usedThisRequest: z.int().min(0).nullable(),
 });
 export type EbayApiCredits = z.infer<typeof EbayApiCreditsSchema>;
 

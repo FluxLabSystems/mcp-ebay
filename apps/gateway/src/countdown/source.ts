@@ -24,6 +24,7 @@ import {
   ebayDomainOfUrl,
   screenEbayUrl,
   type BatchExtractItem,
+  type EbayApiCredits,
   type EbayApiDestination,
   type EbayApiDomain,
   type EbayApiExpectedFormat,
@@ -179,21 +180,51 @@ function toInt(value: number | null): number | null {
   return value === null || !Number.isFinite(value) ? null : Math.trunc(value);
 }
 
+/** One charged vendor response, with what its request costs by contract when the response does not say. */
+interface SpentCredits {
+  credits: CountdownCredits;
+  /**
+   * The credits the request costs by contract — one per page fetched, so 1
+   * for a product or seller request and the pages fetched for a search —
+   * used only when the vendor omitted credits_used_this_request.
+   */
+  contractCost: number;
+}
+
 /**
- * The balance a set of responses leaves behind: the highest cumulative
- * `used` and the lowest `remaining` seen, because concurrent requests
- * answer in any order and the latest state is the one that matters.
+ * The credit figures a set of charged responses leaves behind.
+ *
+ * `used` and `remaining` are account-level, not per-call: the vendor's
+ * credits_used is its month-to-date total (the 2026-09-02 live check saw
+ * three parallel one-credit calls all report used 15), so the fold keeps
+ * the highest `used` and the lowest `remaining` seen, because concurrent
+ * requests answer in any order and the latest state is the one that
+ * matters.
+ *
+ * `usedThisRequest` is this call's own spend: credits_used_this_request
+ * summed over every response. A response that omits the figure is counted
+ * at its contract cost — a successful vendor request is charged whether or
+ * not it says so — and the sum is null only when no response carried the
+ * figure at all, so an entirely assumed total is never reported as a
+ * measured one. Failed requests are not in `seen` (the vendor documents
+ * 402, 503 and its transient 500 as uncharged), so a call nothing answered
+ * spent 0.
  */
-function foldCredits(seen: readonly CountdownCredits[]): { used: number | null; remaining: number | null } {
+function foldCredits(seen: readonly SpentCredits[]): EbayApiCredits {
   let used: number | null = null;
   let remaining: number | null = null;
-  for (const credits of seen) {
+  let spent = 0;
+  let reported = false;
+  for (const { credits, contractCost } of seen) {
     const u = toInt(credits.used);
     const r = toInt(credits.remaining);
     if (u !== null && (used === null || u > used)) used = u;
     if (r !== null && (remaining === null || r < remaining)) remaining = r;
+    const thisRequest = toInt(credits.usedThisRequest);
+    if (thisRequest !== null) reported = true;
+    spent += Math.max(0, thisRequest ?? contractCost);
   }
-  return { used, remaining };
+  return { used, remaining, usedThisRequest: seen.length > 0 && !reported ? null : spent };
 }
 
 /** `request_metadata.ebay_url`, or the first page's URL when max_page > 1 moved it into `pages[]` (§1.2). */
@@ -553,7 +584,11 @@ export class CountdownSource {
         'OFFSET_PAGING_REISSUES_REQUESTS: paging with search.offset re-issues the vendor requests and spends credits again; raise search.limit instead',
       );
     }
-    const credits = foldCredits(mapped.map((entry) => entry.result.credits));
+    // A search request costs one credit per page fetched by contract; that
+    // is the count when the vendor omits credits_used_this_request.
+    const credits = foldCredits(
+      mapped.map((entry) => ({ credits: entry.result.credits, contractCost: Math.max(1, entry.pagination.pagesFetched) })),
+    );
     this.remember(credits);
 
     return {
@@ -620,7 +655,9 @@ export class CountdownSource {
         `BATCH_DEADLINE_REACHED: ${attempted.length} of ${refs.length} item(s) were requested before the tool deadline of ${deadline.deadlineMs} ms; the rest carry SOURCE_UNAVAILABLE and can be re-issued.`,
       );
     }
-    const credits = foldCredits(slots.map((entry) => entry.credits).filter((entry): entry is CountdownCredits => entry !== null));
+    // Only slots the vendor answered are charged, one credit each by
+    // contract; a refused, failed or unattempted slot carries no credits.
+    const credits = foldCredits(slots.flatMap((entry) => (entry.credits === null ? [] : [{ credits: entry.credits, contractCost: 1 }])));
     this.remember(credits);
     return {
       mode: 'inline',
@@ -738,7 +775,7 @@ export class CountdownSource {
       resolved: seller !== null,
       seller,
       warnings: mapped.warnings,
-      credits: foldCredits([result.credits]),
+      credits: foldCredits([{ credits: result.credits, contractCost: 1 }]),
       requestIds: result.requestId === null ? [] : [result.requestId],
     };
   }

@@ -109,6 +109,19 @@ export function mapSellerProfile(input: MapSellerProfileInput): MapSellerProfile
   }
 
   const followersText = typeof seller.followers === 'number' ? `${seller.followers}` : nonEmpty(seller.followers);
+  const memberSince = nonEmpty(seller.member_since);
+  const location = nonEmpty(seller.location);
+  const topRated = typeof seller.top_rated_seller === 'boolean' ? seller.top_rated_seller : null;
+  const description = truncate(nonEmpty(seller.description), DESCRIPTION_MAX);
+  if (memberSince === null && location === null && topRated === null && description === null) {
+    // Measured (§1.3, and again on the 2026-09-02 live check): the /usr/
+    // form of a real, resolved store seller carried none of the four. Said
+    // once, so a caller can tell "the vendor omitted it" from "the seller
+    // has none" — four nulls alone cannot.
+    warnings.push(
+      `${COUNTDOWN_WARNING.SELLER_FIELDS_ABSENT_FROM_SOURCE}: the vendor returned no member-since, location, top-rated or description for this profile`,
+    );
+  }
   return {
     resolved: true,
     seller: {
@@ -117,13 +130,13 @@ export function mapSellerProfile(input: MapSellerProfileInput): MapSellerProfile
       loginId,
       storeSlug,
       storeUrl,
-      memberSince: nonEmpty(seller.member_since),
+      memberSince,
       positivePercent: readNumber(seller.positive_ratings_percent),
       followers: readInt(seller.followers),
       followersText,
-      location: nonEmpty(seller.location),
-      topRated: typeof seller.top_rated_seller === 'boolean' ? seller.top_rated_seller : null,
-      description: truncate(nonEmpty(seller.description), DESCRIPTION_MAX),
+      location,
+      topRated,
+      description,
       imageUrl: nonEmpty(seller.image),
     },
     warnings,

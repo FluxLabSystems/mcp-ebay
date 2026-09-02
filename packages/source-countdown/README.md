@@ -34,7 +34,9 @@ proves them against `tests/fixtures/countdown/`.
 - **`shipping_cost` absent means unknown, never free** (40 of 60 ebay.ca rows,
   3 of 60 ebay.com rows carry one). `shippingSnippetText` is always null.
 - **Search rows carry no bid count or time left.** `bidCount` is null on every
-  candidate with one `BID_COUNT_UNAVAILABLE_FROM_SOURCE` warning.
+  mapped candidate (the gateway's default field list omits the key entirely)
+  with one `BID_COUNT_UNAVAILABLE_FROM_SOURCE` warning; bids and end times
+  come only from the Bridge item page.
 - **`condition` can have the seller's subtitle glued in front** with no
   separator ("…Buy From NeweggBrand New"); it is normalised to the trailing
   token of eBay's vocabulary with the raw kept in `conditionRaw`.
@@ -61,6 +63,9 @@ proves them against `tests/fixtures/countdown/`.
   that is NOT a login id (`tweedsidesales` is `/str/jeremydoherty`) and is
   stored as `sellerStoreSlug` with `seller: null`. A seller profile fetched by
   `/usr/` URL returns a `/str/` link, so `loginId` comes from the requested URL.
+  That profile carried no `member_since`, `location`, `top_rated_seller` or
+  `description`; when all four are missing `mapSellerProfile` warns
+  `SELLER_FIELDS_ABSENT_FROM_SOURCE`, so omission is not read as absence.
 - **"Product not found." arrives as HTTP 200** with `success: true` and no
   `product` block; `redirected: true` is the other unavailable case. Both map
   to `status: 'unavailable'`, `listingStatus: 'unavailable'`.
