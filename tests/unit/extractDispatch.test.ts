@@ -164,6 +164,25 @@ describe('browser_extract dispatches by page kind instead of refusing', () => {
     expect(parsed.warnings.some((warning) => warning.startsWith('NO_LISTING_CANDIDATES'))).toBe(true);
   });
 
+  // wardrobe-vendors.v1 ships no extractor. Before this branch a vendor
+  // page fell through to the eBay listing extractor and came back as an
+  // all-null eBay record — plausible-looking junk. Now it says so.
+  it('a wardrobe-vendor page reports that no extractor exists instead of an eBay-shaped null record', async () => {
+    const outcome = await runExtract(
+      'https://www.vistaprint.ca/clothing-bags/polos/embroidered-polo-shirts',
+      '<html><head><title>Embroidered Polo Shirts | Vistaprint</title></head><body><a href="/clothing-bags/polos/p1">Polo</a></body></html>',
+      'zazzle.com.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    expect(parsed.siteProfile).toBe('wardrobe-vendors.v1');
+    const record = parsed.record as { pageKind: string; pageTitle: string; pageUrl: string };
+    expect(record.pageKind).toBe('other');
+    expect(record.pageTitle).toBe('Embroidered Polo Shirts | Vistaprint');
+    expect(record.pageUrl).toContain('vistaprint.ca');
+    expect(parsed.warnings.some((warning) => warning.startsWith('NO_EXTRACTOR_FOR_HOST'))).toBe(true);
+    expect('itemId' in record).toBe(false);
+  });
+
   it('an unclassified Kijiji page still extracts rather than refusing', async () => {
     const outcome = await runExtract(
       'https://www.kijiji.ca/',
