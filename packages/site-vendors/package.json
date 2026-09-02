@@ -1,0 +1,20 @@
+{
+  "name": "@browser-bridge/site-vendors",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "wardrobe-vendors.v1 site profile: a data-driven roster of personalized-apparel vendor hosts the Fluxology wardrobe routine researches through the Bridge, behind the same strict read-only walls as the marketplace profiles (policy only, no extractor)",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@browser-bridge/policy": "workspace:*"
+  }
+}

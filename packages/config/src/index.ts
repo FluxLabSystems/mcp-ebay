@@ -231,7 +231,7 @@ export const AgentEnvSchema = z.object({
    * default enables every profile compiled into the agent; narrow it to
    * e.g. "ebay.ca.v1" to pin a session to one marketplace.
    */
-  AGENT_SITE_PROFILES: z.string().default('ebay.ca.v1,kijiji.ca.v1,zazzle.com.v1'),
+  AGENT_SITE_PROFILES: z.string().default('ebay.ca.v1,kijiji.ca.v1,zazzle.com.v1,wardrobe-vendors.v1'),
   /**
    * Scheduled-task name the console dashboard probes for install/run state.
    * Override only when install-logon-task.ps1 was run with -TaskName.

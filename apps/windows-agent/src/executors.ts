@@ -69,6 +69,7 @@ import {
   kijijiSearchUrlWarnings,
   normalizeKijijiImageUrl,
 } from '@browser-bridge/site-kijiji';
+import { isWardrobeVendorHost, WARDROBE_VENDORS_SITE_PROFILE_ID } from '@browser-bridge/site-vendors';
 import {
   classifyZazzlePage,
   extractZazzleProduct,
@@ -150,7 +151,7 @@ function kijijiGalleryHints(): GalleryHints {
   };
 }
 
-type ExtractionSite = 'ebay' | 'kijiji' | 'zazzle' | 'generic';
+type ExtractionSite = 'ebay' | 'kijiji' | 'zazzle' | 'vendor' | 'generic';
 
 /**
  * Extraction dispatches by the page actually loaded, not by the session's
@@ -165,6 +166,8 @@ function siteForUrl(pageUrl: string): ExtractionSite {
     if (host === 'kijiji.ca' || host.endsWith('.kijiji.ca')) return 'kijiji';
     if (/(?:^|\.)ebay\.(?:ca|com)$/.test(host)) return 'ebay';
     if (/(?:^|\.)zazzle\.(?:com|ca)$/.test(host)) return 'zazzle';
+    // Policy-only wardrobe vendor roster: reachable, but no extractor.
+    if (isWardrobeVendorHost(host)) return 'vendor';
     return 'generic';
   } catch {
     return 'generic';
@@ -561,7 +564,9 @@ async function executeExtract(
         ? KIJIJI_SITE_PROFILE_ID
         : site === 'zazzle'
           ? ZAZZLE_SITE_PROFILE_ID
-          : EBAY_SITE_PROFILE_ID;
+          : site === 'vendor'
+            ? WARDROBE_VENDORS_SITE_PROFILE_ID
+            : EBAY_SITE_PROFILE_ID;
     if (declaredSiteProfile !== activeProfile) {
       intentWarnings.push(
         `DECLARED_SITE_PROFILE_MISMATCH: extraction ran ${activeProfile} for ${pageUrl}; the call declared ${declaredSiteProfile}.`,
@@ -586,7 +591,9 @@ async function executeExtract(
           ? EBAY_SITE_PROFILE_ID
           : site === 'zazzle'
             ? ZAZZLE_SITE_PROFILE_ID
-            : declaredSiteProfile;
+            : site === 'vendor'
+              ? WARDROBE_VENDORS_SITE_PROFILE_ID
+              : declaredSiteProfile;
     return {
       result: {
         siteProfile: activeProfile,
@@ -598,6 +605,34 @@ async function executeExtract(
           observedAt: source.capturedAt.toISOString(),
         },
         warnings: [...intentWarnings, challengeWarning(challenge)],
+      },
+      pageRevision: tab.revision,
+      artifacts: [],
+    };
+  }
+
+  // wardrobe-vendors.v1 is a policy-only profile: its hosts are reachable
+  // for navigate/snapshot/click/screenshot, but nothing here knows their
+  // page structure. Before this branch a vendor page fell through to the
+  // eBay listing extractor and came back as an all-null eBay record —
+  // plausible-looking junk. Say so instead, and hand back the little that
+  // is host-independent: the page's own title and URL.
+  if (site === 'vendor') {
+    return {
+      result: {
+        siteProfile: WARDROBE_VENDORS_SITE_PROFILE_ID,
+        pageRevision: tab.revision,
+        record: {
+          siteProfile: WARDROBE_VENDORS_SITE_PROFILE_ID,
+          pageKind: 'other',
+          pageUrl,
+          pageTitle: normalizeTitle(document.querySelector('title')?.textContent),
+          observedAt: source.capturedAt.toISOString(),
+        },
+        warnings: [
+          ...intentWarnings,
+          `NO_EXTRACTOR_FOR_HOST: ${pageUrl} is on the wardrobe-vendors.v1 roster, which is policy-only — no extractor exists for this vendor. Read the page with browser_snapshot (structure, prices, personalization controls) or browser_screenshot; every value must be recorded with its provenance as observed on the page, never inferred from this record.`,
+        ],
       },
       pageRevision: tab.revision,
       artifacts: [],

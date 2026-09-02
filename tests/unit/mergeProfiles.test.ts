@@ -64,6 +64,7 @@ describe('AGENT_SITE_PROFILES config', () => {
       'ebay.ca.v1',
       'kijiji.ca.v1',
       'zazzle.com.v1',
+      'wardrobe-vendors.v1',
     ]);
   });
 
