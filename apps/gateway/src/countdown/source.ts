@@ -19,7 +19,7 @@ import { compactItemRecord, compactSearchPage } from '@browser-bridge/compact';
 import type { CountdownConfig } from '@browser-bridge/config';
 import {
   BridgeError,
-  DEFAULT_SEARCH_COMPACTION,
+  EBAY_API_DEFAULT_SEARCH_COMPACTION,
   EBAY_API_SELLER_DESCRIPTION_MAX_CHARS,
   ebayDomainOfUrl,
   screenEbayUrl,
@@ -63,6 +63,12 @@ export const SELLER_TOOL_NAME = 'ebay_api_seller';
 export const SOURCE_AUDIT_ACTION_CLASS = 'source';
 
 /**
+ * How long a refused search or item call trusts the remembered balance
+ * before asking the vendor's free account endpoint again (assertCredits).
+ */
+export const CREDIT_PROBE_MIN_INTERVAL_MS = 60_000;
+
+/**
  * Candidate keys kept when the caller names no `search.fields`. The
  * compactor's own eBay default was chosen for what a rendered result card
  * carries; an API row carries different things. shippingCost is the whole
@@ -95,6 +101,19 @@ export interface SourceCaller {
   traceparent: string | null;
 }
 
+/**
+ * The catalog deadline a call runs under, shared with the MCP layer that
+ * enforces it: registerSourceTools (./tools.ts) races each handler against
+ * its entry's timeoutMs and flips `expired` when the race is lost. The item
+ * pool reads the flag before every vendor request, because once the caller
+ * has been answered with SOURCE_UNAVAILABLE a request issued after that
+ * spends a credit on a result nobody receives.
+ */
+export interface SourceDeadline {
+  readonly deadlineMs: number;
+  expired: boolean;
+}
+
 export interface CountdownSourceOptions {
   config: CountdownConfig;
   /** Audit rows go to store.audit, one per upstream call. */
@@ -105,7 +124,7 @@ export interface CountdownSourceOptions {
   /** Tests only: the client's retry backoff and its sleep. */
   retryDelaysMs?: readonly number[];
   sleep?: (ms: number) => Promise<void>;
-  /** Clock for observedAt stamps and audit rows; defaults to the wall clock. */
+  /** Clock for observedAt stamps, audit rows and the account-probe throttle; defaults to the wall clock. */
   now?: () => Date;
 }
 
@@ -120,7 +139,10 @@ interface SearchPlan {
 }
 
 interface ItemRef {
+  /** The URL as the caller gave it (or built from its itemId); echoed on the slot so results line up with the input. */
   url: string;
+  /** The WHATWG-normalised href, the only form handed to the vendor. */
+  vendorUrl: string;
   domain: EbayApiDomain;
   expectedFormat: EbayApiExpectedFormat | undefined;
 }
@@ -131,6 +153,14 @@ interface ItemSlot {
   credits: CountdownCredits | null;
   /** True when the reserve gate, not the vendor, refused this slot. */
   refusedByReserve: boolean;
+  /** True when the tool deadline passed before the pool reached this slot; no vendor request was made. */
+  unattempted: boolean;
+}
+
+interface ScreenedUrl {
+  domain: EbayApiDomain;
+  /** The parsed, normalised form — what the vendor is given. */
+  href: string;
 }
 
 /** eBay's own query-string spelling of each listing filter. */
@@ -205,9 +235,15 @@ function withListingFilter(url: string, filter: EbayApiRetrievedUnder): string {
  * an unfiltered vendor search reports is_auction false on live auctions
  * (§1.3), so one is never issued. A url search that already carries one
  * filter is one request under that filter; one that carries none gets the
- * filter added to its query string, twice.
+ * filter added to its query string, twice. `url` is the screened,
+ * normalised href of a url search, null for a term search.
  */
-function buildSearchPlans(input: EbayApiSearchInputType, domain: EbayApiDomain, location: LocationParams): SearchPlan[] {
+function buildSearchPlans(
+  input: EbayApiSearchInputType,
+  domain: EbayApiDomain,
+  location: LocationParams,
+  url: string | null,
+): SearchPlan[] {
   const common: CountdownSearchParams = {
     num: input.num,
     ...(input.maxPage > 1 ? { maxPage: input.maxPage } : {}),
@@ -215,8 +251,7 @@ function buildSearchPlans(input: EbayApiSearchInputType, domain: EbayApiDomain, 
     allowRewrittenResults: input.allowRewrittenResults,
   };
   const filters: EbayApiRetrievedUnder[] = input.listingType === 'all' ? ['buy_it_now', 'auction'] : [input.listingType];
-  if (input.url !== undefined) {
-    const url = input.url;
+  if (url !== null) {
     const declared = listingFilterOfUrl(url);
     if (declared !== null) return [{ retrievedUnder: declared, params: { ...common, url } }];
     return filters.map((filter) => ({ retrievedUnder: filter, params: { ...common, url: withListingFilter(url, filter) } }));
@@ -261,6 +296,30 @@ function truncate(text: string | null, max: number): string | null {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
+/** The slot for an item the pool never requested because the tool deadline had passed. */
+function unattemptedSlot(ref: ItemRef, deadline: SourceDeadline): ItemSlot {
+  return {
+    slot: {
+      url: ref.url,
+      finalUrl: null,
+      ok: false,
+      siteProfile: EBAY_API_SITE_PROFILE_ID,
+      pageRevision: 0,
+      record: null,
+      warnings: [],
+      error: {
+        code: 'SOURCE_UNAVAILABLE',
+        message: `Not requested: the tool deadline of ${deadline.deadlineMs} ms passed before the pool reached this item; re-issue it.`,
+        retryable: true,
+      },
+    },
+    requestId: null,
+    credits: null,
+    refusedByReserve: false,
+    unattempted: true,
+  };
+}
+
 export class CountdownSource {
   readonly creditReserve: number;
   readonly maxConcurrency: number;
@@ -269,8 +328,19 @@ export class CountdownSource {
   private readonly store: Pick<Store, 'audit'>;
   private readonly logger: Logger | null;
   private readonly now: () => Date;
-  /** The vendor's last reported credits_remaining; null until a response says. */
+  /** The last accepted credits_remaining; null until a response says. */
   private remaining: number | null = null;
+  /**
+   * The highest cumulative credits_used accepted so far. Parallel responses
+   * land in any order, so a balance is taken only from a response at least
+   * this far along (see remember): without it, two requests reporting 501
+   * then 499 left the memory at 501 whenever the 501 arrived last.
+   */
+  private lastUsed: number | null = null;
+  /** When the account endpoint was last asked for the balance, on the injected clock; null until it was. */
+  private lastProbeAt: number | null = null;
+  /** The probe in flight, shared by every call that hits the gate while it runs. */
+  private probeInFlight: Promise<void> | null = null;
 
   constructor(options: CountdownSourceOptions) {
     this.config = options.config;
@@ -300,15 +370,96 @@ export class CountdownSource {
    * credit, rare, and the confirmation step of the deals rules) still run.
    * An unknown balance never blocks: the first call of a process is how the
    * balance becomes known.
+   *
+   * A shut gate would never reopen on its own — nothing charged runs while
+   * it is shut, so nothing would ever report the topped-up balance — so a
+   * call about to be refused first re-reads the balance from the vendor's
+   * free account endpoint, at most once a minute, and is refused only if
+   * the fresh figure is still below the reserve.
    */
-  assertCredits(kind: SourceCallKind): void {
+  async assertCredits(kind: SourceCallKind, caller?: SourceCaller): Promise<void> {
     if (kind === 'seller') return;
-    if (this.remaining === null || this.remaining >= this.creditReserve) return;
+    if (this.belowReserve() && this.probeIsStale()) await this.probeAccount(kind, caller);
+    if (!this.belowReserve()) return;
     throw new BridgeError(
       'SOURCE_CREDITS_EXHAUSTED',
       `Countdown API credit reserve reached: ${this.remaining} credit(s) remain, below the reserve of ${this.creditReserve}; ${kind} calls are refused until the balance is topped up (seller lookups still run).`,
       { creditsRemaining: this.remaining, creditReserve: this.creditReserve, kind, gate: true },
     );
+  }
+
+  private belowReserve(): boolean {
+    return this.remaining !== null && this.remaining < this.creditReserve;
+  }
+
+  private probeIsStale(): boolean {
+    return this.lastProbeAt === null || this.now().getTime() - this.lastProbeAt >= CREDIT_PROBE_MIN_INTERVAL_MS;
+  }
+
+  /** One probe at a time: the slots of a batch that all hit the gate together share it. */
+  private probeAccount(kind: SourceCallKind, caller: SourceCaller | undefined): Promise<void> {
+    if (this.probeInFlight === null) {
+      this.probeInFlight = this.readAccount(kind, caller).finally(() => {
+        this.probeInFlight = null;
+      });
+    }
+    return this.probeInFlight;
+  }
+
+  /**
+   * GET /account is free (§1.2) and authoritative, so its figures replace
+   * the memory outright instead of passing through remember()'s ordering
+   * rule: a renewed plan resets credits_used, which that rule would read as
+   * a stale response. A failed probe changes nothing — the memory stands
+   * and the gate stays shut — and either way the probe leaves an audit row
+   * like every other upstream call.
+   */
+  private async readAccount(kind: SourceCallKind, caller: SourceCaller | undefined): Promise<void> {
+    this.lastProbeAt = this.now().getTime();
+    const toolName = kind === 'search' ? SEARCH_TOOL_NAME : ITEMS_TOOL_NAME;
+    const startedAt = Date.now();
+    try {
+      const result = await this.client.account();
+      this.lastUsed = toInt(result.credits.used);
+      if (result.credits.remaining !== null) this.remaining = toInt(result.credits.remaining);
+      await this.audit(toolName, 'account', caller, 'ok', null, result.requestId, {
+        probe: true,
+        httpStatus: result.httpStatus,
+        attempts: result.attempts,
+        creditsUsedThisRequest: null,
+        creditsRemaining: result.credits.remaining,
+        durationMs: Date.now() - startedAt,
+      });
+    } catch (err) {
+      const bridgeError = BridgeError.from(err);
+      if (bridgeError.code === 'SOURCE_CREDITS_EXHAUSTED') this.remaining = 0;
+      const status = bridgeError.details.status;
+      const attempts = bridgeError.details.attempts;
+      await this.audit(toolName, 'account', caller, 'error', bridgeError.code, null, {
+        probe: true,
+        httpStatus: typeof status === 'number' ? status : null,
+        attempts: typeof attempts === 'number' ? attempts : null,
+        creditsUsedThisRequest: null,
+        creditsRemaining: this.remaining,
+        durationMs: Date.now() - startedAt,
+      });
+    }
+  }
+
+  /**
+   * Remember a balance. A response's `remaining` is accepted only when its
+   * cumulative `used` is null or at least the highest accepted so far, so
+   * an older response that lands late cannot overwrite a newer one's figure.
+   * The fold of a batch or a split search (highest used, lowest remaining)
+   * goes through the same rule when the batch completes, so the memory ends
+   * on the batch's true floor whatever order its responses arrived in.
+   */
+  private remember(credits: { used: number | null; remaining: number | null }): void {
+    const used = toInt(credits.used);
+    const remaining = toInt(credits.remaining);
+    if (used !== null && this.lastUsed !== null && used < this.lastUsed) return;
+    if (used !== null) this.lastUsed = used;
+    if (remaining !== null) this.remaining = remaining;
   }
 
   /**
@@ -327,14 +478,17 @@ export class CountdownSource {
   // ---- ebay_api_search (§3.1) --------------------------------------------
 
   async search(input: EbayApiSearchInputType, caller?: SourceCaller): Promise<EbayApiSearchOutputType> {
-    this.assertCredits('search');
-    const domain = input.url === undefined ? input.domain : this.screenedDomain(input.url, ['search']);
+    await this.assertCredits('search', caller);
+    const screened = input.url === undefined ? null : this.screenedUrl(input.url, ['search']);
+    const domain = screened === null ? input.domain : screened.domain;
     const location = this.locationFor(input.destination, 'search');
-    const plans = buildSearchPlans(input, domain, location);
+    const plans = buildSearchPlans(input, domain, location, screened === null ? null : screened.href);
     const auditBase = { domain, destination: input.destination, ...location, page: input.page, maxPage: input.maxPage };
 
     // Both halves of a split search go out together: a page can take most
-    // of a minute at the vendor, and the tool deadline covers the call.
+    // of a minute at the vendor, and the catalog deadline registerSourceTools
+    // races the call against (SOURCE_SEARCH_TIMEOUT_MS) is sized for the two
+    // in parallel, not one after the other.
     const responses = await Promise.all(
       plans.map(async (plan) => ({
         retrievedUnder: plan.retrievedUnder,
@@ -366,7 +520,7 @@ export class CountdownSource {
     const hasNextPage = flags.some((flag) => flag === true) ? true : flags.every((flag) => flag === null) ? null : false;
     const pageUrl = first === undefined ? null : pageUrlOf(first.result.body);
 
-    const compaction = input.search ?? DEFAULT_SEARCH_COMPACTION;
+    const compaction = input.search ?? EBAY_API_DEFAULT_SEARCH_COMPACTION;
     const compacted = compactSearchPage(
       {
         siteProfile: EBAY_API_SITE_PROFILE_ID,
@@ -377,9 +531,30 @@ export class CountdownSource {
         candidateCount: candidates.length,
         candidates,
       },
-      { ...compaction, fields: compaction.fields ?? [...EBAY_API_DEFAULT_CANDIDATE_FIELDS] },
+      {
+        ...compaction,
+        fields: compaction.fields ?? [...EBAY_API_DEFAULT_CANDIDATE_FIELDS],
+        // The compactor's scan cap bounds a caller's regex against one
+        // rendered page. A split search is two pages merged with the
+        // auction-only rows last, so every merged row is scanned here or a
+        // format filter never sees an auction.
+        maxScanned: candidates.length,
+      },
     );
     const record = compacted.record;
+    const hasMore = record.hasMore === true;
+    const warnings = mergeWarnings(...mapped.map((entry) => entry.rows.warnings), compacted.warnings);
+    if (hasMore) {
+      // On the Bridge the next window is one navigate away; here it is the
+      // same vendor requests again, which is why the default window is a
+      // whole page (EBAY_API_SEARCH_DEFAULT_LIMIT) and paging past it is
+      // said out loud.
+      warnings.push(
+        'OFFSET_PAGING_REISSUES_REQUESTS: paging with search.offset re-issues the vendor requests and spends credits again; raise search.limit instead',
+      );
+    }
+    const credits = foldCredits(mapped.map((entry) => entry.result.credits));
+    this.remember(credits);
 
     return {
       source: 'countdown',
@@ -395,55 +570,74 @@ export class CountdownSource {
       hasNextPage,
       candidates: Array.isArray(record.candidates) ? (record.candidates as Record<string, unknown>[]) : [],
       offset: typeof record.offset === 'number' ? record.offset : compaction.offset,
-      hasMore: record.hasMore === true,
+      hasMore,
       nextOffset: typeof record.nextOffset === 'number' ? record.nextOffset : null,
-      warnings: mergeWarnings(...mapped.map((entry) => entry.rows.warnings), compacted.warnings),
-      credits: foldCredits(mapped.map((entry) => entry.result.credits)),
+      warnings,
+      credits,
       requestIds: mapped.map((entry) => entry.result.requestId).filter((id): id is string => id !== null),
     };
   }
 
   // ---- ebay_api_items (§3.2) ---------------------------------------------
 
-  async items(input: EbayApiItemsInputType, caller?: SourceCaller): Promise<EbayApiItemsOutputType> {
-    this.assertCredits('items');
+  async items(input: EbayApiItemsInputType, caller?: SourceCaller, deadline?: SourceDeadline): Promise<EbayApiItemsOutputType> {
+    await this.assertCredits('items', caller);
     const location = this.locationFor(input.destination, 'product');
     // Every url is screened before the first request goes out, so a bad
     // one refuses the whole call rather than costing the good ones credits.
-    const refs: ItemRef[] = input.items.map((ref) =>
-      'url' in ref
-        ? { url: ref.url, domain: this.screenedDomain(ref.url, ['item']), expectedFormat: ref.expectedFormat }
-        : { url: `https://www.${input.domain}/itm/${ref.itemId}`, domain: input.domain, expectedFormat: ref.expectedFormat },
-    );
+    const refs: ItemRef[] = input.items.map((ref) => {
+      if ('url' in ref) {
+        const screened = this.screenedUrl(ref.url, ['item']);
+        return { url: ref.url, vendorUrl: screened.href, domain: screened.domain, expectedFormat: ref.expectedFormat };
+      }
+      const url = `https://www.${input.domain}/itm/${ref.itemId}`;
+      return { url, vendorUrl: url, domain: input.domain, expectedFormat: ref.expectedFormat };
+    });
     const observedAt = this.now().toISOString();
     const slots: ItemSlot[] = [];
     await runPool(refs.length, this.maxConcurrency, async (index) => {
-      slots[index] = await this.readItem(refs[index]!, input, location, observedAt, caller);
+      const ref = refs[index]!;
+      // Checked before each request, not once per batch: the deadline can
+      // pass while earlier slots are in flight, and a request issued after
+      // the caller has already been answered spends a credit on nothing.
+      slots[index] =
+        deadline?.expired === true ? unattemptedSlot(ref, deadline) : await this.readItem(ref, input, location, observedAt, caller);
     });
 
     const results = slots.map((entry) => entry.slot);
-    const succeeded = results.filter((slot) => slot.ok).length;
+    const attempted = slots.filter((entry) => !entry.unattempted);
+    const succeeded = attempted.filter((entry) => entry.slot.ok).length;
     const refused = slots.filter((entry) => entry.refusedByReserve).length;
+    const unattempted = slots.length - attempted.length;
     const warnings: string[] = [];
     if (refused > 0) {
       warnings.push(
         `SOURCE_CREDITS_EXHAUSTED: ${refused} item(s) were not requested because the credit balance fell below the reserve of ${this.creditReserve} during the batch; their slots carry the error.`,
       );
     }
+    if (unattempted > 0 && deadline !== undefined) {
+      warnings.push(
+        `BATCH_DEADLINE_REACHED: ${attempted.length} of ${refs.length} item(s) were requested before the tool deadline of ${deadline.deadlineMs} ms; the rest carry SOURCE_UNAVAILABLE and can be re-issued.`,
+      );
+    }
+    const credits = foldCredits(slots.map((entry) => entry.credits).filter((entry): entry is CountdownCredits => entry !== null));
+    this.remember(credits);
     return {
       mode: 'inline',
       jobId: null,
-      status: 'completed',
+      // 'partial' means what it means on the Bridge: the slots requested are
+      // final, and the rest were never attempted.
+      status: unattempted > 0 ? 'partial' : 'completed',
       requested: refs.length,
-      completed: refs.length,
+      completed: attempted.length,
       succeeded,
-      failed: refs.length - succeeded,
+      failed: attempted.length - succeeded,
       compact: input.compact,
       resultsFrom: 0,
       results,
       warnings,
       source: 'countdown',
-      credits: foldCredits(slots.map((entry) => entry.credits).filter((credits): credits is CountdownCredits => credits !== null)),
+      credits,
       requestIds: slots.map((entry) => entry.requestId).filter((id): id is string => id !== null),
     };
   }
@@ -461,18 +655,18 @@ export class CountdownSource {
       // starts above the reserve can cross it part-way, and the reserve is
       // meant to stop the next request, not the next call. The refusal
       // lands in this slot; every slot already read stays intact.
-      this.assertCredits('items');
+      await this.assertCredits('items', caller);
       const result = await this.upstream(
         ITEMS_TOOL_NAME,
         'product',
         caller,
         { domain: ref.domain, destination: input.destination, ...location },
-        () => this.client.product({ url: ref.url, ...location }),
+        () => this.client.product({ url: ref.vendorUrl, ...location }),
       );
       const mapped = mapItem({
         body: result.body,
         domain: ref.domain,
-        requestedUrl: ref.url,
+        requestedUrl: ref.vendorUrl,
         ...(ref.expectedFormat === undefined ? {} : { expectedFormat: ref.expectedFormat }),
         observedAt,
       });
@@ -494,6 +688,7 @@ export class CountdownSource {
         requestId: result.requestId,
         credits: result.credits,
         refusedByReserve: false,
+        unattempted: false,
       };
     } catch (err) {
       // A slot that fails maps its own error and never fails the batch.
@@ -510,6 +705,7 @@ export class CountdownSource {
         requestId: null,
         credits: null,
         refusedByReserve: bridgeError.code === 'SOURCE_CREDITS_EXHAUSTED' && bridgeError.details.gate === true,
+        unattempted: false,
       };
     }
   }
@@ -548,10 +744,7 @@ export class CountdownSource {
   }
 
   private sellerUrl(input: EbayApiSellerInputType): string {
-    if (input.url !== undefined) {
-      this.screenedDomain(input.url, ['seller']);
-      return input.url;
-    }
+    if (input.url !== undefined) return this.screenedUrl(input.url, ['seller']).href;
     if (input.loginId === undefined) {
       // Unreachable through MCP (the input schema demands exactly one), kept
       // for direct callers so a malformed input never reaches the vendor.
@@ -566,9 +759,14 @@ export class CountdownSource {
    * The §2 URL policy, applied again here: the tool schemas screen a url
    * first, but this class must refuse on its own so that no path — a direct
    * caller, a future tool, a schema regression — hands the vendor a URL off
-   * the two marketplaces or with the wrong scheme or path.
+   * the two marketplaces or with the wrong scheme or path. What comes back
+   * is the marketplace and the WHATWG-normalised href, and the href is the
+   * only form ever forwarded: the screen judged the parsed URL, so the
+   * parsed URL is what the vendor gets — never the caller's raw string,
+   * whose repairs (a backslash read as a slash, say) another parser may
+   * not make.
    */
-  private screenedDomain(url: string, kinds: readonly EbayUrlKind[]): EbayApiDomain {
+  private screenedUrl(url: string, kinds: readonly EbayUrlKind[]): ScreenedUrl {
     const reason = screenEbayUrl(url, kinds);
     const domain = reason === null ? ebayDomainOfUrl(url) : null;
     if (domain === null) {
@@ -576,7 +774,7 @@ export class CountdownSource {
         kinds: [...kinds],
       });
     }
-    return domain;
+    return { domain, href: new URL(url).href };
   }
 
   /**
@@ -595,7 +793,7 @@ export class CountdownSource {
     const startedAt = Date.now();
     try {
       const result = await call();
-      if (result.credits.remaining !== null) this.remaining = toInt(result.credits.remaining);
+      this.remember(result.credits);
       await this.audit(toolName, requestType, caller, 'ok', null, result.requestId, {
         ...metadata,
         httpStatus: result.httpStatus,

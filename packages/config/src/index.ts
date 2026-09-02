@@ -96,8 +96,13 @@ export const GatewayEnvSchema = z
         const key = value?.trim();
         return key === undefined || key === '' ? undefined : key;
       }),
-    /** Vendor root; overridable for the integration stub only. */
-    COUNTDOWN_API_BASE_URL: z.url().default('https://api.countdownapi.com'),
+    /**
+     * Vendor root; overridable for the integration stub only. https only:
+     * the key rides in every request's query string, so a plain-http root
+     * would send it in cleartext (the test stubs inject fetch and never
+     * connect, so they lose nothing by spelling an https root).
+     */
+    COUNTDOWN_API_BASE_URL: httpsUrl.default('https://api.countdownapi.com'),
     /**
      * Search and item calls are refused with SOURCE_CREDITS_EXHAUSTED once
      * the last observed credits_remaining is below this; a seller-profile

@@ -41,8 +41,27 @@ describe('screenEbayUrl (plan §2 URL policy)', () => {
     expect(screenEbayUrl('https://www.ebay.ca/', ['search', 'item', 'seller'])).toMatch(/path/);
     expect(screenEbayUrl('https://www.ebay.ca/ITM/226123456789', ['item'])).toMatch(/path/);
     expect(screenEbayUrl('https://www.ebay.ca/itm/1', [])).toMatch(/kind/);
-    expect(screenEbayUrl('not a url', ['search'])).toMatch(/absolute URL/);
+    expect(screenEbayUrl('not-a-url', ['search'])).toMatch(/absolute URL/);
     expect(screenEbayUrl('/sch/i.html?_nkw=lego', ['search'])).toMatch(/absolute URL/);
+  });
+
+  it('refuses the raw string before parsing whenever the parser would have to repair it', () => {
+    // WHATWG reads "\" as "/", so this is an eBay item path here and host
+    // evil.com to an RFC 3986 parser; the vendor must never be asked.
+    expect(screenEbayUrl('https://www.ebay.ca\\itm\\123456789012@evil.com/', ['item'])).toMatch(/backslash/);
+    expect(screenEbayUrl('https://www.ebay.ca\\sch\\i.html?_nkw=lego', ['search'])).toMatch(/backslash/);
+    // Tab and newline the parser drops silently; every other whitespace or
+    // control character is refused the same way.
+    expect(screenEbayUrl('https://www.ebay.ca/itm/1234\t56789012', ['item'])).toMatch(/whitespace or a control character/);
+    expect(screenEbayUrl('https://www.ebay.ca/itm/1234\n56789012', ['item'])).toMatch(/whitespace or a control character/);
+    expect(screenEbayUrl('https://www.ebay.ca/itm/1234\u000056789012', ['item'])).toMatch(/control character/);
+    expect(screenEbayUrl('https://www.ebay.ca/itm/1234\u007f56789012', ['item'])).toMatch(/control character/);
+    expect(screenEbayUrl('https://www.ebay.ca/itm/1234\u00a056789012', ['item'])).toMatch(/whitespace/);
+    expect(screenEbayUrl(' https://www.ebay.ca/itm/123456789012', ['item'])).toMatch(/leading or trailing whitespace/);
+    expect(screenEbayUrl('https://www.ebay.ca/itm/123456789012\n', ['item'])).toMatch(/leading or trailing whitespace/);
+    // The same smuggle spelled with a slash is plain userinfo and refused as such.
+    expect(screenEbayUrl('https://www.ebay.ca@evil.com/itm/123456789012', ['item'])).toMatch(/userinfo/);
+    expect(screenEbayUrl('https://www.ebay.ca:443@evil.com/itm/123456789012', ['item'])).toMatch(/userinfo/);
   });
 
   it('judges the normalized path, so dot segments cannot smuggle a kind', () => {

@@ -183,3 +183,81 @@ describe('Countdown source tools never hand the vendor an off-policy URL (plan ย
     expect(directCalls).toBe(0);
   });
 });
+
+describe('Countdown source tools forward the parsed URL, never the raw string (plan ยง2)', () => {
+  // WHATWG reads "\" as "/": an eBay path to the screen, host evil.com to an
+  // RFC 3986 parser such as the vendor's.
+  const BACKSLASH_SEARCH = 'https://www.ebay.ca\\sch\\i.html@evil.com/?_nkw=lego';
+  const BACKSLASH_ITEM = 'https://www.ebay.ca\\itm\\123456789012@evil.com/';
+  const BACKSLASH_SELLER = 'https://www.ebay.ca\\usr\\tweedsidesales@evil.com/';
+
+  const forwarded: string[] = [];
+  const recordingVendor: typeof fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url);
+    forwarded.push(url.searchParams.get('url') ?? '(none)');
+    const type = url.searchParams.get('type');
+    const body =
+      type === 'search'
+        ? { request_info: { success: true }, search_results: [], pagination: { current_page: 1, total_results: 0, has_next_page: false } }
+        : type === 'product'
+          ? { request_info: { success: true }, message: 'Product not found.' }
+          : { request_info: { success: true }, message: 'Seller not found.' };
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
+
+  let harness: GatewayHarness;
+  let client: ModernMcpClient;
+  beforeAll(() => {
+    harness = buildGatewayHarness({ countdownApiKey: 'cd-ssrf-forward-key', countdownFetch: recordingVendor });
+    client = new ModernMcpClient('https://browser-mcp.test.example/mcp', harness.fetch);
+  });
+  afterAll(async () => {
+    await harness.close();
+  });
+
+  it("hands the vendor the WHATWG-normalised href of an accepted URL, not the caller's spelling of it", async () => {
+    // An upper-case host and a default port are accepted, and forwarded as the parser read them.
+    const search = await client.callTool('ebay_api_search', { url: 'https://WWW.EBAY.CA:443/sch/i.html?_nkw=lego&LH_Auction=1' });
+    expect(search.body.result?.isError).not.toBe(true);
+    expect(forwarded).toEqual(['https://www.ebay.ca/sch/i.html?_nkw=lego&LH_Auction=1']);
+
+    const items = await client.callTool('ebay_api_items', { items: [{ url: 'https://WWW.EBAY.CA/itm/123456789012' }] });
+    expect(items.body.result?.isError).not.toBe(true);
+    expect(forwarded.at(-1)).toBe('https://www.ebay.ca/itm/123456789012');
+
+    const seller = await client.callTool('ebay_api_seller', { url: 'https://WWW.EBAY.CA:443/usr/tweedsidesales' });
+    expect(seller.body.result?.isError).not.toBe(true);
+    expect(forwarded.at(-1)).toBe('https://www.ebay.ca/usr/tweedsidesales');
+    expect(forwarded).toHaveLength(3);
+  });
+
+  it('a backslash-smuggled host reaches neither the vendor nor a WHATWG repair', async () => {
+    const before = forwarded.length;
+    const calls: Array<[string, Record<string, unknown>]> = [
+      ['ebay_api_search', { url: BACKSLASH_SEARCH }],
+      ['ebay_api_items', { items: [{ url: BACKSLASH_ITEM }] }],
+      ['ebay_api_seller', { url: BACKSLASH_SELLER }],
+    ];
+    for (const [tool, args] of calls) {
+      const response = await client.callTool(tool, args);
+      expect(response.status, tool).toBe(200);
+      expect(response.body.result?.isError, tool).toBe(true);
+    }
+    expect(forwarded).toHaveLength(before);
+
+    // Below the schema the source refuses the same strings itself, naming the reason.
+    const source = new CountdownSource({ config: harness.config.countdown!, store: new MemoryStore(), fetchImpl: recordingVendor });
+    const itemDefaults = EbayApiItemsInput.parse({ items: [{ itemId: '123456789012' }] });
+    await expect(source.items({ ...itemDefaults, items: [{ url: BACKSLASH_ITEM }] })).rejects.toMatchObject({
+      code: 'ORIGIN_DENIED',
+      message: expect.stringMatching(/backslash/),
+    });
+    const searchDefaults = EbayApiSearchInput.parse({ searchTerm: 'lego' });
+    await expect(source.search({ ...searchDefaults, searchTerm: undefined, url: BACKSLASH_SEARCH })).rejects.toMatchObject({
+      code: 'ORIGIN_DENIED',
+      message: expect.stringMatching(/backslash/),
+    });
+    await expect(source.seller({ domain: 'ebay.ca', url: BACKSLASH_SELLER })).rejects.toMatchObject({ code: 'ORIGIN_DENIED' });
+    expect(forwarded).toHaveLength(before);
+  });
+});

@@ -483,11 +483,22 @@ describe('mapItem (§4.2)', () => {
     expect(record.itemId).toEqual({ value: '331982822376', source: 'computed', confidence: 0.9 });
   });
 
-  it('reports unknown format without expectedFormat but still reads the fixed offer', () => {
+  it('reports unknown format without expectedFormat and keeps the offer only as an unconfirmed price', () => {
     const { record, warnings } = map(activeTiers);
     expect(record.sellingFormat.kind).toBe('unknown');
-    expect(record.itemPrice?.value).toBe(2.29);
+    // The figure is kept — the caller asked for the page — but at a
+    // confidence no rule buys on: on a live auction it is the current bid
+    // dressed as a fixed price (§1.3), and only the search's format can say.
+    expect(record.itemPrice).toEqual({ value: 2.29, currency: 'CAD', source: 'api', confidence: 0.4 });
     expect(warnings.some((w) => w.startsWith('FORMAT_UNKNOWN_FROM_SOURCE:'))).toBe(true);
+    expect(warnings).toContain(
+      'PRICE_UNCONFIRMED: the source cannot tell an auction from a fixed price; pass expectedFormat from the search that found this row before treating this as a purchasable price',
+    );
+    expect(map(liveAuction).record.itemPrice).toMatchObject({ value: 19.99, source: 'api', confidence: 0.4 });
+    // With the format known the same offer is the 0.95 fixed price and carries no such warning.
+    const known = map(activeTiers, 'fixed_price');
+    expect(known.record.itemPrice?.confidence).toBe(0.95);
+    expect(known.warnings.some((w) => w.startsWith('PRICE_UNCONFIRMED:'))).toBe(false);
   });
 
   it('maps "Product not found." to unavailable with the id from the resolved URL', () => {

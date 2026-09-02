@@ -461,84 +461,95 @@ export function compileTitleRegex(pattern: string): RegExp {
  * Absent on browser_extract this changes nothing (Phase 1 callers get the
  * Phase 1 payload); browser_open_and_extract applies the defaults below
  * when the field is omitted, which is what keeps a 240-row page small.
+ *
+ * Built by a factory because the one thing that differs between the Bridge
+ * and the Countdown API source is the default window: on the Bridge the
+ * next page is one navigate away, on the API it is the vendor requests
+ * again (EbayApiSearchCompactionInput). A refined object cannot be
+ * extended over, so both are built from the same shape and the same check.
  */
-export const SearchCompactionInput = z
-  .strictObject({
-    /**
-     * 40 matches what both marketplaces render per page, so the default is
-     * "one page of results" rather than an arbitrary truncation. The
-     * response always reports candidateCount, hasMore and nextOffset, so a
-     * caller can see what it did not receive and page through it.
-     */
-    limit: z.int().min(1).max(240).default(40),
-    offset: z.int().min(0).default(0),
-    /**
-     * Allow-list of candidate row keys to keep. Deliberately a string list
-     * and not an enum: the site packages add candidate fields on their own
-     * cadence, and an enum here would have to be edited in lockstep with
-     * every such addition or would start rejecting valid requests. Names
-     * the two site profiles spell differently are resolved across both
-     * (price/snippetPrice, format/sellingFormat, location/locationText/
-     * itemLocationText) and returned under the requested name, so one
-     * field list works against eBay and Kijiji pages alike.
-     */
-    fields: z.array(z.string().min(1).max(64)).min(1).max(32).optional(),
-    include: z
-      .strictObject({
-        titleRegex: z.string().min(1).max(SEARCH_TITLE_REGEX_MAX_LENGTH).optional(),
-        minPrice: z.number().min(0).max(1_000_000).optional(),
-        maxPrice: z.number().min(0).max(1_000_000).optional(),
-        formats: z.array(SellingFormatFilterSchema).min(1).max(4).optional(),
-      })
-      .optional(),
-    /**
-     * Rewrite each candidate URL to its canonical form, dropping the
-     * `_skw`/`itmmeta`/`hash`/`itmprp` tracking payload eBay hangs off
-     * every result link. This is most of the size win and it is on by
-     * default; set false only to keep the exact href the page rendered.
-     */
-    canonicalizeUrls: z.boolean().default(true),
-  })
-  .check((ctx) => {
-    const include = ctx.value.include;
-    if (include === undefined) return;
-    if (include.titleRegex !== undefined) {
-      const reason = screenTitleRegex(include.titleRegex);
-      if (reason !== null) {
-        ctx.issues.push({
-          code: 'custom',
-          message: `include.titleRegex is not accepted: ${reason}`,
-          input: ctx.value,
-          path: ['include', 'titleRegex'],
-        });
-      } else {
-        try {
-          new RegExp(include.titleRegex, 'i');
-        } catch (err) {
+function searchCompactionInput(defaultLimit: number) {
+  return z
+    .strictObject({
+      /**
+       * 40 matches what both marketplaces render per page, so the Bridge
+       * default is "one page of results" rather than an arbitrary
+       * truncation. The response always reports candidateCount, hasMore and
+       * nextOffset, so a caller can see what it did not receive and page
+       * through it.
+       */
+      limit: z.int().min(1).max(240).default(defaultLimit),
+      offset: z.int().min(0).default(0),
+      /**
+       * Allow-list of candidate row keys to keep. Deliberately a string list
+       * and not an enum: the site packages add candidate fields on their own
+       * cadence, and an enum here would have to be edited in lockstep with
+       * every such addition or would start rejecting valid requests. Names
+       * the two site profiles spell differently are resolved across both
+       * (price/snippetPrice, format/sellingFormat, location/locationText/
+       * itemLocationText) and returned under the requested name, so one
+       * field list works against eBay and Kijiji pages alike.
+       */
+      fields: z.array(z.string().min(1).max(64)).min(1).max(32).optional(),
+      include: z
+        .strictObject({
+          titleRegex: z.string().min(1).max(SEARCH_TITLE_REGEX_MAX_LENGTH).optional(),
+          minPrice: z.number().min(0).max(1_000_000).optional(),
+          maxPrice: z.number().min(0).max(1_000_000).optional(),
+          formats: z.array(SellingFormatFilterSchema).min(1).max(4).optional(),
+        })
+        .optional(),
+      /**
+       * Rewrite each candidate URL to its canonical form, dropping the
+       * `_skw`/`itmmeta`/`hash`/`itmprp` tracking payload eBay hangs off
+       * every result link. This is most of the size win and it is on by
+       * default; set false only to keep the exact href the page rendered.
+       */
+      canonicalizeUrls: z.boolean().default(true),
+    })
+    .check((ctx) => {
+      const include = ctx.value.include;
+      if (include === undefined) return;
+      if (include.titleRegex !== undefined) {
+        const reason = screenTitleRegex(include.titleRegex);
+        if (reason !== null) {
           ctx.issues.push({
             code: 'custom',
-            message: `include.titleRegex is not a valid regular expression: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
+            message: `include.titleRegex is not accepted: ${reason}`,
             input: ctx.value,
             path: ['include', 'titleRegex'],
           });
+        } else {
+          try {
+            new RegExp(include.titleRegex, 'i');
+          } catch (err) {
+            ctx.issues.push({
+              code: 'custom',
+              message: `include.titleRegex is not a valid regular expression: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+              input: ctx.value,
+              path: ['include', 'titleRegex'],
+            });
+          }
         }
       }
-    }
-    if (
-      include.minPrice !== undefined &&
-      include.maxPrice !== undefined &&
-      include.minPrice > include.maxPrice
-    ) {
-      ctx.issues.push({
-        code: 'custom',
-        message: 'include.minPrice must not exceed include.maxPrice',
-        input: ctx.value,
-        path: ['include', 'minPrice'],
-      });
-    }
-  });
+      if (
+        include.minPrice !== undefined &&
+        include.maxPrice !== undefined &&
+        include.minPrice > include.maxPrice
+      ) {
+        ctx.issues.push({
+          code: 'custom',
+          message: 'include.minPrice must not exceed include.maxPrice',
+          input: ctx.value,
+          path: ['include', 'minPrice'],
+        });
+      }
+    });
+}
+
+export const SearchCompactionInput = searchCompactionInput(40);
 export type SearchCompaction = z.infer<typeof SearchCompactionInput>;
 
 /** Defaults applied when a compacting tool is called without a `search` object. */
@@ -1149,8 +1160,24 @@ const EBAY_URL_PATH_PREFIXES: Readonly<Record<EbayUrlKind, readonly string[]>> =
  * the host, resolves dot segments in the path and drops a default port — so
  * "/sch/../itm/1" is an item path and "WWW.EBAY.CA" is an eBay host, while
  * an IDN lookalike arrives as punycode and matches nothing.
+ *
+ * Before that, the raw string is refused outright if it carries anything
+ * the WHATWG parser would silently repair rather than parse: a backslash
+ * (a path separator to WHATWG, a host boundary to an RFC 3986 parser, so
+ * "https://www.ebay.ca\itm\1@evil.com/" is an eBay item here and host
+ * evil.com to the vendor), a tab or newline (dropped), leading or trailing
+ * whitespace (stripped), or any other whitespace or control character. A
+ * URL that only passes because it was repaired is not the URL a different
+ * parser will see, and the gateway forwards the parsed form for the same
+ * reason.
  */
 export function screenEbayUrl(url: string, kinds: readonly EbayUrlKind[]): string | null {
+  if (url !== url.trim()) {
+    return 'url must not have leading or trailing whitespace';
+  }
+  if (hasForbiddenRawUrlChar(url)) {
+    return 'url must not contain a backslash, whitespace or a control character';
+  }
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -1179,6 +1206,15 @@ export function screenEbayUrl(url: string, kinds: readonly EbayUrlKind[]): strin
   return null;
 }
 
+/** Backslash, C0 controls and space (0x00–0x20), DEL (0x7F), and any other whitespace. */
+function hasForbiddenRawUrlChar(url: string): boolean {
+  for (const ch of url) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (ch === '\\' || code <= 0x20 || code === 0x7f || /\s/.test(ch)) return true;
+  }
+  return false;
+}
+
 /**
  * The marketplace a URL belongs to, by host alone, or null for any host the
  * policy does not know. A caller's `domain` field is ignored when it passes
@@ -1198,6 +1234,19 @@ export function ebayDomainOfUrl(url: string): EbayApiDomain | null {
 }
 
 // --- ebay_api_search (§3.1) --------------------------------------------------
+
+/**
+ * The compaction window of an API search. The Bridge defaults `limit` to
+ * one rendered page (40) because its next window is one cheap navigate
+ * away; here an offset page re-issues the vendor requests and spends the
+ * credits again, so the default is the largest window the schema allows —
+ * a whole 240-row page, or a merged split search up to that many rows —
+ * and a caller narrows it with search.limit rather than paging past it.
+ */
+export const EBAY_API_SEARCH_DEFAULT_LIMIT = 240;
+export const EbayApiSearchCompactionInput = searchCompactionInput(EBAY_API_SEARCH_DEFAULT_LIMIT);
+/** Defaults applied when ebay_api_search is called without a `search` object. */
+export const EBAY_API_DEFAULT_SEARCH_COMPACTION: SearchCompaction = EbayApiSearchCompactionInput.parse({});
 
 /**
  * One eBay search, by term or by a caller's own /sch/ URL, answered in the
@@ -1255,10 +1304,12 @@ export const EbayApiSearchInput = z
     allowRewrittenResults: z.boolean().default(false),
     /**
      * The compaction browser_open_and_extract applies (include, fields,
-     * limit, offset; same defaults; same warning codes), run through the
-     * same function so the two sources compact identically.
+     * limit, offset; same warning codes), run through the same function so
+     * the two sources compact identically. One default differs: limit is a
+     * whole page here (EBAY_API_SEARCH_DEFAULT_LIMIT), because paging with
+     * offset re-issues the vendor requests.
      */
-    search: SearchCompactionInput.optional(),
+    search: EbayApiSearchCompactionInput.optional(),
   })
   .check((ctx) => {
     const value = ctx.value;

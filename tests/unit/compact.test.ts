@@ -258,6 +258,26 @@ describe('search compaction', () => {
     expect(page2.candidates[0]!.itemId).toBe('226100000235');
   });
 
+  it('maxScanned lifts the 240-row scan cap for a caller that merged pages itself', () => {
+    // The gateway's ebay_api_search merges two vendor pages (buy-it-now rows
+    // first, auction-only rows last) before compacting. Under the cap the
+    // tail was never scanned: a format filter matched no auction, and the
+    // window past row 240 came back empty with hasMore false.
+    const merged = searchRecord(300);
+    const tail = SearchCompactionInput.parse({ limit: 240, offset: 240 });
+    const capped = compactSearchPage(merged, tail);
+    expect(capped.record).toMatchObject({ matchedCount: 240, returnedCount: 0, hasMore: false });
+    expect(capped.warnings.some((warning) => warning.startsWith('CANDIDATES_TRUNCATED'))).toBe(true);
+
+    const scanned = compactSearchPage(merged, { ...tail, maxScanned: merged.candidates.length });
+    const record = scanned.record as { matchedCount: number; returnedCount: number; hasMore: boolean; candidates: { itemId: string }[] };
+    expect(record.matchedCount).toBe(300);
+    expect(record.returnedCount).toBe(60);
+    expect(record.hasMore).toBe(false);
+    expect(record.candidates[0]!.itemId).toBe('226100000240');
+    expect(scanned.warnings.some((warning) => warning.startsWith('CANDIDATES_TRUNCATED'))).toBe(false);
+  });
+
   it('a fields allow-list replaces the default projection but keeps the URL', () => {
     const record = compactSearchPage(
       searchRecord(3),

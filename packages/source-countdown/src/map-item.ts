@@ -391,12 +391,21 @@ export function mapItem(input: MapItemInput): MapItemResult {
       }`,
     );
   } else if (hasOfferPrice) {
+    // Without the search's format the figure may be a live auction's current
+    // bid dressed as a fixed price (§1.3). It is kept — the caller asked for
+    // the page — but at a confidence no purchase rule should act on.
+    const unconfirmed = sellingFormat.kind === 'unknown';
     itemPrice = {
       value: offerPrice,
       currency: offerCurrency === null ? domainCurrency(input.domain) : offerCurrency.toUpperCase(),
       source: 'api',
-      confidence: offerCurrency === null ? 0.7 : 0.95,
+      confidence: unconfirmed ? 0.4 : offerCurrency === null ? 0.7 : 0.95,
     };
+    if (unconfirmed) {
+      warnings.push(
+        `${COUNTDOWN_WARNING.PRICE_UNCONFIRMED}: the source cannot tell an auction from a fixed price; pass expectedFormat from the search that found this row before treating this as a purchasable price`,
+      );
+    }
   } else {
     warnings.push('itemPrice could not be resolved');
   }

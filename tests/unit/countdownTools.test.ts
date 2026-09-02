@@ -4,9 +4,20 @@
  * the bounded item pool and per-slot failure, all against a stub vendor
  * with no gateway on the path.
  */
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { describe, expect, it } from 'vitest';
 import type { CountdownConfig } from '@browser-bridge/config';
-import { CountdownSource, MemoryStore } from '@browser-bridge/gateway';
+import {
+  CountdownSource,
+  MemoryStore,
+  registerSourceTools,
+  runSourceTool,
+  type CountdownSourceOptions,
+  type SourceDeadline,
+} from '@browser-bridge/gateway';
 import {
   BridgeError,
   EbayApiItemsInput,
@@ -132,11 +143,38 @@ function config(overrides: Partial<CountdownConfig> = {}): CountdownConfig {
   };
 }
 
-function build(responder: Responder, overrides: Partial<CountdownConfig> = {}) {
+function build(responder: Responder, overrides: Partial<CountdownConfig> = {}, extra: Pick<CountdownSourceOptions, 'now'> = {}) {
   const store = new MemoryStore();
   const vendor = stubVendor(responder);
-  const source = new CountdownSource({ config: config(overrides), store, fetchImpl: vendor.impl, retryDelaysMs: [] });
+  const source = new CountdownSource({ config: config(overrides), store, fetchImpl: vendor.impl, retryDelaysMs: [], ...extra });
   return { source, store, calls: vendor.calls };
+}
+
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'countdown');
+
+function fixture(name: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(join(FIXTURES, name), 'utf8')) as Record<string, unknown>;
+}
+
+type ToolHandler = (args: Record<string, unknown>) => Promise<{
+  content: Array<{ type: string; text: string }>;
+  structuredContent?: Record<string, unknown>;
+  isError?: boolean;
+}>;
+
+/** Just enough of McpServer to capture the handlers registerSourceTools installs. */
+function fakeServer(): { server: McpServer; tools: Map<string, ToolHandler> } {
+  const tools = new Map<string, ToolHandler>();
+  const server = {
+    registerTool: (name: string, _config: unknown, handler: ToolHandler) => {
+      tools.set(name, handler);
+    },
+  };
+  return { server: server as unknown as McpServer, tools };
+}
+
+function errorPayload(result: Awaited<ReturnType<ToolHandler>>): { code: string; message: string; retryable: boolean; details: Record<string, unknown> } {
+  return (JSON.parse(result.content[0]!.text) as { error: { code: string; message: string; retryable: boolean; details: Record<string, unknown> } }).error;
 }
 
 const search = (input: Record<string, unknown>) => EbayApiSearchInput.parse(input);
@@ -153,9 +191,18 @@ async function failure(promise: Promise<unknown>): Promise<BridgeError> {
   throw new Error('expected the call to fail');
 }
 
-/** Route a stub by the vendor request type, with a per-type credit report. */
+/** Route a stub by the vendor request type, with a per-type credit report; the free account endpoint reports the same balance. */
 function routed(credits: Credits = {}): Responder {
-  return ({ query }) => {
+  return ({ url, query }) => {
+    if (url.pathname === '/account') {
+      return json({
+        request_info: { success: true },
+        account_info: {
+          credits_used: credits.used === undefined ? 10 : credits.used,
+          credits_remaining: credits.remaining === undefined ? 990 : credits.remaining,
+        },
+      });
+    }
     const type = query.get('type');
     if (type === 'search') return json(searchBody([searchRow('111111111111', 20)], credits));
     if (type === 'product') return json(productBody(/\/itm\/(\d+)/.exec(query.get('url') ?? '')?.[1] ?? '000000000000', credits));
@@ -178,16 +225,19 @@ describe('credit reserve gate (§2 Credits)', () => {
     expect(refusedSearch.code).toBe('SOURCE_CREDITS_EXHAUSTED');
     expect(refusedSearch.retryable).toBe(false);
     expect(refusedSearch.details).toMatchObject({ creditsRemaining: 40, creditReserve: 50, kind: 'search' });
-    expect(calls).toHaveLength(1);
+    // The refusal first re-reads the free account balance (no credit
+    // spent), which still says 40; the search itself never goes out.
+    expect(calls.map((call) => call.url.pathname)).toEqual(['/request', '/account']);
 
     const refusedItems = await failure(source.items(items({ items: [{ itemId: '123456789012' }] })));
     expect(refusedItems.code).toBe('SOURCE_CREDITS_EXHAUSTED');
-    expect(calls).toHaveLength(1);
+    // Inside a minute of that probe the memory is trusted outright.
+    expect(calls).toHaveLength(2);
 
     const profile = await source.seller(seller({ loginId: 'tweedsidesales' }));
     expect(profile.resolved).toBe(true);
-    expect(calls).toHaveLength(2);
-    expect(calls[1]!.query.get('type')).toBe('seller_profile');
+    expect(calls).toHaveLength(3);
+    expect(calls[2]!.query.get('type')).toBe('seller_profile');
   });
 
   it('a balance at the reserve is still allowed, and a vendor that reports no balance never blocks', async () => {
@@ -203,15 +253,98 @@ describe('credit reserve gate (§2 Credits)', () => {
     expect(unknown.calls).toHaveLength(2);
   });
 
-  it('a vendor 402 is remembered as an empty balance, so the next search is refused without a round trip', async () => {
+  it('a vendor 402 is remembered as an empty balance, so the next search is refused without a charged request', async () => {
     const { source, calls } = build(() => json({ request_info: { success: false, message: 'Out of credits' } }, 402));
     const first = await failure(source.search(search({ searchTerm: 'lego', listingType: 'auction' })));
     expect(first.code).toBe('SOURCE_CREDITS_EXHAUSTED');
     expect(calls).toHaveLength(1);
     expect(source.creditsRemaining).toBe(0);
+    // The refusal asks the free account endpoint once (which answers 402
+    // too, so the memory stands) and never re-issues the search.
     const second = await failure(source.search(search({ searchTerm: 'lego', listingType: 'auction' })));
     expect(second.code).toBe('SOURCE_CREDITS_EXHAUSTED');
-    expect(calls).toHaveLength(1);
+    expect(calls.map((call) => call.url.pathname)).toEqual(['/request', '/account']);
+    expect(source.creditsRemaining).toBe(0);
+    const third = await failure(source.search(search({ searchTerm: 'lego', listingType: 'auction' })));
+    expect(third.code).toBe('SOURCE_CREDITS_EXHAUSTED');
+    expect(calls).toHaveLength(2);
+  });
+
+  it('keeps the newest balance when parallel responses land out of order', async () => {
+    const { source } = build(async ({ query }) => {
+      if (query.get('listing_type') === 'buy_it_now') {
+        // The older figure (fewer credits used, more remaining) answers last.
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return json(searchBody([searchRow('111111111111', 20)], { used: 10, remaining: 501 }));
+      }
+      return json(searchBody([searchRow('333333333333', 1)], { used: 11, remaining: 499 }));
+    });
+    const result = await source.search(search({ searchTerm: 'lego' }));
+    expect(result.credits).toEqual({ used: 11, remaining: 499 });
+    expect(source.creditsRemaining).toBe(499);
+  });
+
+  it('accepts a balance only from a response at least as far along as the last accepted one', async () => {
+    const reports: Credits[] = [
+      { used: 20, remaining: 480 },
+      { used: 15, remaining: 485 },
+      { used: null, remaining: 470 },
+    ];
+    const { source } = build((_call, ordinal) => json(searchBody([searchRow('111111111111', 20)], reports[ordinal - 1] ?? {})));
+    await source.search(search({ searchTerm: 'lego', listingType: 'auction' }));
+    expect(source.creditsRemaining).toBe(480);
+    // A stale response (used 15 < 20) cannot move the memory.
+    await source.search(search({ searchTerm: 'lego', listingType: 'auction' }));
+    expect(source.creditsRemaining).toBe(480);
+    // One that does not say how far along it is is taken at its word.
+    await source.search(search({ searchTerm: 'lego', listingType: 'auction' }));
+    expect(source.creditsRemaining).toBe(470);
+  });
+
+  it('re-reads the free account balance before refusing, and reopens the gate after a top-up', async () => {
+    let clock = Date.parse('2026-09-02T18:00:00Z');
+    let vendorRemaining = 40;
+    const { source, store, calls } = build(
+      ({ url }) => {
+        if (url.pathname === '/account') {
+          return json({ request_info: { success: true }, account_info: { credits_used: 960, credits_remaining: vendorRemaining } });
+        }
+        return json(searchBody([searchRow('111111111111', 20)], { used: 960, remaining: vendorRemaining }));
+      },
+      {},
+      { now: () => new Date(clock) },
+    );
+    const paths = () => calls.map((call) => call.url.pathname);
+
+    await source.search(search({ searchTerm: 'lego', listingType: 'auction' }));
+    expect(source.creditsRemaining).toBe(40);
+
+    // Below the reserve: the free endpoint is asked once, and the call is
+    // still refused because nothing changed. No charged request went out.
+    const refused = await failure(source.search(search({ searchTerm: 'lego', listingType: 'auction' })));
+    expect(refused.code).toBe('SOURCE_CREDITS_EXHAUSTED');
+    expect(paths()).toEqual(['/request', '/account']);
+    expect(calls[1]!.query.get('api_key')).toBe(API_KEY);
+
+    // Inside a minute the memory is trusted: no second probe, no request.
+    clock += 30_000;
+    const stillRefused = await failure(source.items(items({ items: [{ itemId: '123456789012' }] })));
+    expect(stillRefused.code).toBe('SOURCE_CREDITS_EXHAUSTED');
+    expect(paths()).toEqual(['/request', '/account']);
+
+    // A top-up lands; a minute on, the gate asks again and reopens.
+    vendorRemaining = 900;
+    clock += 31_000;
+    const served = await source.search(search({ searchTerm: 'lego', listingType: 'auction' }));
+    expect(paths()).toEqual(['/request', '/account', '/account', '/request']);
+    expect(served.credits.remaining).toBe(900);
+    expect(source.creditsRemaining).toBe(900);
+
+    // The probe is an upstream call like any other: an audit row each, key-free.
+    const probes = store.audit.events.filter((event) => (event.metadata as { requestType?: unknown } | null | undefined)?.requestType === 'account');
+    expect(probes).toHaveLength(2);
+    expect(probes.every((event) => event.outcome === 'ok' && event.actionClass === 'source')).toBe(true);
+    expect(JSON.stringify(probes)).not.toContain(API_KEY);
   });
 });
 
@@ -351,6 +484,47 @@ describe('split search (§3.1)', () => {
     expect(result.domain).toBe('ebay.com');
     expect(result.retrievedUnder).toEqual(['auction']);
   });
+
+  it('scans every merged row: an auction filter finds the auction-only tail of two 240-row pages', async () => {
+    const binPage = fixture('keyed/search-ca-lego-minifig-newly-listed.json');
+    const auctionPage = fixture('keyed/search-ca-lego-minifig-auction-newly-listed.json');
+    const { source } = build(({ query }) => {
+      const listingType = query.get('listing_type');
+      if (listingType === 'buy_it_now') return json(binPage);
+      if (listingType === 'auction') return json(auctionPage);
+      return json({ request_info: { success: false, message: 'unfiltered search issued' } }, 400);
+    });
+    const term = { searchTerm: 'lego minifigure lot', sortBy: 'newly_listed', destination: 'toronto' };
+
+    // 240 + 240 rows with the measured 30-id overlap merge to 450, the
+    // auction-only rows last; under the compactor's 240-row scan cap none
+    // of them was ever seen.
+    const auctions = await source.search(search({ ...term, search: { include: { formats: ['auction'] } } }));
+    expect(auctions.candidateCount).toBe(450);
+    expect(auctions.candidates).toHaveLength(210);
+    expect(auctions.candidates.every((candidate) => candidate.sellingFormat === 'auction')).toBe(true);
+    expect(auctions.hasMore).toBe(false);
+    expect(auctions.warnings.some((warning) => warning.startsWith('CANDIDATES_TRUNCATED:'))).toBe(false);
+
+    // The API default window is a whole page, and paging past it is said
+    // out loud because an offset page re-issues both vendor requests.
+    const whole = await source.search(search(term));
+    expect(whole.candidates).toHaveLength(240);
+    expect(whole).toMatchObject({ offset: 0, hasMore: true, nextOffset: 240 });
+    expect(whole.warnings).toContain(
+      'OFFSET_PAGING_REISSUES_REQUESTS: paging with search.offset re-issues the vendor requests and spends credits again; raise search.limit instead',
+    );
+    const kinds = new Map<unknown, number>();
+    for (const candidate of whole.candidates) kinds.set(candidate.sellingFormat, (kinds.get(candidate.sellingFormat) ?? 0) + 1);
+    expect(kinds.get('fixed_price')).toBe(210);
+    expect(kinds.get('auction_with_bin')).toBe(30);
+
+    const tail = await source.search(search({ ...term, search: { offset: 240 } }));
+    expect(tail.candidates).toHaveLength(210);
+    expect(tail.candidates.every((candidate) => candidate.sellingFormat === 'auction')).toBe(true);
+    expect(tail).toMatchObject({ offset: 240, hasMore: false, nextOffset: null });
+    expect(tail.warnings.some((warning) => warning.startsWith('OFFSET_PAGING_REISSUES_REQUESTS:'))).toBe(false);
+  });
 });
 
 describe('item pool (§3.2)', () => {
@@ -433,11 +607,17 @@ describe('item pool (§3.2)', () => {
   });
 
   it('a reserve crossed mid-batch refuses the remaining slots instead of the batch', async () => {
-    const { source, calls } = build(({ query }) => json(productBody(/\/itm\/(\d+)/.exec(query.get('url') ?? '')![1]!, { remaining: 49 })), {
-      maxConcurrency: 1,
-    });
+    const { source, calls } = build(
+      ({ url, query }) => {
+        if (url.pathname === '/account') return json({ request_info: { success: true }, account_info: { credits_used: 10, credits_remaining: 49 } });
+        return json(productBody(/\/itm\/(\d+)/.exec(query.get('url') ?? '')![1]!, { remaining: 49 }));
+      },
+      { maxConcurrency: 1 },
+    );
     const result = await source.items(items({ items: ITEM_IDS.slice(0, 3).map((itemId) => ({ itemId })) }));
-    expect(calls).toHaveLength(1);
+    // One charged request: the slot that found the reserve crossed re-read
+    // the free balance once, and the last slot trusted that reading.
+    expect(calls.map((call) => call.url.pathname)).toEqual(['/request', '/account']);
     expect(result).toMatchObject({ status: 'completed', requested: 3, completed: 3, succeeded: 1, failed: 2 });
     expect(result.results[0]!.ok).toBe(true);
     expect(result.results[1]!.error?.code).toBe('SOURCE_CREDITS_EXHAUSTED');
@@ -457,6 +637,28 @@ describe('item pool (§3.2)', () => {
     expect(record.itemPrice?.source).toBe('api');
     expect(record.sellingFormat.kind).toBe('fixed_price');
     expect(result.compact).toBe(false);
+  });
+
+  it('issues no vendor request once the deadline flag is set: untouched slots are SOURCE_UNAVAILABLE and the batch is partial', async () => {
+    const deadline: SourceDeadline = { deadlineMs: 50, expired: false };
+    const { source, calls } = build(({ query }) => {
+      // The deadline passes while the first request is in flight.
+      deadline.expired = true;
+      return json(productBody(/\/itm\/(\d+)/.exec(query.get('url') ?? '')![1]!));
+    }, { maxConcurrency: 1 });
+    const result = await source.items(items({ items: ITEM_IDS.slice(0, 3).map((itemId) => ({ itemId })) }), undefined, deadline);
+    expect(calls).toHaveLength(1);
+    expect(EbayApiItemsOutput.parse(result)).toBeTruthy();
+    expect(result).toMatchObject({ status: 'partial', requested: 3, completed: 1, succeeded: 1, failed: 0 });
+    expect(result.results).toHaveLength(3);
+    expect(result.results[0]!.ok).toBe(true);
+    for (const slot of result.results.slice(1)) {
+      expect(slot).toMatchObject({ ok: false, record: null, finalUrl: null, error: { code: 'SOURCE_UNAVAILABLE', retryable: true } });
+      expect(slot.error!.message).toMatch(/deadline of 50 ms/);
+    }
+    expect(result.warnings.some((warning) => warning.startsWith('BATCH_DEADLINE_REACHED:'))).toBe(true);
+    const { source: _source, credits: _credits, requestIds: _requestIds, ...bridgeShape } = result;
+    expect(ExtractManyOutput.parse(bridgeShape)).toBeTruthy();
   });
 });
 
@@ -486,5 +688,94 @@ describe('seller lookup (§3.3)', () => {
     expect(result.resolved).toBe(false);
     expect(result.seller).toBeNull();
     expect(result.warnings.some((warning) => warning.startsWith('SELLER_UNRESOLVED:') && warning.includes('Seller not found.'))).toBe(true);
+  });
+});
+
+describe('tool deadline (catalog timeoutMs, enforced by registerSourceTools)', () => {
+  const READ = { scopes: ['browser:read'], clientId: 'unit' };
+
+  it('a vendor that never answers cannot hold the call open past the deadline', async () => {
+    const { source } = build(() => new Promise<Response>(() => {}));
+    const { server, tools } = fakeServer();
+    registerSourceTools(server, source, READ, { timeoutMs: 30 });
+    expect([...tools.keys()]).toEqual(['ebay_api_search', 'ebay_api_items', 'ebay_api_seller']);
+
+    const result = await tools.get('ebay_api_search')!({ searchTerm: 'lego', listingType: 'auction' });
+    expect(result.isError).toBe(true);
+    expect(errorPayload(result)).toMatchObject({
+      code: 'SOURCE_UNAVAILABLE',
+      retryable: true,
+      message: 'tool deadline of 30 ms exceeded',
+      details: { deadlineMs: 30 },
+    });
+  });
+
+  it('answers SOURCE_UNAVAILABLE when the deadline passes mid-batch, and the pool issues nothing afterwards', async () => {
+    let held = false;
+    const { source, calls } = build(async ({ query }) => {
+      const itemId = /\/itm\/(\d+)/.exec(query.get('url') ?? '')![1]!;
+      // The first request outlives the 40 ms deadline; any later one would answer at once.
+      if (!held) {
+        held = true;
+        await new Promise((resolve) => setTimeout(resolve, 90));
+      }
+      return json(productBody(itemId));
+    }, { maxConcurrency: 1 });
+    const { server, tools } = fakeServer();
+    registerSourceTools(server, source, READ, { timeoutMs: 40 });
+
+    const result = await tools.get('ebay_api_items')!({
+      items: [{ itemId: '100000000001' }, { itemId: '100000000002' }, { itemId: '100000000003' }],
+    });
+    expect(result.isError).toBe(true);
+    expect(errorPayload(result)).toMatchObject({ code: 'SOURCE_UNAVAILABLE', message: 'tool deadline of 40 ms exceeded', details: { deadlineMs: 40 } });
+
+    // Once the held request answers, the pool reads the flag and stops: one vendor call, ever.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(calls).toHaveLength(1);
+  });
+
+  it('a call inside its deadline is unaffected', async () => {
+    const { source } = build(routed());
+    const { server, tools } = fakeServer();
+    registerSourceTools(server, source, READ, { timeoutMs: 5_000 });
+    const result = await tools.get('ebay_api_seller')!({ loginId: 'tweedsidesales' });
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toMatchObject({ resolved: true });
+  });
+});
+
+describe('input pre-screen (§2 URL policy at the tool layer)', () => {
+  const caller = { subject: null, traceparent: null };
+
+  it('names the reason and ORIGIN_DENIED for a refused url on every tool, before the schema and before any vendor call', async () => {
+    const { source, calls } = build(routed());
+
+    // An item url is one branch of a union, whose failure the schema reports
+    // as "invalid input" at items.N with no reason: this used to be ACTION_BLOCKED.
+    const item = await failure(
+      runSourceTool(source, 'ebay_api_items', { items: [{ itemId: '123456789012' }, { url: 'https://attacker.example/itm/123456789012' }] }, caller),
+    );
+    expect(item.code).toBe('ORIGIN_DENIED');
+    expect(item.message).toMatch(/host attacker\.example/);
+    expect(item.details).toMatchObject({ url: 'https://attacker.example/itm/123456789012', path: 'items.1.url', tool: 'ebay_api_items' });
+
+    const smuggled = await failure(runSourceTool(source, 'ebay_api_search', { url: 'https://www.ebay.ca\\itm\\123456789012@evil.com/' }, caller));
+    expect(smuggled.code).toBe('ORIGIN_DENIED');
+    expect(smuggled.message).toMatch(/backslash/);
+
+    const profile = await failure(runSourceTool(source, 'ebay_api_seller', { url: 'https://www.ebay.ca/itm/123456789012' }, caller));
+    expect(profile.code).toBe('ORIGIN_DENIED');
+    expect(profile.message).toMatch(/path/);
+    expect(calls).toHaveLength(0);
+
+    // The schema stays the second line: a malformed input with no url to
+    // blame is still a blocked call, and an accepted url still runs.
+    const blocked = await failure(runSourceTool(source, 'ebay_api_items', { items: [{ expectedFormat: 'auction' }] }, caller));
+    expect(blocked.code).toBe('ACTION_BLOCKED');
+    expect(calls).toHaveLength(0);
+    const served = await runSourceTool(source, 'ebay_api_seller', { url: 'https://www.ebay.ca/usr/tweedsidesales' }, caller);
+    expect(served.resolved).toBe(true);
+    expect(calls).toHaveLength(1);
   });
 });

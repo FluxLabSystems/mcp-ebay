@@ -53,10 +53,20 @@ describe('gateway Countdown API configuration', () => {
     const config = loadGatewayConfig({
       ...BASE_ENV,
       COUNTDOWN_API_KEY: '  cd-test-key  ',
-      COUNTDOWN_API_BASE_URL: 'http://countdown-stub:9999///',
+      COUNTDOWN_API_BASE_URL: 'https://countdown-stub:9999///',
     });
     expect(config.countdown?.apiKey).toBe('cd-test-key');
-    expect(config.countdown?.baseUrl).toBe('http://countdown-stub:9999');
+    expect(config.countdown?.baseUrl).toBe('https://countdown-stub:9999');
+  });
+
+  it('refuses a plain-http base URL, because the key rides in every request query string', () => {
+    expect(() => loadGatewayConfig({ ...KEYED_ENV, COUNTDOWN_API_BASE_URL: 'http://countdown-stub:9999' })).toThrow(
+      /COUNTDOWN_API_BASE_URL/,
+    );
+    // Validated at boot whether or not the source is on.
+    expect(() => loadGatewayConfig({ ...BASE_ENV, COUNTDOWN_API_BASE_URL: 'http://api.countdownapi.com' })).toThrow(
+      /COUNTDOWN_API_BASE_URL/,
+    );
   });
 
   it('reads the tuning knobs at their bounds', () => {

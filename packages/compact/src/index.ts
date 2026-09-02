@@ -365,6 +365,20 @@ export interface SearchCompactionResult {
   warnings: string[];
 }
 
+/**
+ * compactSearchPage's options: the wire-level SearchCompaction plus one
+ * knob no caller sets over the wire. The scan cap exists to bound a
+ * caller-supplied regex against one rendered page; the gateway's API search
+ * merges two vendor pages before compacting (buy-it-now rows first,
+ * auction-only rows last) and passes the merged row count, because under
+ * the cap the tail was never scanned and a format filter never saw an
+ * auction.
+ */
+export interface SearchCompactionOptions extends SearchCompaction {
+  /** Rows scanned before filtering; defaults to MAX_SCANNED_CANDIDATES. */
+  maxScanned?: number;
+}
+
 type Site = 'ebay' | 'kijiji' | 'zazzle';
 
 function siteOfProfile(siteProfile: unknown): Site {
@@ -442,7 +456,7 @@ function readCandidateFormat(row: Unknown): string | null {
  */
 export function compactSearchPage(
   record: unknown,
-  options: SearchCompaction,
+  options: SearchCompactionOptions,
 ): SearchCompactionResult {
   const source = asObject(record);
   const warnings: string[] = [];
@@ -453,10 +467,11 @@ export function compactSearchPage(
   }
 
   const site = siteOfProfile(source.siteProfile);
-  const rows = (source.candidates as unknown[]).slice(0, MAX_SCANNED_CANDIDATES);
-  if ((source.candidates as unknown[]).length > MAX_SCANNED_CANDIDATES) {
+  const maxScanned = Math.max(0, Math.trunc(options.maxScanned ?? MAX_SCANNED_CANDIDATES));
+  const rows = (source.candidates as unknown[]).slice(0, maxScanned);
+  if ((source.candidates as unknown[]).length > maxScanned) {
     warnings.push(
-      `CANDIDATES_TRUNCATED: the page rendered ${(source.candidates as unknown[]).length} candidates; only the first ${MAX_SCANNED_CANDIDATES} were considered.`,
+      `CANDIDATES_TRUNCATED: the page rendered ${(source.candidates as unknown[]).length} candidates; only the first ${maxScanned} were considered.`,
     );
   }
 
