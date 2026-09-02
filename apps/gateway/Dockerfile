@@ -8,17 +8,34 @@ COPY packages/protocol/package.json packages/protocol/package.json
 COPY packages/config/package.json packages/config/package.json
 COPY packages/policy/package.json packages/policy/package.json
 COPY packages/audit/package.json packages/audit/package.json
+# The gateway's eBay API source (docs/COUNTDOWN-API-PLAN.md) pulls in the
+# shared compaction module and, through it, the three site profiles.
+COPY packages/site-ebay/package.json packages/site-ebay/package.json
+COPY packages/site-kijiji/package.json packages/site-kijiji/package.json
+COPY packages/site-zazzle/package.json packages/site-zazzle/package.json
+COPY packages/compact/package.json packages/compact/package.json
+COPY packages/source-countdown/package.json packages/source-countdown/package.json
 COPY apps/gateway/package.json apps/gateway/package.json
 RUN pnpm install --frozen-lockfile --filter @browser-bridge/gateway... --ignore-scripts
 COPY packages/protocol packages/protocol
 COPY packages/config packages/config
 COPY packages/policy packages/policy
 COPY packages/audit packages/audit
+COPY packages/site-ebay packages/site-ebay
+COPY packages/site-kijiji packages/site-kijiji
+COPY packages/site-zazzle packages/site-zazzle
+COPY packages/compact packages/compact
+COPY packages/source-countdown packages/source-countdown
 COPY apps/gateway apps/gateway
 RUN pnpm --filter @browser-bridge/protocol build \
  && pnpm --filter @browser-bridge/config build \
  && pnpm --filter @browser-bridge/policy build \
  && pnpm --filter @browser-bridge/audit build \
+ && pnpm --filter @browser-bridge/site-ebay build \
+ && pnpm --filter @browser-bridge/site-kijiji build \
+ && pnpm --filter @browser-bridge/site-zazzle build \
+ && pnpm --filter @browser-bridge/compact build \
+ && pnpm --filter @browser-bridge/source-countdown build \
  && pnpm --filter @browser-bridge/gateway build
 RUN pnpm --filter @browser-bridge/gateway deploy --prod --legacy /out
 
