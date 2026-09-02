@@ -21,9 +21,12 @@
   },
   "dependencies": {
     "@browser-bridge/audit": "workspace:*",
+    "@browser-bridge/compact": "workspace:*",
     "@browser-bridge/config": "workspace:*",
     "@browser-bridge/policy": "workspace:*",
     "@browser-bridge/protocol": "workspace:*",
+    "@browser-bridge/site-ebay": "workspace:*",
+    "@browser-bridge/source-countdown": "workspace:*",
     "@hono/node-server": "^2.1.0",
     "@modelcontextprotocol/hono": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",

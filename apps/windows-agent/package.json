@@ -20,18 +20,19 @@
   },
   "dependencies": {
     "@browser-bridge/browser-core": "workspace:*",
+    "@browser-bridge/compact": "workspace:*",
     "@browser-bridge/config": "workspace:*",
     "@browser-bridge/policy": "workspace:*",
     "@browser-bridge/protocol": "workspace:*",
     "@browser-bridge/site-ebay": "workspace:*",
     "@browser-bridge/site-kijiji": "workspace:*",
-    "@browser-bridge/site-zazzle": "workspace:*",
     "@browser-bridge/site-vendors": "workspace:*",
+    "@browser-bridge/site-zazzle": "workspace:*",
     "@browser-bridge/telemetry": "workspace:*",
+    "linkedom": "^0.18.13",
     "pino": "^10.3.1",
     "playwright": "1.56.1",
-    "ws": "^8.21.3",
-    "linkedom": "^0.18.13"
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/ws": "^8.18.1"
