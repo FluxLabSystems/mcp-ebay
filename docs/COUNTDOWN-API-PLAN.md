@@ -95,7 +95,7 @@ means "accepted, needs a plan". Both are free.
 | `num` | `60`, `120`, `240` |
 | `page`, `max_page` | `max_page` ≤ 5 on real-time requests; each page costs one credit. With `max_page` > 1 the response shape changes: `pagination` becomes `{pages: [...]}` with one entry per page, `request_metadata.ebay_url` is absent, and every row gains `page` and `position_overall`. Measured: `num=240&max_page=2` returned 480 distinct rows in 273 KB (about 570 bytes a row). |
 | `customer_location` | ISO country code; `ca` and `us` both support `customer_zipcode` |
-| `customer_zipcode` | accepted on `type=search` (probe: 401); **rejected on `type=product`** (probe: 400 "should not be specified when type=product") |
+| `customer_zipcode` | accepted on `type=search` (probe: 401); **rejected on `type=product`** (probe: 400 "should not be specified when type=product", re-verified in the `url` and `epid` forms with the Canadian and U.S. zips; the vendor's playground confirms it from the UI side: switching the Type selector to Product removes the Customer Zipcode field while Customer Location stays) |
 | `completed_items`, `sold_items` | **rejected**: "no longer supported, eBay now requires a signed-in session" |
 | `facets`, `allow_rewritten_results` | facet filters in eBay's own vocabulary; `allow_rewritten_results=false` drops the "results matching fewer words" rows |
 
