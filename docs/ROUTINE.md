@@ -46,6 +46,54 @@ the batch. Fold **`deals_run_checkpoint`** into the same moment as each
 resumable one. On a clean run with nothing to resume, skip both and the
 plan above stands at 12.
 
+## The budget with the eBay API tools
+
+When the gateway serves `ebay_api_search`, `ebay_api_items` and
+`ebay_api_seller` — they exist only while `COUNTDOWN_API_KEY` is set, so
+probe for them; an unloaded schema is not absence — Track A's sweeps and its
+first validation pass leave the browser entirely. The table above stays the
+plan for a run without them and for Kijiji. Target: **first write by call
+6**, with the browser session opened only for the shipping pass.
+
+| # | Call | Purpose |
+|---|---|---|
+| 1 | `dashboard_feed` `{dashboard:"deals", mode:"ids", filter:{active:true}}` | The diff set, as above. |
+| 2–3 | `ebay_api_search` — broad sweeps, one call per domain, with `search.include` | Up to 240 rows a page and `maxPage` up to 5 in one call: no scan window, no challenge page. `listingType:"all"` is **two vendor requests** (`buy_it_now` and `auction`, merged by item id) but **one tool call**; an unfiltered vendor search is never issued. |
+| 4 | `ebay_api_search` — watched-seller sweeps | The roster's `_ssn=` search URLs pass through the `url` argument, `_sop=10&_ipg=240` and all; a second call when the roster spans both domains. Two to four searches in all. |
+| 5 | `ebay_api_items` — the shortlist + re-validation ids | Up to 25 items, inline, no job to poll. A slot with `ok:true` is a current canonical fetch: id, title, availability, and price on a fixed-price row. **Auction slots return no price** — identity and availability only. |
+| **6** | **`dashboard_upsert`** | **Write now.** Fixed-price finds and re-validations from call 5; everything stays `shippingResolved:false`. |
+| 7 | `browser_session_open` | Only now. |
+| 8 | `browser_extract_many` — the shortlist that needs a landed figure, plus **every auction** | The shipping pass: M6H 2W9-resolved shipping, bids, end times, max-bid math. |
+| 9 | `browser_job_status` | Poll until `completed`. |
+| 10 | `dashboard_upsert` | Second write: landed figures and auction fields, `shippingResolved:true` only where the page proved the number. |
+| 11 | `ebay_api_items` — re-validation overflow, or the Kijiji batch | A second item call when the active eBay set is over 25. |
+| 12 | `dashboard_upsert` (+ `{touch:[…]}`) | Third write; lastSeen refresh folded in. |
+
+`ebay_api_seller` — the `/usr/<loginId>` confirmation for the login-id
+rules — costs one credit and fits wherever a roster entry needs it; it is
+not in the count. When a call answers `SOURCE_UNAVAILABLE`,
+`SOURCE_CREDITS_EXHAUSTED` or `SOURCE_REJECTED`, that step falls back to the
+Bridge path in the table above and the completion report says so.
+
+What the API never provides, so no call above waits for it:
+
+- **Postal-code shipping.** The vendor rejects a zip on item requests and
+  resolves item pages to its own U.S. zip, so every API item carries
+  `DESTINATION_UNVERIFIED`. A search row's `shippingCost` under
+  `destination:"toronto"` is eBay's card-level estimate for M6H 2W9 — use it
+  for triage and a provisional max bid, never as the resolved figure; `null`
+  means the card showed nothing readable, not free shipping.
+- **Auction bids and end times.** Search rows carry no bid count and item
+  pages report live auctions as fixed price. Every bid, `endsAt` and
+  `timeLeftText` comes from the Bridge item page (call 8).
+- **Sold comps.** `sold_items` / `completed_items` are refused by the vendor
+  (eBay requires a signed-in session for them).
+- **Kijiji.** eBay only; Track B runs exactly as in the table above.
+
+Every API response carries `credits {used, remaining}`; the last
+`credits.remaining` of the run goes into the completion report next to the
+call count.
+
 ## Why each call is one call
 
 - **`browser_open_and_extract`** navigates and extracts in one call. On a

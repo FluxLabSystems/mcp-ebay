@@ -18,6 +18,16 @@ const httpsUrl = z
 
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const;
 
+/**
+ * Uppercase with every whitespace run removed (`M6H 2W9` → `M6H2W9`). The
+ * Countdown API passes `customer_zipcode` through to eBay's `_stpos`
+ * parameter unnormalised, and the spaced form has produced a transient
+ * failure there, so the vendor-bound copy is always sent compact.
+ */
+function compactPostalCode(value: string): string {
+  return value.toUpperCase().replace(/\s+/g, '');
+}
+
 export const GatewayEnvSchema = z
   .object({
     NODE_ENV: z.enum(['production', 'development', 'test']).default('development'),
@@ -70,6 +80,40 @@ export const GatewayEnvSchema = z
     JOBS_INGEST_TOKEN: z.string().min(1).optional(),
     VACATION_INGEST_TOKEN: z.string().min(1).optional(),
     WARDROBE_INGEST_TOKEN: z.string().min(1).optional(),
+    /**
+     * Countdown API (Traject Data's eBay scraping API) key for the
+     * gateway-served ebay_api_* tools. When unset the tools are not
+     * registered, the same way DASHBOARD_API_BASE_URL gates the dashboard
+     * tools. An empty value reads as unset on purpose: FluxLab's deploy
+     * script copies `COUNTDOWN_API_KEY=` verbatim from .env.example into an
+     * existing .env and refuses CHANGE_ME placeholders, so the example line
+     * has to be blank. Surrounding whitespace is trimmed.
+     */
+    COUNTDOWN_API_KEY: z
+      .string()
+      .optional()
+      .transform((value) => {
+        const key = value?.trim();
+        return key === undefined || key === '' ? undefined : key;
+      }),
+    /** Vendor root; overridable for the integration stub only. */
+    COUNTDOWN_API_BASE_URL: z.url().default('https://api.countdownapi.com'),
+    /**
+     * Search and item calls are refused with SOURCE_CREDITS_EXHAUSTED once
+     * the last observed credits_remaining is below this; a seller-profile
+     * call (one credit, rare) is still allowed.
+     */
+    COUNTDOWN_CREDIT_RESERVE: z.coerce.number().int().min(0).default(500),
+    /** Parallel product requests inside one ebay_api_items call. */
+    COUNTDOWN_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(4),
+    /** Per upstream request; a five-page search can take most of a minute. */
+    COUNTDOWN_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(300_000).default(90_000),
+    /**
+     * The MyUS Sarasota suite from the boards' multi-path shipping policy.
+     * With EBAY_DESTINATION_POSTAL_CODE it is one of the only two zip codes
+     * the gateway ever sends to the vendor (plans cap distinct zips).
+     */
+    EBAY_FORWARDER_ZIPCODE: z.string().default('34249'),
   })
   .check((ctx) => {
     const env = ctx.value;
@@ -120,7 +164,56 @@ export const GatewayEnvSchema = z
         path: ['DASHBOARD_API_BASE_URL'],
       });
     }
+    // The forwarder zip reaches eBay as `_stpos` through the vendor; a
+    // malformed value would fail every forwarder-destination search at run
+    // time, so it is checked at boot whether or not the source is enabled.
+    if (!/^\d{5}$/.test(env.EBAY_FORWARDER_ZIPCODE)) {
+      ctx.issues.push({
+        code: 'custom',
+        message: `EBAY_FORWARDER_ZIPCODE must be exactly five digits (a U.S. ZIP such as 34249), got ${JSON.stringify(env.EBAY_FORWARDER_ZIPCODE)}`,
+        input: env,
+        path: ['EBAY_FORWARDER_ZIPCODE'],
+      });
+    }
+    // The toronto destination is derived from EBAY_DESTINATION_POSTAL_CODE;
+    // with the source enabled a blank one would send an empty zip.
+    if (env.COUNTDOWN_API_KEY !== undefined && compactPostalCode(env.EBAY_DESTINATION_POSTAL_CODE) === '') {
+      ctx.issues.push({
+        code: 'custom',
+        message: 'EBAY_DESTINATION_POSTAL_CODE must not be blank when COUNTDOWN_API_KEY is set (it is the toronto destination zip)',
+        input: env,
+        path: ['EBAY_DESTINATION_POSTAL_CODE'],
+      });
+    }
   });
+
+/**
+ * Countdown API source behind the gateway-served ebay_api_* tools
+ * (docs/COUNTDOWN-API-PLAN.md §2). Present only when COUNTDOWN_API_KEY is
+ * set and non-empty.
+ */
+export interface CountdownConfig {
+  apiKey: string;
+  /** Vendor root with trailing slashes stripped, e.g. https://api.countdownapi.com. */
+  baseUrl: string;
+  /** Search and item calls are refused once the last observed credits_remaining is below this. */
+  creditReserve: number;
+  /** Parallel product requests inside one ebay_api_items call (1..8). */
+  maxConcurrency: number;
+  /** Per upstream request. */
+  timeoutMs: number;
+  /**
+   * The only two destinations the gateway ever sends; tool inputs name them
+   * and 'domain_default' sends no location parameters at all. toronto is
+   * EBAY_DESTINATION_POSTAL_CODE uppercased with whitespace removed (the
+   * vendor forwards the value unnormalised); forwarder is
+   * EBAY_FORWARDER_ZIPCODE.
+   */
+  destinations: {
+    toronto: { customerLocation: 'ca'; customerZipcode: string };
+    forwarder: { customerLocation: 'us'; customerZipcode: string };
+  };
+}
 
 export interface GatewayConfig {
   nodeEnv: 'production' | 'development' | 'test';
@@ -153,6 +246,12 @@ export interface GatewayConfig {
      */
     tokens: Partial<Record<DashboardId, string>>;
   } | null;
+  /**
+   * Countdown API source for the ebay_api_* tools; null when
+   * COUNTDOWN_API_KEY is unset or empty, in which case the tools are not
+   * registered.
+   */
+  countdown: CountdownConfig | null;
 }
 
 export function loadGatewayConfig(env: Record<string, string | undefined> = process.env): GatewayConfig {
@@ -162,6 +261,7 @@ export function loadGatewayConfig(env: Record<string, string | undefined> = proc
   const extraHosts = parsed.EXTRA_ALLOWED_HOSTS.split(',')
     .map((h) => h.trim())
     .filter((h) => h.length > 0);
+  const torontoZipcode = compactPostalCode(parsed.EBAY_DESTINATION_POSTAL_CODE);
   return {
     nodeEnv: parsed.NODE_ENV,
     publicBaseUrl,
@@ -196,6 +296,20 @@ export function loadGatewayConfig(env: Record<string, string | undefined> = proc
               ...(parsed.JOBS_INGEST_TOKEN === undefined ? {} : { jobs: parsed.JOBS_INGEST_TOKEN }),
               ...(parsed.VACATION_INGEST_TOKEN === undefined ? {} : { vacation: parsed.VACATION_INGEST_TOKEN }),
               ...(parsed.WARDROBE_INGEST_TOKEN === undefined ? {} : { wardrobe: parsed.WARDROBE_INGEST_TOKEN }),
+            },
+          },
+    countdown:
+      parsed.COUNTDOWN_API_KEY === undefined
+        ? null
+        : {
+            apiKey: parsed.COUNTDOWN_API_KEY,
+            baseUrl: parsed.COUNTDOWN_API_BASE_URL.replace(/\/+$/, ''),
+            creditReserve: parsed.COUNTDOWN_CREDIT_RESERVE,
+            maxConcurrency: parsed.COUNTDOWN_MAX_CONCURRENCY,
+            timeoutMs: parsed.COUNTDOWN_TIMEOUT_MS,
+            destinations: {
+              toronto: { customerLocation: 'ca', customerZipcode: torontoZipcode },
+              forwarder: { customerLocation: 'us', customerZipcode: parsed.EBAY_FORWARDER_ZIPCODE },
             },
           },
     allowedHosts: [
