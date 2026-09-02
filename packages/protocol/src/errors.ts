@@ -40,6 +40,15 @@ export const ERROR_CATALOG = {
   SITE_PROFILE_MISMATCH: { retryable: false, message: 'Named extractor does not support current origin/page.' },
   EXTRACTION_INCOMPLETE: { retryable: true, message: 'Required extraction fields could not be resolved.' },
   RATE_LIMITED: { retryable: true, message: 'Local/gateway rate limit exceeded.' },
+  SOURCE_UNAVAILABLE: {
+    retryable: true,
+    message: 'Upstream data source is unavailable (incident, 5xx after retries, or timeout); retry after the delay it names.',
+  },
+  SOURCE_CREDITS_EXHAUSTED: {
+    retryable: false,
+    message: 'Upstream data source credits are exhausted or below the configured reserve.',
+  },
+  SOURCE_REJECTED: { retryable: false, message: 'Upstream data source rejected the request as invalid or unauthorized.' },
   INTERNAL_ERROR: { retryable: true, message: 'Unexpected internal failure; trace id supplied.' },
 } as const;
 

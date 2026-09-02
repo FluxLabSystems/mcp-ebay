@@ -1006,3 +1006,491 @@ export const RunResumeOutput = z.strictObject({
   ageSeconds: z.union([z.int().min(0), z.null()]),
   warnings: z.array(z.string()),
 });
+
+/* ------------------------------------------------------------------------- *
+ * Countdown API source tools — gateway-served, no device on the path.
+ *
+ * docs/COUNTDOWN-API-PLAN.md §2 and §3. The three `ebay_api_*` tools read
+ * eBay search pages, item pages and seller profiles through a vendor API
+ * rather than through the Bridge browser, so a deals run can sweep both
+ * marketplaces without spending its per-turn tool budget on page traversal.
+ * The gateway holds the vendor key and maps every named destination to one
+ * of two fixed postal codes; what is here is the whole caller-facing
+ * contract, and the only place the §2 URL policy is written down.
+ *
+ * Every call spends vendor credits. Nothing below is a browser tool: the
+ * catalog entries live in SOURCE_TOOL_CATALOG, not TOOL_CATALOG, and the
+ * browser tools' siteProfile enums are unchanged — the Bridge never produces
+ * 'ebay.api.v1'.
+ * ------------------------------------------------------------------------- */
+
+/** The two marketplaces the deals routine sweeps — the vendor's `ebay_domain`. */
+export const EbayApiDomainSchema = z.enum(['ebay.ca', 'ebay.com']);
+export type EbayApiDomain = z.infer<typeof EbayApiDomainSchema>;
+
+/**
+ * Shipping destinations are named, never free text. The gateway maps
+ * 'toronto' to the deployment's Toronto postal code, 'forwarder' to the
+ * MyUS Sarasota suite from the multi-path shipping policy, and
+ * 'domain_default' to no location parameters at all. Two fixed values keep
+ * the vendor account's distinct-zip cap at two and make the skill's "never
+ * invent a destination" rule something code enforces. On a search the zip
+ * reaches eBay as _stpos, so a row's shippingCost under 'toronto' is eBay's
+ * own card estimate for that postal code; on an item page the vendor's
+ * browser resolves delivery to its own zip whatever is sent, so item-page
+ * shipping is never destination evidence (see EbayApiItemsInput).
+ */
+export const EbayApiDestinationSchema = z.enum(['toronto', 'forwarder', 'domain_default']);
+export type EbayApiDestination = z.infer<typeof EbayApiDestinationSchema>;
+
+/**
+ * 'all' is served as TWO vendor requests, buy_it_now and auction, merged and
+ * de-duplicated by item id: an unfiltered vendor search reports
+ * is_auction: false on live auctions (plan §1.3), so the filter a row was
+ * retrieved under is the only trustworthy source of its selling format.
+ * credits.used reports both requests.
+ */
+export const EbayApiListingTypeSchema = z.enum(['all', 'buy_it_now', 'auction', 'accepts_offers']);
+export type EbayApiListingType = z.infer<typeof EbayApiListingTypeSchema>;
+
+export const EbayApiSortBySchema = z.enum([
+  'best_match',
+  'newly_listed',
+  'ending_soonest',
+  'price_low_to_high',
+  'price_high_to_low',
+]);
+export type EbayApiSortBy = z.infer<typeof EbayApiSortBySchema>;
+
+export const EbayApiConditionSchema = z.enum(['all', 'new', 'used']);
+export type EbayApiCondition = z.infer<typeof EbayApiConditionSchema>;
+
+/**
+ * The selling format a search established for a row (§3.1). The item tool
+ * takes it from the caller because the vendor's item-page is_auction flag
+ * reads false on a live auction, so the page cannot say for itself.
+ */
+export const EbayApiExpectedFormatSchema = z.enum(['auction', 'auction_with_bin', 'fixed_price']);
+export type EbayApiExpectedFormat = z.infer<typeof EbayApiExpectedFormatSchema>;
+
+/**
+ * An eBay item number: 12 digits today, allowed 10 to 14 so a format change
+ * on eBay's side is not a schema release here. A string, as every record
+ * field is, and never the vendor's `epid`, which can be a product id.
+ */
+export const EBAY_ITEM_ID_PATTERN = /^\d{10,14}$/;
+export const EbayItemIdSchema = z
+  .string()
+  .regex(EBAY_ITEM_ID_PATTERN, 'itemId must be a string of 10 to 14 digits');
+
+/**
+ * Same ceiling as browser_extract_many, deliberately: the items tool answers
+ * in that tool's output shape, and a shortlist that fits one Bridge batch
+ * must fit one API batch so a run can hand the same list to either source.
+ */
+export const EBAY_API_ITEMS_MAX = EXTRACT_MANY_MAX_URLS;
+
+/** The vendor's real-time search ceiling (plan §1.4); Collections go further but are not this tool. */
+export const EBAY_API_MAX_PAGE = 5;
+
+/** Page sizes eBay renders. A page is one vendor request whatever its size. */
+export const EBAY_API_PAGE_SIZES = [60, 120, 240] as const;
+
+/** Longest search term the tool forwards; eBay's own search box stops well short of it. */
+export const EBAY_API_SEARCH_TERM_MAX_CHARS = 200;
+
+/**
+ * An eBay seller login id as the /usr/ path segment carries it. Store slugs
+ * (/str/<slug>) are a different namespace and are not login ids.
+ */
+export const EBAY_SELLER_LOGIN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._*-]{0,63}$/;
+
+/**
+ * The vendor's seller description is free marketplace text. A profile
+ * result is not a place to park a page, so the mapper truncates to this and
+ * the output schema holds it to the same figure.
+ */
+export const EBAY_API_SELLER_DESCRIPTION_MAX_CHARS = 500;
+
+// --- URL policy (§2) ---------------------------------------------------------
+
+export type EbayUrlKind = 'search' | 'item' | 'seller';
+
+/**
+ * Hosts a caller-supplied URL may name, matched exactly: no other subdomain,
+ * no lookalike, no trailing dot. This is separate from the browser
+ * allowlist in @browser-bridge/policy on purpose — that list describes what
+ * the BROWSER may load (image CDNs included), while these tools load
+ * nothing themselves: they hand the URL to a third party, so the set of
+ * acceptable hosts is the set of pages the vendor is meant to read.
+ */
+const EBAY_HOST_DOMAIN: ReadonlyMap<string, EbayApiDomain> = new Map<string, EbayApiDomain>([
+  ['www.ebay.ca', 'ebay.ca'],
+  ['ebay.ca', 'ebay.ca'],
+  ['www.ebay.com', 'ebay.com'],
+  ['ebay.com', 'ebay.com'],
+]);
+export const EBAY_URL_HOSTS: readonly string[] = [...EBAY_HOST_DOMAIN.keys()];
+
+const EBAY_URL_PATH_PREFIXES: Readonly<Record<EbayUrlKind, readonly string[]>> = {
+  search: ['/sch/'],
+  item: ['/itm/'],
+  seller: ['/usr/', '/str/'],
+};
+
+/**
+ * Screen a caller-supplied eBay URL against the §2 policy before it goes
+ * anywhere near the vendor. Returns a human-readable reason to refuse, or
+ * null when the URL is acceptable for one of `kinds`. Query strings are not
+ * inspected: they pass to the vendor verbatim so the routine's existing
+ * _ssn=, _sop=10, _ipg=240 and LH_PrefLoc=2 conventions keep working.
+ *
+ * The parsed (normalised) form is what is judged — WHATWG parsing lowercases
+ * the host, resolves dot segments in the path and drops a default port — so
+ * "/sch/../itm/1" is an item path and "WWW.EBAY.CA" is an eBay host, while
+ * an IDN lookalike arrives as punycode and matches nothing.
+ */
+export function screenEbayUrl(url: string, kinds: readonly EbayUrlKind[]): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return 'url is not an absolute URL';
+  }
+  if (parsed.protocol !== 'https:') {
+    return `url scheme must be https, not ${parsed.protocol.replace(/:$/, '')}`;
+  }
+  if (parsed.username !== '' || parsed.password !== '') {
+    return 'url must not carry userinfo';
+  }
+  if (parsed.port !== '') {
+    return 'url must not name an explicit port';
+  }
+  if (!EBAY_HOST_DOMAIN.has(parsed.hostname)) {
+    return `url host ${parsed.hostname} is not one of ${EBAY_URL_HOSTS.join(', ')}`;
+  }
+  if (kinds.length === 0) {
+    return 'no URL kind is permitted here';
+  }
+  const prefixes = kinds.flatMap((kind) => EBAY_URL_PATH_PREFIXES[kind]);
+  if (!prefixes.some((prefix) => parsed.pathname.startsWith(prefix))) {
+    return `url path must start with ${prefixes.join(' or ')} for a ${kinds.join('/')} URL`;
+  }
+  return null;
+}
+
+/**
+ * The marketplace a URL belongs to, by host alone, or null for any host the
+ * policy does not know. A caller's `domain` field is ignored when it passes
+ * a url (§3.1), and this is how the gateway recovers the domain the vendor
+ * parameter and the currency fallback need. Host only: run screenEbayUrl
+ * first, because this function does not judge scheme, userinfo, port or
+ * path.
+ */
+export function ebayDomainOfUrl(url: string): EbayApiDomain | null {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return null;
+  }
+  return EBAY_HOST_DOMAIN.get(hostname) ?? null;
+}
+
+// --- ebay_api_search (§3.1) --------------------------------------------------
+
+/**
+ * One eBay search, by term or by a caller's own /sch/ URL, answered in the
+ * compacted shape browser_open_and_extract returns for a search page so a
+ * run's audit and filter rules apply unchanged.
+ *
+ * Exactly one of searchTerm or url. A url search is the routine's existing
+ * URL conventions forwarded verbatim, and the vendor ignores sortBy,
+ * listingType, condition, categoryId and page alongside it — so those are
+ * refused with a url rather than silently doing nothing. The check compares
+ * against the defaults, because defaults are applied before it runs and a
+ * caller who spells out a default has not asked for anything the url will
+ * fail to deliver. num, maxPage, destination, allowRewrittenResults and
+ * search still apply to a url search.
+ */
+export const EbayApiSearchInput = z
+  .strictObject({
+    /** Ignored when url is given: the URL's host decides (ebayDomainOfUrl). */
+    domain: EbayApiDomainSchema.default('ebay.ca'),
+    searchTerm: z
+      .string()
+      .min(1)
+      .max(EBAY_API_SEARCH_TERM_MAX_CHARS)
+      .regex(/\S/, 'searchTerm must contain a non-space character')
+      .optional(),
+    /** An https /sch/ URL on www.ebay.ca, ebay.ca, www.ebay.com or ebay.com; see screenEbayUrl. */
+    url: z.url().optional(),
+    sortBy: EbayApiSortBySchema.optional(),
+    /** 'all' costs two vendor requests per page; see EbayApiListingTypeSchema. */
+    listingType: EbayApiListingTypeSchema.default('all'),
+    condition: EbayApiConditionSchema.default('all'),
+    /** An eBay category number, digits only. */
+    categoryId: z.string().regex(/^\d{1,16}$/, 'categoryId must be digits').optional(),
+    /**
+     * Rows per page. 240 is the most eBay renders and the default because a
+     * page is one vendor request whatever its size: fewer, larger pages are
+     * the cheapest sweep.
+     */
+    num: z.literal(EBAY_API_PAGE_SIZES).default(240),
+    /** First page to fetch, 1-based. */
+    page: z.int().min(1).default(1),
+    /**
+     * Pages fetched from `page` onwards, each one vendor request (two under
+     * listingType 'all'). Bounded by the vendor's real-time ceiling.
+     */
+    maxPage: z.int().min(1).max(EBAY_API_MAX_PAGE).default(1),
+    destination: EbayApiDestinationSchema.default('domain_default'),
+    /**
+     * eBay pads a query it judges too narrow with rows for a rewritten
+     * query. Those rows are dropped by default — the vendor's
+     * exclude_rewritten parameter plus a defensive filter, counted in an
+     * EXCLUDED_REWRITTEN warning — because a rewritten row is not evidence
+     * about the query that was asked.
+     */
+    allowRewrittenResults: z.boolean().default(false),
+    /**
+     * The compaction browser_open_and_extract applies (include, fields,
+     * limit, offset; same defaults; same warning codes), run through the
+     * same function so the two sources compact identically.
+     */
+    search: SearchCompactionInput.optional(),
+  })
+  .check((ctx) => {
+    const value = ctx.value;
+    const hasTerm = value.searchTerm !== undefined;
+    const hasUrl = value.url !== undefined;
+    if (hasTerm === hasUrl) {
+      ctx.issues.push({
+        code: 'custom',
+        message: 'exactly one of searchTerm or url is required',
+        input: value,
+        path: [hasUrl ? 'url' : 'searchTerm'],
+      });
+    }
+    if (value.url === undefined) return;
+    const reason = screenEbayUrl(value.url, ['search']);
+    if (reason !== null) {
+      ctx.issues.push({
+        code: 'custom',
+        message: `url is not accepted: ${reason}`,
+        input: value,
+        path: ['url'],
+      });
+    }
+    // The vendor ignores these on a url search, so accepting them would make
+    // the call claim a sort or a filter it never applied.
+    const ignoredWithUrl: string[] = [];
+    if (value.sortBy !== undefined) ignoredWithUrl.push('sortBy');
+    if (value.listingType !== 'all') ignoredWithUrl.push('listingType');
+    if (value.condition !== 'all') ignoredWithUrl.push('condition');
+    if (value.categoryId !== undefined) ignoredWithUrl.push('categoryId');
+    if (value.page !== 1) ignoredWithUrl.push('page');
+    for (const field of ignoredWithUrl) {
+      ctx.issues.push({
+        code: 'custom',
+        message: `${field} cannot be combined with url: the vendor ignores it on a url search, so put it in the URL's query string instead`,
+        input: value,
+        path: [field],
+      });
+    }
+  });
+export type EbayApiSearchInputType = z.infer<typeof EbayApiSearchInput>;
+
+/**
+ * The vendor's request_info, carried on every source-tool result. Null when
+ * the vendor omitted a figure; never zero-filled, since "0 remaining" and
+ * "did not say" differ and the reserve gate reads this.
+ */
+export const EbayApiCreditsSchema = z.strictObject({
+  used: z.union([z.int(), z.null()]),
+  remaining: z.union([z.int(), z.null()]),
+});
+export type EbayApiCredits = z.infer<typeof EbayApiCreditsSchema>;
+
+/** The filtered vendor requests a search was actually served by; 'all' becomes ['buy_it_now', 'auction']. */
+export const EbayApiRetrievedUnderSchema = z.enum(['buy_it_now', 'auction', 'accepts_offers']);
+export type EbayApiRetrievedUnder = z.infer<typeof EbayApiRetrievedUnderSchema>;
+
+export const EbayApiSearchOutput = z.strictObject({
+  source: z.literal('countdown'),
+  siteProfile: z.literal('ebay.api.v1'),
+  pageKind: z.literal('search'),
+  /** The vendor's request_metadata.ebay_url for the first request; null when it sent none. */
+  pageUrl: z.union([z.string(), z.null()]),
+  domain: EbayApiDomainSchema,
+  destination: EbayApiDestinationSchema,
+  retrievedUnder: z.array(EbayApiRetrievedUnderSchema),
+  /** pagination.total_results as an integer; null when the vendor gave none. */
+  totalResults: z.union([z.int(), z.null()]),
+  /** Rows received from the vendor, de-duplicated across its requests, before compaction. */
+  candidateCount: z.int().min(0),
+  pagesFetched: z.int().min(0),
+  /** The last fetched page's has_next_page; null when the vendor did not say. */
+  hasNextPage: z.union([z.boolean(), z.null()]),
+  /** ListingCandidate rows plus the API-only fields of plan §4.1, after compaction. */
+  candidates: z.array(z.looseObject({})),
+  offset: z.int().min(0),
+  hasMore: z.boolean(),
+  nextOffset: z.union([z.int().min(0), z.null()]),
+  warnings: z.array(z.string()),
+  credits: EbayApiCreditsSchema,
+  /** The vendor's request_metadata.id for every upstream request, in the order they were issued. */
+  requestIds: z.array(z.string()),
+});
+export type EbayApiSearchOutputType = z.infer<typeof EbayApiSearchOutput>;
+
+// --- ebay_api_items (§3.2) ---------------------------------------------------
+
+/**
+ * One item to read, by item number or by its own /itm/ URL (which also sets
+ * the domain for that item). expectedFormat is the format the search that
+ * found the row established; an auction kind makes the slot return the
+ * caller's format with itemPrice, endsAt and timeLeftText null and an
+ * AUCTION_DETAIL_UNAVAILABLE_FROM_SOURCE warning, because the Bridge is the
+ * only source for a bid, an end time or a landed figure on an auction.
+ */
+export const EbayApiItemRefSchema = z.union([
+  z.strictObject({
+    itemId: EbayItemIdSchema,
+    expectedFormat: EbayApiExpectedFormatSchema.optional(),
+  }),
+  z
+    .strictObject({
+      url: z.url(),
+      expectedFormat: EbayApiExpectedFormatSchema.optional(),
+    })
+    .check((ctx) => {
+      const reason = screenEbayUrl(ctx.value.url, ['item']);
+      if (reason !== null) {
+        ctx.issues.push({
+          code: 'custom',
+          message: `url is not accepted: ${reason}`,
+          input: ctx.value,
+          path: ['url'],
+        });
+      }
+    }),
+]);
+export type EbayApiItemRef = z.infer<typeof EbayApiItemRefSchema>;
+
+/**
+ * Up to EBAY_API_ITEMS_MAX item pages in one call, answered in
+ * browser_extract_many's slot shape so "only upsert slots with ok:true" and
+ * "a LISTING_UNAVAILABLE slot keeps its record as evidence" hold without a
+ * new rule. destination sets the vendor's customer_location only: the
+ * vendor rejects a zip on product requests and its browser resolves
+ * item-page delivery to its own zip, so every slot carries
+ * DESTINATION_UNVERIFIED and an item-page shipping figure is never a
+ * Canadian, let alone a Toronto, cost.
+ */
+export const EbayApiItemsInput = z.strictObject({
+  items: z.array(EbayApiItemRefSchema).min(1).max(EBAY_API_ITEMS_MAX),
+  /** Default for itemId entries; an entry given as a url takes its domain from the url. */
+  domain: EbayApiDomainSchema.default('ebay.ca'),
+  destination: EbayApiDestinationSchema.default('domain_default'),
+  /** compactItemRecord() of the mapped record when true; the full record with source 'api' provenance otherwise. */
+  compact: z.boolean().default(true),
+});
+export type EbayApiItemsInputType = z.infer<typeof EbayApiItemsInput>;
+
+/**
+ * ExtractManyOutput plus three source fields. The spread is the contract:
+ * every key of BatchExtractProgressShape is present with its exact schema,
+ * so stripping `source`, `credits` and `requestIds` from a value of this
+ * shape yields a valid ExtractManyOutput — which is what lets a run treat
+ * API slots and Bridge slots as one list, and what the integration test
+ * asserts. The handler always answers mode 'inline' with jobId null and one
+ * slot per input in input order; the shape is not narrowed to say so,
+ * because the whole point of it is to be a superset of the Bridge's shape.
+ */
+export const EbayApiItemsOutput = z.strictObject({
+  ...BatchExtractProgressShape,
+  source: z.literal('countdown'),
+  credits: EbayApiCreditsSchema,
+  requestIds: z.array(z.string()),
+});
+export type EbayApiItemsOutputType = z.infer<typeof EbayApiItemsOutput>;
+
+// --- ebay_api_seller (§3.3) --------------------------------------------------
+
+/**
+ * One seller profile, by login id or by a /usr/ or /str/ URL: the /usr/
+ * confirmation step of the deals rules. Exactly one of loginId or url;
+ * domain is ignored with a url, as in the search tool.
+ *
+ * One strict object with an exactly-one check rather than a union of two
+ * objects, for the reason the file header gives: a root-level oneOf would
+ * advertise a tool with no root properties, unlike every other tool on this
+ * server, while the validated value set is identical.
+ */
+export const EbayApiSellerInput = z
+  .strictObject({
+    loginId: z
+      .string()
+      .regex(EBAY_SELLER_LOGIN_ID_PATTERN, 'loginId must be an eBay login id')
+      .optional(),
+    /** An https /usr/ or /str/ URL on an eBay host; see screenEbayUrl. */
+    url: z.url().optional(),
+    domain: EbayApiDomainSchema.default('ebay.ca'),
+  })
+  .check((ctx) => {
+    const value = ctx.value;
+    const hasLoginId = value.loginId !== undefined;
+    const hasUrl = value.url !== undefined;
+    if (hasLoginId === hasUrl) {
+      ctx.issues.push({
+        code: 'custom',
+        message: 'exactly one of loginId or url is required',
+        input: value,
+        path: [hasUrl ? 'url' : 'loginId'],
+      });
+    }
+    if (value.url === undefined) return;
+    const reason = screenEbayUrl(value.url, ['seller']);
+    if (reason !== null) {
+      ctx.issues.push({
+        code: 'custom',
+        message: `url is not accepted: ${reason}`,
+        input: value,
+        path: ['url'],
+      });
+    }
+  });
+export type EbayApiSellerInputType = z.infer<typeof EbayApiSellerInput>;
+
+/**
+ * Straight renames of the vendor's seller block (plan §4.3). loginId is the
+ * /usr/ path segment of profileUrl and storeSlug the /str/ segment; a store
+ * slug is not a login id (plan §1.3), so a profile reached through a store
+ * link carries storeSlug with loginId null. Everything the vendor may omit
+ * is nullable — the url form returns the fuller set, and the measured
+ * profile had no memberSince, location or topRated at all.
+ */
+export const EbayApiSellerProfileSchema = z.strictObject({
+  name: z.string(),
+  profileUrl: z.string(),
+  loginId: z.union([z.string(), z.null()]),
+  storeSlug: z.union([z.string(), z.null()]),
+  memberSince: z.union([z.string(), z.null()]),
+  positivePercent: z.union([z.number(), z.null()]),
+  followers: z.union([z.string(), z.null()]),
+  location: z.union([z.string(), z.null()]),
+  topRated: z.union([z.boolean(), z.null()]),
+  description: z.union([z.string().max(EBAY_API_SELLER_DESCRIPTION_MAX_CHARS), z.null()]),
+});
+export type EbayApiSellerProfile = z.infer<typeof EbayApiSellerProfileSchema>;
+
+export const EbayApiSellerOutput = z.strictObject({
+  /** False when the vendor returned no seller block or an empty name; its message is then in warnings. */
+  resolved: z.boolean(),
+  seller: z.union([EbayApiSellerProfileSchema, z.null()]),
+  warnings: z.array(z.string()),
+  credits: EbayApiCreditsSchema,
+  requestIds: z.array(z.string()),
+});
+export type EbayApiSellerOutputType = z.infer<typeof EbayApiSellerOutput>;
