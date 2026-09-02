@@ -1,7 +1,8 @@
 # Countdown API as a Track A source: implementation and integration plan
 
 Status: **Proposed, ready for execution**
-Date: 2026-09-02
+Date: 2026-09-02 (revised the same evening with live demo-key captures; see §1.5 and
+`tests/fixtures/countdown/demo/`)
 Scope: `ethanbissbort/mcp-ebay` (code), `ethanbissbort/FluxLab` (deploy),
 `ethanbissbort/fluxlab-boards` (skill and routine data)
 Routine affected: the current **FluxLab Deals Dashboard** routine
@@ -79,17 +80,20 @@ means "accepted, needs a plan". Both are free.
 | URL passthrough | `url=` accepts a full eBay search, item or `/usr/` URL; then `ebay_domain`, `sort_by`, `search_term`, `listing_type`, `condition`, `page` are ignored |
 | Output | JSON (default), CSV, or raw HTML; `include_html=true` adds raw page HTML to JSON |
 | Field trimming | `include_fields` / `exclude_fields` in dot notation |
+| Demo key | `api_key=demo` serves live, uncharged responses (`request_info.demo: true`) for the docs' example term `memory cards` on any domain, with or without a zip, and for `type=product` / `type=reviews` on the docs' example epid; any other term returns 401. Enough for response-shape work at zero credits, not for LEGO-specific captures. |
+| Zip mechanism | `customer_zipcode` is applied by appending `_stpos=<zip>` (with `_fcid=<country id>`) to the eBay search URL, so eBay itself renders each card's shipping for that postal code; on 2026-09-02, 3 of 59 rows shared between a zip-scoped and an unscoped ebay.ca search carried a different shipping figure. The value passes through unnormalised (`M6H 2W9` becomes `_stpos=M6H+2W9`, lowercase stays lowercase); the gateway sends it uppercase with no space. |
+| Transient 500s | "Countdown API was unable to fulfil your request at this time, please retry. You have not been charged for this request. (G)" hit 6 of 19 demo calls; the identical retry succeeded every time. |
 
 ### 1.2 Search parameters that matter here
 
 | Parameter | Values / notes |
 |---|---|
 | `sort_by` | `best_match`, `price_high_to_low`, `price_low_to_high`, `price_high_to_low_plus_postage`, `price_low_to_high_plus_postage`, `newly_listed`, `ending_soonest` |
-| `listing_type` | `all`, `buy_it_now`, `auction`, `accepts_offers` |
+| `listing_type` | `all`, `buy_it_now`, `auction` (reaches eBay as `LH_Auction=1`), `accepts_offers` |
 | `condition` | `all`, `new`, `used`, `open_box`, … |
 | `category_id` | eBay `_sacat` value |
 | `num` | `60`, `120`, `240` |
-| `page`, `max_page` | `max_page` ≤ 5 on real-time requests; each page costs one credit |
+| `page`, `max_page` | `max_page` ≤ 5 on real-time requests; each page costs one credit. With `max_page` > 1 the response shape changes: `pagination` becomes `{pages: [...]}` with one entry per page, `request_metadata.ebay_url` is absent, and every row gains `page` and `position_overall`. Measured: `num=240&max_page=2` returned 480 distinct rows in 273 KB (about 570 bytes a row). |
 | `customer_location` | ISO country code; `ca` and `us` both support `customer_zipcode` |
 | `customer_zipcode` | accepted on `type=search` (probe: 401); **rejected on `type=product`** (probe: 400 "should not be specified when type=product") |
 | `completed_items`, `sold_items` | **rejected**: "no longer supported, eBay now requires a signed-in session" |
@@ -97,19 +101,53 @@ means "accepted, needs a plan". Both are free.
 
 ### 1.3 Response shapes
 
-Search (`search_results[]`): `position`, `title`, `epid`, `link`, `image`,
-`condition`, `is_auction`, `buy_it_now`, `best_offer`, `best_offer_accepted`,
-`free_returns`, `sponsored`, `is_rewritten_result`, `item_location`,
-`shipping_cost`, `prices[] {value, currency, raw, name}`, `price`,
-`seller_info {name, review_count, positive_feedback_percent}` when shown,
-`hotness`, `ended {type, date}` when shown. Root: `pagination {current_page,
-total_results, has_next_page, next_page}`, `facets[]`, `request_info
-{credits_used, credits_remaining}`, `request_metadata.ebay_url`.
+Search (`search_results[]`), documented: `position`, `title`, `epid`, `link`,
+`image`, `condition`, `is_auction`, `buy_it_now`, `best_offer`,
+`best_offer_accepted`, `free_returns`, `sponsored`, `is_rewritten_result`,
+`item_location`, `shipping_cost`, `prices[] {value, currency, raw, name}`,
+`price`, `seller_info {name, review_count, positive_feedback_percent}` when
+shown, `hotness`, `ended {type, date}` when shown. Root: `pagination
+{current_page, total_results, has_next_page, next_page}`, `facets[]`,
+`request_info {credits_used, credits_remaining}`, `request_metadata.ebay_url`.
+
+Search rows, **as measured** on 2026-09-02 (ebay.ca with the Toronto zip, 60 and
+480 rows; ebay.ca without a zip, 60 rows; ebay.com with the forwarder zip, 60
+rows; fixtures in `tests/fixtures/countdown/demo/`):
+
+- `prices[]` entries carry `value` and `raw` only. **No `currency` field on
+  either domain**; the raw string is `C $20.00` on ebay.ca and `$40.61` on
+  ebay.com. Currency is parsed from `raw`, with the domain as the fallback.
+- `is_auction: false` **and** `buy_it_now: false` on every one of 540
+  fixed-price rows, so `buy_it_now` is not a format signal. The Bridge's
+  card rule applies: a priced card with no auction signal is fixed price.
+  On an auction-filtered search (`listing_type=auction`, which reaches eBay as
+  `LH_Auction=1`; `sort_by=newly_listed` becomes `_sop=10`) all 60 rows carried
+  `is_auction: true`, so the flag is reliable in the positive direction.
+- **Price-range rows are damaged.** A multi-variant listing (quantity tiers,
+  sizes) renders its price as a range, and the vendor's title for such a row
+  ends in a stray ` to` (titles up to 83 characters against eBay's 80-character
+  cap). Its `prices` are either a two-entry low/high range or **missing
+  entirely**: on ebay.ca, 21 of the 30 range rows on page 1 and 159 of 480 rows
+  over two pages had no price at all; on ebay.com all 44 range rows parsed as
+  two prices. LEGO lots sold in 10/25/50/100-piece tiers are exactly this
+  shape, so a price-less row is a variant listing to open, never "no price".
+- `shipping_cost` is sparse on default searches: 40 of 60 ebay.ca rows with or
+  without the zip, 3 of 60 ebay.com rows; 60 of 60 on the auction-filtered
+  layout. **Absent means unknown, never free.**
+- `seller_info` is present on nearly every row of a default search (60 of 60
+  ebay.ca, 46 of 60 ebay.com) and on **no** row of the auction-filtered layout;
+  `review_count` is a string.
+- `condition` sometimes carries the seller's subtitle concatenated in front of
+  the condition ("100% GENUINE Kingston✔Shipped from USA✔Brand New").
+- `item_location` is bare on ebay.ca (`china`) and prefixed on ebay.com
+  (`located in china`).
+- `sponsored` was `false` on all 540 rows, so it cannot be relied on to drop
+  promoted rows. `hotness`, `ended` and `facets` did not appear at all.
 
 **Caution.** `epid` on a search row is sometimes an eBay *product* id, not the
 item number (the docs' own example pairs `epid 8030522363` with an
-`/itm/…/332050873554` link). The item id is always derived from `link`, never
-from `epid`.
+`/itm/…/332050873554` link; the 540 measured rows all matched). The item id is
+always derived from `link`, never from `epid`.
 
 Search rows carry **no bid count and no time left**.
 
@@ -124,6 +162,10 @@ quantity_sold}`, `condition {raw, name, is_new, is_used}`, `returns_policy`,
 {price, service, ships_to, location, delivery_estimate}`, `payment_methods`,
 `end_date` (present when the listing is flagged ended), `redirected`,
 `redirected_link`, `redirected_epid` (when eBay redirected an unavailable item).
+An item eBay no longer serves comes back **HTTP 200** with
+`request_info.success: true`, no `product` block and
+`message: "Product not found."` (measured on the docs' example epid on both
+domains); `redirected` is a separate case.
 
 Seller profile (`type=seller_profile`, by `seller_name` or `url`): `seller
 {name, link, member_since, positive_ratings_percent, followers, location,
@@ -204,7 +246,11 @@ Keycloak realm change. Record this in the ADR.
 gateway to (`customer_location=ca`, `customer_zipcode=M6H 2W9`),
 (`customer_location=us`, `customer_zipcode=34249`) and (no location
 parameters). This keeps the account's zip-code cap at two values and keeps the
-skill's "never invent a destination" rule enforceable in code.
+skill's "never invent a destination" rule enforceable in code. The gateway
+normalises the postal code to uppercase with no space before sending it. On a
+search, the zip reaches eBay as `_stpos`, so a row's `shipping_cost` under
+`destination: 'toronto'` is eBay's own rendered estimate for M6H 2W9: card-level
+and sparse, but not a country-level proxy.
 
 **URL policy.** When a caller passes `url`, the gateway accepts only
 `https://www.ebay.ca/…`, `https://www.ebay.com/…` (and the bare-host forms) with
@@ -218,7 +264,7 @@ keep working.
 
 | Code | Retryable | When |
 |---|---|---|
-| `SOURCE_UNAVAILABLE` | yes | 503 parsing incident (carry `retryAfter`), 5xx after one retry, network timeout |
+| `SOURCE_UNAVAILABLE` | yes | 503 parsing incident (carry `retryAfter`), 5xx after two retries, network timeout |
 | `SOURCE_CREDITS_EXHAUSTED` | no | 402 from the vendor, or the reserve gate |
 | `SOURCE_REJECTED` | no | 400 or 401; the vendor's message is passed through with the key stripped |
 
@@ -281,6 +327,12 @@ warnings[], credits {used, remaining}, requestId
 Each candidate is a `ListingCandidate` (from `packages/site-ebay/src/traversal.ts`)
 plus API-only fields, mapped per §4.1. `bidCount` is always `null` and a single
 `BID_COUNT_UNAVAILABLE_FROM_SOURCE` warning says so; the item tool carries bids.
+Candidates also carry `shippingCost` (a number, or `null` when the card showed
+nothing the vendor could read; never inferred as free), `priceRange` (true on a
+variant listing whose card price is a range or was lost), `page` and
+`positionOverall`. When `maxPage` > 1 the handler folds the vendor's
+`pagination.pages[]` into `totalResults`, `pagesFetched` and `hasNextPage`
+(the last page's flag).
 
 ### 3.2 `ebay_api_items`
 
@@ -334,15 +386,17 @@ question; until answered, `resolved:false` plus the vendor message in
 |---|---|---|
 | `itemId` | `link` | `itemIdFromUrl(link)`; a row whose link yields no id is dropped and counted in `CANDIDATE_FIELDS_NULL` |
 | `url` | `link` | `canonicalListingUrl` for the row's domain (`/itm/<id>`) |
-| `title` | `title` | `cleanTitle` |
-| `snippetPrice` | `price` else `prices[0]` | `{value, currency}`; when `prices` is a range keep the low value and add `PRICE_RANGE` once per response |
-| `sellingFormat` | `is_auction`, `buy_it_now` | auction+bin → `auction_with_bin`; auction → `auction`; else `fixed_price`; both flags absent → `unknown` |
+| `title` | `title` | `cleanTitle`, then strip one trailing ` to` and set `priceRange: true` when it was present (the vendor leaks the range separator into the title) |
+| `snippetPrice` | `price` else `prices[0]` | `{value, currency}`; currency from `parseMoney(raw)`, falling back to the domain's currency (`CAD` for ebay.ca, `USD` for ebay.com) because the rows carry no `currency` field; on a two-entry range keep the low value and put the high in `snippetPriceHigh` |
+| `priceRange` | title marker or `prices.length === 2` | a price-less range row keeps `snippetPrice: null`, `priceRange: true`, and is counted once per response in `PRICE_RANGE_UNPARSED`; the compactor's `EXCLUDED_NO_PRICE` count still reports it when a price bound drops it |
+| `sellingFormat` | `is_auction`, `buy_it_now`, price presence | `is_auction` with `buy_it_now` → `auction_with_bin`; `is_auction` → `auction`; otherwise `fixed_price` when the row has a price or the range marker; `unknown` only when it has neither |
 | `bidCount` | none | `null` always |
-| `shippingSnippetText` | none | `null`; new numeric field `shippingCost` from `shipping_cost` instead of synthesising text |
-| `itemLocationText` | `item_location` | verbatim |
+| `shippingSnippetText` | none | `null`; the numeric `shippingCost` from `shipping_cost` replaces it, `null` when absent |
+| `itemLocationText` | `item_location` | strip a leading `located in ` |
+| `condition` | `condition` | normalise to the last token from the known vocabulary (`Brand New`, `New (Other)`, `Open Box`, `Pre-Owned`, `Used`, `For parts or not working`, refurbished variants); keep the raw string in `conditionRaw` when it differed |
 | `isNewListing` | none | `null` (API rows carry no badge); the compactor already tolerates null |
 | `order` | `position_overall` else `position` | zero-based |
-| API-only | `condition`, `sponsored`, `bestOffer`, `sellerName`, `sellerPositivePercent`, `endedType`, `page` | pass-through, present only when the row has them |
+| API-only | `sponsored` (unreliable, documented), `bestOffer`, `sellerName`, `sellerReviewCount` (parsed to int), `sellerPositivePercent`, `endedType`, `page` | pass-through, present only when the row has them |
 
 Rows with `is_rewritten_result: true` are excluded by default
 (`allowRewrittenResults=false` sends the vendor parameter and also filters
@@ -368,7 +422,7 @@ the Bridge never produces `ebay.api.v1`. `profileRevision` is bumped.
 | `itemPrice` | auction: `auction.winning_bid_price` (+ `winning_bid_price_raw` parsed with `parseMoney` for currency); fixed: `offer.price`/`offer.currency` | auction records get the `AUCTION_PRICE` warning |
 | `offer` | `make_offer`, `offer.best_offer_accepted` | `available = make_offer === true` |
 | `shipping` | `shipping.price`, currency from raw text or domain | `destinationPostalCode: null`, `destinationVerified: false`, `observedText: shipping.raw ?? shipping.service`; confidence 0.7 |
-| `listingStatus` | `redirected` → `unavailable` (slot `ok:false`, `LISTING_UNAVAILABLE`); `end_date` present → `ended`, or `sold` when `offer.sale_date` is also present; price present → `active`; else `unknown` | the `sold` branch is confirmed or corrected by the Phase 0 sold-item fixture |
+| `listingStatus` | `message: "Product not found."` with no `product`, or `redirected` → `unavailable` (slot `ok:false`, `LISTING_UNAVAILABLE`); `end_date` present → `ended`, or `sold` when `offer.sale_date` is also present; price present → `active`; else `unknown` | the `sold` branch is confirmed or corrected by the Phase 0 sold-item fixture |
 | `sellingFormat` | `is_auction`, `auction.buy_it_now`, `auction.bids` | |
 | `endsAt`, `timeLeftText` | `auction.end_date.utc`, `auction.time_left.raw` | source `api`, confidence 0.95; both null when absent |
 | `itemLocationText` | `shipping.location` | |
@@ -391,6 +445,15 @@ trial, 100 requests, no card), create an API key, and export it into the
 executing shell as `COUNTDOWN_API_KEY` only for the duration of this phase. The
 key is never committed, echoed or written to a file under the repository.
 
+Already done at zero credits (2026-09-02, checked in under
+`tests/fixtures/countdown/demo/` with a README): the demo key's live responses
+for ebay.ca search with and without the Toronto zip, ebay.ca search at
+`num=240&max_page=2`, ebay.com search with the forwarder zip, and the
+product-not-found shape on both domains. Those fixtures already back the §4.1
+mapping rules; the keyed captures below add what the demo cannot: LEGO-specific
+rows, live and ended item pages, and seller profiles. The capture script must
+support `--demo` to refresh the demo set without a key.
+
 Claude Code deliverables (branch `claude/countdown-api-deals-routine-1cm3of`
 in mcp-ebay):
 
@@ -402,14 +465,13 @@ in mcp-ebay):
    improvement reports and from `ANALYSIS.md`'s "may still misbehave" list.
 3. `docs/COUNTDOWN-API-PLAN.md` §1 corrected where a fixture disagrees.
 
-Request list (credits in brackets; total ≤ 20):
+Request list (credits in brackets; total ≤ 18):
 
 | Fixture | Request | Question it answers |
 |---|---|---|
 | `search-ca-newly-listed.json` | `type=search ebay_domain=ebay.ca search_term="lego minifigure lot" sort_by=newly_listed num=240 customer_location=ca customer_zipcode="M6H 2W9"` [1] | row shape on ebay.ca; whether `shipping_cost` reflects the Toronto zip |
 | `search-ca-seller-ssn.json` | `type=search url=https://www.ebay.ca/sch/i.html?_ssn=tweedsidesales&_nkw=lego&_sop=10&_ipg=240` [1] | seller-scoped passthrough; `epid` vs link item id |
 | `search-com-forwarder.json` | `type=search ebay_domain=ebay.com search_term="lego printed tiles lot" customer_location=us customer_zipcode=34249 num=60` [1] | U.S. pass shape |
-| `search-max-page.json` | same as the first with `max_page=2` [2] | `position_overall` / `page` fields, latency |
 | `product-auction-with-bin.json` | `type=product url=https://www.ebay.ca/itm/287557851282` [1] | `auction` block, `end_date.utc`, currency handling |
 | `product-ended.json` | `type=product url=https://www.ebay.ca/itm/198589141532` [1] | `end_date` shape on an ended listing |
 | `product-sold-or-ended-2.json` | `type=product url=https://www.ebay.ca/itm/800523282681` [1] | whether a sold listing differs from an ended one (`offer.sale_date`?) |
@@ -426,7 +488,7 @@ time, credits per request, whether any request returned 503, and the answers to
 the questions above. Latency decides the tool timeouts in §2.
 
 Acceptance: all fixtures present and scrubbed (grep for the key's first six
-characters returns nothing), README written, credits spent ≤ 20, and §1 and §4
+characters returns nothing), README written, credits spent ≤ 18, and §1 and §4
 updated where needed. Commit as `P0:`-prefixed commits on the branch.
 
 ---
@@ -451,8 +513,9 @@ as its own commit so it is reviewable as a no-behaviour-change refactor.
 - `src/client.ts`: `CountdownClient({ apiKey, baseUrl, fetchImpl, timeoutMs })`
   with `search(params)`, `product(params)`, `sellerProfile(params)`,
   `account()`. Builds the query with `URLSearchParams`, sets a request timeout
-  with `AbortSignal.timeout`, retries once on 5xx and network errors, maps
-  status codes to the §2 error codes, strips the key from any error text, and
+  with `AbortSignal.timeout`, retries twice on 5xx and network errors (2 s then
+  6 s backoff; the vendor's transient `(G)` failure is uncharged and cleared on
+  retry every time it was seen), maps status codes to the §2 error codes, strips the key from any error text, and
   returns `{ body, credits, requestId }`.
 - `src/schemas.ts`: loose zod schemas for the three response types (every
   field optional; unknown fields allowed). Validation failures become
@@ -512,7 +575,7 @@ that `EBAY_FORWARDER_ZIPCODE` is five digits. Mirror the keys into
 
 | Layer | File | Must prove |
 |---|---|---|
-| unit | `tests/unit/countdownMappers.test.ts` | every §4 rule against the Phase 0 fixtures: item id from link not epid; format flags; `unknown` only when both flags absent; auction price warning; `DESTINATION_UNVERIFIED` on every item; ended/sold/redirected statuses; seller login id from `/usr/` and `/str/` links; range price handling; rewritten-row exclusion |
+| unit | `tests/unit/countdownMappers.test.ts` | every §4 rule against the demo and Phase 0 fixtures: item id from link not epid; currency parsed from `raw` with the domain fallback; `buy_it_now: false` never read as auction and priced rows read as fixed price; range rows (trailing ` to` stripped, two-entry ranges split, price-less rows kept with `priceRange: true`); condition normalisation; `located in ` stripped; `pagination.pages[]` folded; product-not-found → `unavailable`; auction price warning; `DESTINATION_UNVERIFIED` on every item; ended/sold/redirected statuses; seller login id from `/usr/` and `/str/` links; rewritten-row exclusion |
 | unit | `tests/unit/countdownClient.test.ts` | query building; key never in thrown errors; 400/401→`SOURCE_REJECTED`, 402→`SOURCE_CREDITS_EXHAUSTED`, 429→`RATE_LIMITED`, 503→`SOURCE_UNAVAILABLE` with `retryAfter`, one retry on 500, timeout; `credits` parsed |
 | unit | `tests/unit/countdownTools.test.ts` | reserve gate refuses at the threshold and lets seller calls through; destination mapping sends exactly the two configured zips; concurrency pool keeps slot order |
 | unit | `tests/unit/compact.test.ts` | unchanged after the package move |
@@ -611,6 +674,15 @@ connector does not serve.
      policy's "domestic proxy", never as the MyUS-address quote.
    - `ebay_api_seller` on `/usr/<loginId>` is the profile confirmation of
      login-id rules 1 and 4; `loginIdEvidence` is that `/usr/` URL.
+   - A search row's `shippingCost` under `destination: 'toronto'` is eBay's own
+     rendered estimate for M6H 2W9 (the zip reaches eBay as `_stpos`). It may
+     drive triage and a provisional max-bid figure and is recorded as a
+     card-level observation with `shippingResolved: false`; a null means the
+     card showed nothing readable, never free shipping.
+   - A row with `priceRange: true` and no `snippetPrice` is a variant listing
+     whose card price the source lost, not a listing without a price: open it
+     with `ebay_api_items` before any price-based exclusion, and read the
+     `PRICE_RANGE_UNPARSED` and `EXCLUDED_NO_PRICE` counts into the audit.
    - The completion report gains one line: credits used this fire and credits
      remaining, read from the last response.
    - The challenge-wall bullet applies to Bridge navigation only.
@@ -696,6 +768,10 @@ a month if the cap is ever in reach.
 | Risk | Mitigation |
 |---|---|
 | `epid` mistaken for the item id | item id always from the link; unit test on the docs' own counter-example |
+| Vendor parse defects on range rows (lost prices, ` to` titles) | mapper marks `priceRange`, keeps the row, counts it; skill opens such rows before excluding on price |
+| Unreliable flags (`sponsored` always false, `buy_it_now` false on fixed-price rows) | neither is used as a signal; format comes from `is_auction` plus price presence |
+| Transient vendor 500s (`(G)`), uncharged | two retries with backoff in the client; `SOURCE_UNAVAILABLE` only after both fail |
+| Response shape changes with `max_page` > 1 | handler accepts both `pagination` shapes; fixture-backed test |
 | Vendor parse drift or incident | 503 maps to `SOURCE_UNAVAILABLE` with `retryAfter`; the skill falls back to the Bridge and says so; `skip_on_incident` is sent |
 | Shipping figures read as Toronto quotes | `DESTINATION_UNVERIFIED` on every API item, `destinationVerified:false` in the record, skill rule in §8 |
 | Currency on ebay.ca rows for U.S. sellers | `parseMoney` on raw strings; `winning_bid_price_converted` kept as a separate field; fixture-backed |
@@ -716,7 +792,7 @@ Phase 0 (operator exports `COUNTDOWN_API_KEY` in the shell first):
 > `tools/countdown/capture-fixtures.mjs`, capture the fixtures in §5 with the
 > key from the environment, scrub them, write the fixtures README with the
 > answers to §5's questions, correct §1 and §4 where a fixture disagrees, commit
-> with a `P0:` prefix and push. Spend at most 20 credits.
+> with a `P0:` prefix and push. Spend at most 18 credits.
 
 Phase 1:
 

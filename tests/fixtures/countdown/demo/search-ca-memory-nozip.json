@@ -1,0 +1,1563 @@
+{
+    "request_info": {
+        "success": true,
+        "demo": true
+    },
+    "request_parameters": {
+        "type": "search",
+        "ebay_domain": "ebay.ca",
+        "search_term": "memory cards"
+    },
+    "request_metadata": {
+        "ebay_url": "https://www.ebay.ca/sch/i.html?_nkw=memory+cards&_sacat=0&_dmd=1&_fcid=2"
+    },
+    "search_results": [
+        {
+            "position": 1,
+            "title": "GIGASTONE 32GB SD Card UHS-I U1 Class 10 SDHC Memory Card High-Speed Full HD",
+            "epid": "366642909023",
+            "link": "https://www.ebay.ca/itm/366642909023",
+            "image": "https://i.ebayimg.com/images/g/B6wAAeSwpSVql0du/s-l500.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "skeenas_73",
+                "review_count": "0",
+                "positive_feedback_percent": 0
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "shipping_cost": 5,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 20,
+                    "raw": "C $20.00"
+                }
+            ],
+            "price": {
+                "value": 20,
+                "raw": "C $20.00"
+            }
+        },
+        {
+            "position": 2,
+            "title": "Brand New/Sealed - Sony 128GB Tough CFexpress Type B Memory Card",
+            "epid": "278208234968",
+            "link": "https://www.ebay.ca/itm/278208234968",
+            "image": "https://i.ebayimg.com/images/g/TFMAAeSwfRBqYSjj/s-l500.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "cpcross",
+                "review_count": "778",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "rating": 5,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 234.99,
+                    "raw": "C $234.99"
+                }
+            ],
+            "price": {
+                "value": 234.99,
+                "raw": "C $234.99"
+            }
+        },
+        {
+            "position": 3,
+            "title": "Panasonic 32GB P2 Cards E-Series AJ-P2E032XG (Pack of 3)",
+            "epid": "307016305694",
+            "link": "https://www.ebay.ca/itm/307016305694",
+            "image": "https://i.ebayimg.com/images/g/l1QAAeSwkcBqODK~/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "seller_info": {
+                "name": "realas_46",
+                "review_count": "4",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "shipping_cost": 10,
+            "rating": 5,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 210,
+                    "raw": "C $210.00"
+                }
+            ],
+            "price": {
+                "value": 210,
+                "raw": "C $210.00"
+            }
+        },
+        {
+            "position": 4,
+            "title": "SmartMedia Card 128MB SM Card SM Memory Card + Smart Media Memory Cards Reader to",
+            "epid": "145808351817",
+            "link": "https://www.ebay.ca/itm/145808351817",
+            "image": "https://i.ebayimg.com/images/g/Za0AAOSwtYJmITgP/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "jiacheng-electron",
+                "review_count": "126",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "china",
+            "sponsored": false
+        },
+        {
+            "position": 5,
+            "title": "LENOVO 1TB 512GB 256GB 128GB Micro TF SD Card High Speed Class Flash Memory* to",
+            "epid": "800339558949",
+            "link": "https://www.ebay.ca/itm/800339558949",
+            "image": "https://i.ebayimg.com/images/g/5d8AAeSwogFqViau/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "absha_1936",
+                "review_count": "1800",
+                "positive_feedback_percent": 97.4
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 4.99,
+                    "raw": "C $4.99"
+                },
+                {
+                    "value": 16.99,
+                    "raw": "C $16.99"
+                }
+            ],
+            "price": {
+                "value": 4.99,
+                "raw": "C $4.99"
+            }
+        },
+        {
+            "position": 6,
+            "title": "Sony Micro SD Card 128GB 256GB 512GB 1TB U3 A2 Class 10 High Speed Work to",
+            "epid": "800389716459",
+            "link": "https://www.ebay.ca/itm/800389716459",
+            "image": "https://i.ebayimg.com/images/g/TdkAAeSwUr5qYPKk/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "absha_1936",
+                "review_count": "1800",
+                "positive_feedback_percent": 97.4
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 6.99,
+                    "raw": "C $6.99"
+                },
+                {
+                    "value": 79.99,
+                    "raw": "C $79.99"
+                }
+            ],
+            "price": {
+                "value": 6.99,
+                "raw": "C $6.99"
+            }
+        },
+        {
+            "position": 7,
+            "title": "Fast Speed Micro SD Card 8GB 16GB 32GB 64GB 128GB Class 10 U1 A1 V10 TF Memory C to",
+            "epid": "366637889559",
+            "link": "https://www.ebay.ca/itm/366637889559",
+            "image": "https://i.ebayimg.com/images/g/9koAAeSwjU9qlDKi/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "ustore85",
+                "review_count": "0",
+                "positive_feedback_percent": 0
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 10.98,
+                    "raw": "C $10.98"
+                },
+                {
+                    "value": 24.99,
+                    "raw": "C $24.99"
+                }
+            ],
+            "price": {
+                "value": 10.98,
+                "raw": "C $10.98"
+            }
+        },
+        {
+            "position": 8,
+            "title": "SanDisk Ultra 1TB microSDXC UHS-I A1 U1 Class 10 Memory Card - Capacity Tested",
+            "epid": "820043854940",
+            "link": "https://www.ebay.ca/itm/820043854940",
+            "image": "https://i.ebayimg.com/images/g/c78AAeSwE~FqjO~-/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "seller_info": {
+                "name": "bananas_pb_and_j",
+                "review_count": "376",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 16.74,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 111.15,
+                    "raw": "C $111.15"
+                }
+            ],
+            "price": {
+                "value": 111.15,
+                "raw": "C $111.15"
+            }
+        },
+        {
+            "position": 9,
+            "title": "16MB 32MB 64MB 128MB 256MB 512MB 1GB 2GB SD Secure Digital Flash Memory Card to",
+            "epid": "128018872379",
+            "link": "https://www.ebay.ca/itm/128018872379",
+            "image": "https://i.ebayimg.com/images/g/1DkAAeSwa4FqeYpO/s-l140.jpg",
+            "condition": "New (Other)",
+            "seller_info": {
+                "name": "zyrontech",
+                "review_count": "60",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "china",
+            "sponsored": false
+        },
+        {
+            "position": 10,
+            "title": "FOR LENOVO 1TB 512GB 256GB 128GB Micro TF SD Card High Speed Class Flash Memory* to",
+            "epid": "800428392390",
+            "link": "https://www.ebay.ca/itm/800428392390",
+            "image": "https://i.ebayimg.com/images/g/oKoAAeSwLQFqajdh/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "absha_1936",
+                "review_count": "1800",
+                "positive_feedback_percent": 97.4
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 5.45,
+                    "raw": "C $5.45"
+                },
+                {
+                    "value": 14.99,
+                    "raw": "C $14.99"
+                }
+            ],
+            "price": {
+                "value": 5.45,
+                "raw": "C $5.45"
+            }
+        },
+        {
+            "position": 11,
+            "title": "SanDisk Ultra 32GB Class 10 SDHC Memory Card - SDSDUNR-032G-GN3IN",
+            "epid": "298618479596",
+            "link": "https://www.ebay.ca/itm/298618479596",
+            "image": "https://i.ebayimg.com/images/g/z2EAAeSwvSNqjw47/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "keevado",
+                "review_count": "5200",
+                "positive_feedback_percent": 99.5
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 215.99,
+            "rating": 5,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 16.66,
+                    "raw": "C $16.66"
+                }
+            ],
+            "price": {
+                "value": 16.66,
+                "raw": "C $16.66"
+            }
+        },
+        {
+            "position": 12,
+            "title": "SanDisk Ultra 32GB A1 120MB / s Class 10 UHS-I microSDHC Memory Card",
+            "epid": "298618330553",
+            "link": "https://www.ebay.ca/itm/298618330553",
+            "image": "https://i.ebayimg.com/images/g/iTAAAeSwWg9qjvxc/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "keevado",
+                "review_count": "5200",
+                "positive_feedback_percent": 99.5
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.15,
+            "rating": 5,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 14.33,
+                    "raw": "C $14.33"
+                }
+            ],
+            "price": {
+                "value": 14.33,
+                "raw": "C $14.33"
+            }
+        },
+        {
+            "position": 13,
+            "title": "SanDisk 32GB Ultra UHS-I SDXC Memory Card Full HD video",
+            "epid": "116222000371",
+            "link": "https://www.ebay.ca/itm/116222000371",
+            "image": "https://i.ebayimg.com/images/g/uM8AAeSwx~VpGtgk/s-l140.jpg",
+            "condition": "\ud83d\udee1\ufe0f Authorized Dealer \u2728 Genuine \ud83d\udd04 Easy ReturnsBrand New",
+            "seller_info": {
+                "name": "focusproaudio",
+                "review_count": "27700",
+                "positive_feedback_percent": 99.7
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.33,
+            "rating": 5,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 20.83,
+                    "raw": "C $20.83"
+                }
+            ],
+            "price": {
+                "value": 20.83,
+                "raw": "C $20.83"
+            }
+        },
+        {
+            "position": 14,
+            "title": "LENOVO 1TB 512GB 256GB 128GB Micro TF SD Card High Speed Class Flash Memory* to",
+            "epid": "318339899259",
+            "link": "https://www.ebay.ca/itm/318339899259",
+            "image": "https://i.ebayimg.com/images/g/nL0AAeSwANdqD2gA/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "trendvaultshop_0",
+                "review_count": "82",
+                "positive_feedback_percent": 90.9
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 22.5,
+                    "raw": "C $22.50"
+                },
+                {
+                    "value": 25.5,
+                    "raw": "C $25.50"
+                }
+            ],
+            "price": {
+                "value": 22.5,
+                "raw": "C $22.50"
+            }
+        },
+        {
+            "position": 15,
+            "title": "Amazon Basics 128GB microSDXC Memory Card with Full SizeAdapter  BRAND NEW",
+            "epid": "407154624151",
+            "link": "https://www.ebay.ca/itm/407154624151",
+            "image": "https://i.ebayimg.com/images/g/ut8AAeSwzVlqhPZU/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "alorn47",
+                "review_count": "47",
+                "positive_feedback_percent": 96.4
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 22.16,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 16.68,
+                    "raw": "C $16.68"
+                }
+            ],
+            "price": {
+                "value": 16.68,
+                "raw": "C $16.68"
+            }
+        },
+        {
+            "position": 16,
+            "title": "Micro Card SD TF Memory Card Ultra 64GB 128GB 256GB 1TB Class 10 TF Lot to",
+            "epid": "398269325534",
+            "link": "https://www.ebay.ca/itm/398269325534",
+            "image": "https://i.ebayimg.com/images/g/ZfIAAeSwxrlqJ4uM/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "chance709",
+                "review_count": "2400",
+                "positive_feedback_percent": 98
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": true,
+            "item_location": "united states",
+            "shipping_cost": 15.05,
+            "sponsored": false
+        },
+        {
+            "position": 17,
+            "title": "SanDisk Ultra MicroSD 16GB 32GB 64GB 128GB 256GB SD Memory TF Card Reader Lot to",
+            "epid": "224499716435",
+            "link": "https://www.ebay.ca/itm/224499716435",
+            "image": "https://i.ebayimg.com/images/g/3VkAAOSw1dRnoV81/s-l140.jpg",
+            "condition": "Pack of 2, 5, 10pcs Big Discounts\u2714100% Genuine\u2714USA\u2714FASTBrand New",
+            "seller_info": {
+                "name": "motoheatusa",
+                "review_count": "69300",
+                "positive_feedback_percent": 98.8
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 19.05,
+            "sponsored": false
+        },
+        {
+            "position": 18,
+            "title": "32 GB - Premium Micro SD Card Memory 32GB Speed Ultra with SD Card Adapter to",
+            "epid": "178194465865",
+            "link": "https://www.ebay.ca/itm/178194465865",
+            "image": "https://i.ebayimg.com/images/g/1awAAeSwW-FqHTuH/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "mraxeshop",
+                "review_count": "449",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 4.95,
+                    "raw": "C $4.95"
+                },
+                {
+                    "value": 79.99,
+                    "raw": "C $79.99"
+                }
+            ],
+            "price": {
+                "value": 4.95,
+                "raw": "C $4.95"
+            }
+        },
+        {
+            "position": 19,
+            "title": "Memory Card 128GB 256GB 1TB High Endurance Micro SD TF Card 4K Memory Card to",
+            "epid": "396639103245",
+            "link": "https://www.ebay.ca/itm/396639103245",
+            "image": "https://i.ebayimg.com/images/g/3lgAAOSwaHFnQAjE/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "chance709",
+                "review_count": "2400",
+                "positive_feedback_percent": 98
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": true,
+            "item_location": "united states",
+            "shipping_cost": 14.31,
+            "sponsored": false
+        },
+        {
+            "position": 20,
+            "title": "LENOVO Micro SD Card 512GB 256GB 128GB 64GB 32GB Class 10 U3 A2 V60",
+            "epid": "227479936949",
+            "link": "https://www.ebay.ca/itm/227479936949",
+            "image": "https://i.ebayimg.com/images/g/nYoAAeSwAnRqg0qE/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "nearushop",
+                "review_count": "109",
+                "positive_feedback_percent": 94.9
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 11.49,
+                    "raw": "C $11.49"
+                }
+            ],
+            "price": {
+                "value": 11.49,
+                "raw": "C $11.49"
+            }
+        },
+        {
+            "position": 21,
+            "title": "Sandisk Micro SD 2 GB/4GB/8GB/16Go/32GB SDSDQ SDHC C4 TF Flash Carte M\u00e9moire to",
+            "epid": "152865805575",
+            "link": "https://www.ebay.ca/itm/152865805575",
+            "image": "https://i.ebayimg.com/images/g/oCoAAOSwTIhaWYut/s-l140.jpg",
+            "condition": "New (Other)",
+            "seller_info": {
+                "name": "ea_memory",
+                "review_count": "38300",
+                "positive_feedback_percent": 99.2
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "china",
+            "shipping_cost": 3.46,
+            "rating": 5,
+            "sponsored": false
+        },
+        {
+            "position": 22,
+            "title": "16MB 32MB 64MB 128MB 256MB 512MB 1GB 2GB SD Secure Digital Flash Memory Card to",
+            "epid": "128018872329",
+            "link": "https://www.ebay.ca/itm/128018872329",
+            "image": "https://i.ebayimg.com/images/g/yKgAAeSw9~xqeYpJ/s-l140.jpg",
+            "condition": "New (Other)",
+            "seller_info": {
+                "name": "coretechmart",
+                "review_count": "29",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "china",
+            "sponsored": false
+        },
+        {
+            "position": 23,
+            "title": "SanDisk SD Ultra 100MB/s 32GB 64GB 128GB 100MBs SDHC SDXC C10 Card LOT to",
+            "epid": "225171874509",
+            "link": "https://www.ebay.ca/itm/225171874509",
+            "image": "https://i.ebayimg.com/images/g/jwgAAOSwkFVjKm1q/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "motoheatusa",
+                "review_count": "69300",
+                "positive_feedback_percent": 98.8
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.51,
+            "sponsored": false
+        },
+        {
+            "position": 24,
+            "title": "SanDian Ultra Micro SD Card 32GB 64GB 128GB 256GB 512GB 1TB Class 10 UHS-I to",
+            "epid": "398342832622",
+            "link": "https://www.ebay.ca/itm/398342832622",
+            "image": "https://i.ebayimg.com/images/g/JwUAAeSweEtqd7Yr/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "dealdrops_ca",
+                "review_count": "49",
+                "positive_feedback_percent": 88.9
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 7.5,
+                    "raw": "C $7.50"
+                },
+                {
+                    "value": 29.99,
+                    "raw": "C $29.99"
+                }
+            ],
+            "price": {
+                "value": 7.5,
+                "raw": "C $7.50"
+            }
+        },
+        {
+            "position": 25,
+            "title": "High Speed Class 10 Memory Card For Micro SD Card TF Card 32GB 64GB 128GB 256GB to",
+            "epid": "286436107052",
+            "link": "https://www.ebay.ca/itm/286436107052",
+            "image": "https://i.ebayimg.com/images/g/gbEAAOSw2ixn4nfL/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "dxpure",
+                "review_count": "12900",
+                "positive_feedback_percent": 99.3
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.73,
+            "sponsored": false
+        },
+        {
+            "position": 26,
+            "title": "[Special Sale] No-brand  1GB Micro SD Card  TF Card  Memory Card SD Card #002",
+            "epid": "318125487484",
+            "link": "https://www.ebay.ca/itm/318125487484",
+            "image": "https://i.ebayimg.com/images/g/ZugAAeSwH1do3Jdc/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "japa-ninja",
+                "review_count": "1000",
+                "positive_feedback_percent": 99.9
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": true,
+            "item_location": "japan",
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 3.71,
+                    "raw": "C $3.71"
+                }
+            ],
+            "price": {
+                "value": 3.71,
+                "raw": "C $3.71"
+            }
+        },
+        {
+            "position": 27,
+            "title": "SanDisk Extreme PRO 128GB UHS-I U3 SDXC 200MB/s 4K Memory Card SDSDXXD-128G",
+            "epid": "358573897208",
+            "link": "https://www.ebay.ca/itm/358573897208",
+            "image": "https://i.ebayimg.com/images/g/srwAAeSwhKZqeNQV/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "zalashop1965",
+                "review_count": "83",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "shipping_cost": 20.9,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 36.99,
+                    "raw": "C $36.99"
+                }
+            ],
+            "price": {
+                "value": 36.99,
+                "raw": "C $36.99"
+            }
+        },
+        {
+            "position": 28,
+            "title": "32GB/64GB/128GB/256GB/512GB/1TB For Micro SDXC TF Flash Memory Card Class 10 USA to",
+            "epid": "185321922627",
+            "link": "https://www.ebay.ca/itm/185321922627",
+            "image": "https://i.ebayimg.com/images/g/K10AAOSwBnFiH4DV/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "saleplus66",
+                "review_count": "6500",
+                "positive_feedback_percent": 96.3
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.23,
+            "sponsored": false
+        },
+        {
+            "position": 29,
+            "title": "SanDisk C4 4GB U1 Ultra Memory SD SDHC Card",
+            "epid": "256691260787",
+            "link": "https://www.ebay.ca/itm/256691260787",
+            "image": "https://i.ebayimg.com/images/g/rb8AAOSw6vZdd~XN/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "collectim4all",
+                "review_count": "3700",
+                "positive_feedback_percent": 98.6
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.33,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 20.83,
+                    "raw": "C $20.83"
+                }
+            ],
+            "price": {
+                "value": 20.83,
+                "raw": "C $20.83"
+            }
+        },
+        {
+            "position": 30,
+            "title": "Micro SDHC 2 Cards with Adapter, 32 GB Speeds up to 100 MB",
+            "epid": "357665155632",
+            "link": "https://www.ebay.ca/itm/357665155632",
+            "image": "https://i.ebayimg.com/images/g/Fd8AAeSwWQVozZh1/s-l140.jpg",
+            "condition": "New (Other)",
+            "seller_info": {
+                "name": "jvinternational",
+                "review_count": "636",
+                "positive_feedback_percent": 99.2
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 197.53,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 11.03,
+                    "raw": "C $11.03"
+                }
+            ],
+            "price": {
+                "value": 11.03,
+                "raw": "C $11.03"
+            }
+        },
+        {
+            "position": 31,
+            "title": "Indmem SD Card 32/64/128/256/512MB 1/2GB Secure Digital Sdandard Memory Card to",
+            "epid": "125840942373",
+            "link": "https://www.ebay.ca/itm/125840942373",
+            "image": "https://i.ebayimg.com/images/g/sGAAAOSwySVkHKw2/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "bodorship",
+                "review_count": "3000",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "china",
+            "sponsored": false
+        },
+        {
+            "position": 32,
+            "title": "New Memory Card 2TB High Speed Sd Card Flash TF Me Phone Camera Game Consoles to",
+            "epid": "197618681397",
+            "link": "https://www.ebay.ca/itm/197618681397",
+            "image": "https://i.ebayimg.com/images/g/G3YAAOSwV91kXFZD/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "wangho-44",
+                "review_count": "380",
+                "positive_feedback_percent": 98.7
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "china",
+            "shipping_cost": 9.71,
+            "sponsored": false
+        },
+        {
+            "position": 33,
+            "title": "Amazon Basics 512GB microSDXC Memory SD Card with Full Size Adapter - New Sealed",
+            "epid": "267749903195",
+            "link": "https://www.ebay.ca/itm/267749903195",
+            "image": "https://i.ebayimg.com/images/g/b7MAAeSwCGNqdPqZ/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "us_electronics_seller",
+                "review_count": "5900",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 15.7,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 72.19,
+                    "raw": "C $72.19"
+                }
+            ],
+            "price": {
+                "value": 72.19,
+                "raw": "C $72.19"
+            }
+        },
+        {
+            "position": 34,
+            "title": "LENOVO 1TB Micro TF SD Card High Speed Class Flash Memory Card",
+            "epid": "227463606967",
+            "link": "https://www.ebay.ca/itm/227463606967",
+            "image": "https://i.ebayimg.com/images/g/B9kAAeSwrptqc2Ju/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "nearushop",
+                "review_count": "109",
+                "positive_feedback_percent": 94.9
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 17.6,
+                    "raw": "C $17.60"
+                }
+            ],
+            "price": {
+                "value": 17.6,
+                "raw": "C $17.60"
+            }
+        },
+        {
+            "position": 35,
+            "title": "High Speed Memory For Micro SD Card 4 GB 32GB 64GB 128GB TF Card Ultra Class 10 to",
+            "epid": "298610035666",
+            "link": "https://www.ebay.ca/itm/298610035666",
+            "image": "https://i.ebayimg.com/images/g/TaMAAeSwPgVqizBM/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "houseofholdtk",
+                "review_count": "410",
+                "positive_feedback_percent": 98.8
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.44,
+            "sponsored": false
+        },
+        {
+            "position": 36,
+            "title": "Premium Micro SD Card Memory 32GB 64GB 128GB 256GB 512GB 1TB Speed Ultra to",
+            "epid": "178182984713",
+            "link": "https://www.ebay.ca/itm/178182984713",
+            "image": "https://i.ebayimg.com/images/g/1awAAeSwW-FqHTuH/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "mraxeshop",
+                "review_count": "449",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 4.95,
+                    "raw": "C $4.95"
+                },
+                {
+                    "value": 399.99,
+                    "raw": "C $399.99"
+                }
+            ],
+            "price": {
+                "value": 4.95,
+                "raw": "C $4.95"
+            }
+        },
+        {
+            "position": 37,
+            "title": "Kingston Micro SD Card 32GB 64GB 128GB 256GB Class 10 150MB/s TF Memory Card Lot to",
+            "epid": "324286851592",
+            "link": "https://www.ebay.ca/itm/324286851592",
+            "image": "https://i.ebayimg.com/images/g/q7QAAOSw3O1evgS4/s-l140.jpg",
+            "condition": "100% GENUINE Kingston\u2714Shipped from USA=Fast Delivery\u2714Brand New",
+            "seller_info": {
+                "name": "motoheatusa",
+                "review_count": "69300",
+                "positive_feedback_percent": 98.8
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 17.08,
+            "sponsored": false
+        },
+        {
+            "position": 38,
+            "title": "Micro SD Card U3 V30 Class 10 High Speed Memory Card TF Card with SD Adapter 1TB to",
+            "epid": "227497020640",
+            "link": "https://www.ebay.ca/itm/227497020640",
+            "image": "https://i.ebayimg.com/images/g/9EcAAeSw7dJqk1FN/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "nearushop",
+                "review_count": "109",
+                "positive_feedback_percent": 94.9
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 2.77,
+            "sponsored": false
+        },
+        {
+            "position": 39,
+            "title": "Transcend MicroSD Memory Card 64GB-128GB 420T Industrial Grade Durability",
+            "epid": "117368629739",
+            "link": "https://www.ebay.ca/itm/117368629739",
+            "image": "https://i.ebayimg.com/images/g/iIQAAeSw5oRqc8~L/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "therustystore",
+                "review_count": "168",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.15,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 13.88,
+                    "raw": "C $13.88"
+                }
+            ],
+            "price": {
+                "value": 13.88,
+                "raw": "C $13.88"
+            }
+        },
+        {
+            "position": 40,
+            "title": "SanDisk 256GB Ultra Micro SD SDXC A1 Class 10 120MB/s 4K HD Memory Card",
+            "epid": "128016007496",
+            "link": "https://www.ebay.ca/itm/128016007496",
+            "image": "https://i.ebayimg.com/images/g/FroAAeSwHn1qdlG5/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "quic_84",
+                "review_count": "60",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.88,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 41.52,
+                    "raw": "C $41.52"
+                }
+            ],
+            "price": {
+                "value": 41.52,
+                "raw": "C $41.52"
+            }
+        },
+        {
+            "position": 41,
+            "title": "Sandisk Ultra 512GB MicroSD Memory Card Class 10 for full HD Video UHS-I 150MB/s",
+            "epid": "298627336825",
+            "link": "https://www.ebay.ca/itm/298627336825",
+            "image": "https://i.ebayimg.com/images/g/QAUAAeSw-V9qggF1/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "jojonjaz_deals",
+                "review_count": "3300",
+                "positive_feedback_percent": 99.9
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 23.28,
+            "rating": 5,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 69.47,
+                    "raw": "C $69.47"
+                }
+            ],
+            "price": {
+                "value": 69.47,
+                "raw": "C $69.47"
+            }
+        },
+        {
+            "position": 42,
+            "title": "Sony PS Vita Memory Card Official Playstation 64GB 32GB 16GB 8GB 4GB US SELLER to",
+            "epid": "137399919491",
+            "link": "https://www.ebay.ca/itm/137399919491",
+            "image": "https://i.ebayimg.com/images/g/-cQAAeSwH2pqKWK8/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "seller_info": {
+                "name": "compralo68",
+                "review_count": "953",
+                "positive_feedback_percent": 99.2
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 17.41,
+            "sponsored": false
+        },
+        {
+            "position": 43,
+            "title": "32GB Sandisk Ultra SD Memory cards for Camera/ Trail Camera / Computers (5 Pack)",
+            "epid": "275442010414",
+            "link": "https://www.ebay.ca/itm/275442010414",
+            "image": "https://i.ebayimg.com/images/g/CusAAOSwc3hjD7LN/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "memorydiscounters",
+                "review_count": "89100",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 16.48,
+            "rating": 5,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 101.36,
+                    "raw": "C $101.36"
+                }
+            ],
+            "price": {
+                "value": 101.36,
+                "raw": "C $101.36"
+            }
+        },
+        {
+            "position": 44,
+            "title": "Lot of 3 New 128mb Micro SD Memory Cards, 128 mb MicroSD + Cleaning Cloth - USA",
+            "epid": "298496464421",
+            "link": "https://www.ebay.ca/itm/298496464421",
+            "image": "https://i.ebayimg.com/images/g/d-0AAOSwVbBj0AYo/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "ballcourt155ab",
+                "review_count": "19600",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.13,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 13.69,
+                    "raw": "C $13.69"
+                }
+            ],
+            "price": {
+                "value": 13.69,
+                "raw": "C $13.69"
+            }
+        },
+        {
+            "position": 45,
+            "title": "128GB microSD card",
+            "epid": "117022808557",
+            "link": "https://www.ebay.ca/itm/117022808557",
+            "image": "https://i.ebayimg.com/images/g/N0YAAeSwhnhphRn1/s-l140.jpg",
+            "condition": "New (Other)",
+            "seller_info": {
+                "name": "q.s.trade",
+                "review_count": "4000",
+                "positive_feedback_percent": 99.9
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.33,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 20.83,
+                    "raw": "C $20.83"
+                }
+            ],
+            "price": {
+                "value": 20.83,
+                "raw": "C $20.83"
+            }
+        },
+        {
+            "position": 46,
+            "title": "MICRO SD MEMORY CARD CLASS HIGH SPEED TF FLASH 1TB 512GB 256GB 128GB 64GB usa to",
+            "epid": "267770513336",
+            "link": "https://www.ebay.ca/itm/267770513336",
+            "image": "https://i.ebayimg.com/images/g/mOoAAeSwzadqktKt/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "hahmed13",
+                "review_count": "692",
+                "positive_feedback_percent": 97.5
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.59,
+            "sponsored": false
+        },
+        {
+            "position": 47,
+            "title": "Lexar 1GB SD Memory Card - 100pcs",
+            "epid": "287093667503",
+            "link": "https://www.ebay.ca/itm/287093667503",
+            "image": "https://i.ebayimg.com/images/g/QgwAAeSwphxpcpvn/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "tysells5",
+                "review_count": "8",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "shipping_cost": 20.9,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 125,
+                    "raw": "C $125.00"
+                }
+            ],
+            "price": {
+                "value": 125,
+                "raw": "C $125.00"
+            }
+        },
+        {
+            "position": 48,
+            "title": "SanDisk \u2013 256GB Ultra UHS-I micro SDXC 150MB/s SDSQUAC-256G-GN6MN (Open Box)",
+            "epid": "147061501918",
+            "link": "https://www.ebay.ca/itm/147061501918",
+            "image": "https://i.ebayimg.com/images/g/nD0AAeSwouNpUvbf/s-l140.jpg",
+            "condition": "Open Box",
+            "seller_info": {
+                "name": "yeg-canada",
+                "review_count": "271",
+                "positive_feedback_percent": 97.7
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "rating": 4.5,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 42.99,
+                    "raw": "C $42.99"
+                }
+            ],
+            "price": {
+                "value": 42.99,
+                "raw": "C $42.99"
+            }
+        },
+        {
+            "position": 49,
+            "title": "SanDisk 128GB micro SD SDXC Card 100MB/s Ultra 128G Class 10 UHS-1 A1",
+            "epid": "128016006471",
+            "link": "https://www.ebay.ca/itm/128016006471",
+            "image": "https://i.ebayimg.com/images/g/KKkAAeSwWQxqdlE1/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "quic_84",
+                "review_count": "60",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.63,
+            "rating": 4.5,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 32.46,
+                    "raw": "C $32.46"
+                }
+            ],
+            "price": {
+                "value": 32.46,
+                "raw": "C $32.46"
+            }
+        },
+        {
+            "position": 50,
+            "title": "Kingston Canvas React Plus 128GB 256GB 512GB 1TB UHS-II V60 U3 SD Memory Card to",
+            "epid": "298454206039",
+            "link": "https://www.ebay.ca/itm/298454206039",
+            "image": "https://i.ebayimg.com/images/g/NZ4AAeSwoYJpQoAZ/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "jiac-store",
+                "review_count": "459",
+                "positive_feedback_percent": 99.7
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "china",
+            "sponsored": false
+        },
+        {
+            "position": 51,
+            "title": "SanDisk - Extreme Pro 64GB SDXC UHS-II V90 Memory Card",
+            "epid": "397960724643",
+            "link": "https://www.ebay.ca/itm/397960724643",
+            "image": "https://i.ebayimg.com/images/g/ko0AAeSw37VqCm0j/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "seller_info": {
+                "name": "memory561",
+                "review_count": "121300",
+                "positive_feedback_percent": 99.9
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 18.05,
+            "rating": 5,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 69.2,
+                    "raw": "C $69.20"
+                }
+            ],
+            "price": {
+                "value": 69.2,
+                "raw": "C $69.20"
+            }
+        },
+        {
+            "position": 52,
+            "title": "Smartmedia Card 16MB 32MB 64MB 128MB SM Card + Smartmedia Card Reader Adapter to",
+            "epid": "296579357305",
+            "link": "https://www.ebay.ca/itm/296579357305",
+            "image": "https://i.ebayimg.com/images/g/-MoAAOSwvRFmmqLg/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "jiac-store",
+                "review_count": "459",
+                "positive_feedback_percent": 99.7
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "china",
+            "sponsored": false
+        },
+        {
+            "position": 53,
+            "title": "New SanDisk 512GB Extreme Pro microSDXC UHS-I Memory Card with Adapter",
+            "epid": "128056702911",
+            "link": "https://www.ebay.ca/itm/128056702911",
+            "image": "https://i.ebayimg.com/images/g/nKcAAeSwu3Zql5vg/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "campbell0588",
+                "review_count": "588",
+                "positive_feedback_percent": 96.1
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 15.63,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 69.47,
+                    "raw": "C $69.47"
+                }
+            ],
+            "price": {
+                "value": 69.47,
+                "raw": "C $69.47"
+            }
+        },
+        {
+            "position": 54,
+            "title": "Amazon Basics 128GB microSD Memory Card 100MB/s with Full Size Adapter MicroSDXC",
+            "epid": "178338198119",
+            "link": "https://www.ebay.ca/itm/178338198119",
+            "image": "https://i.ebayimg.com/images/g/zYgAAeSw6wpqYmEp/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "ft.computers",
+                "review_count": "1300",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.7,
+            "rating": 5,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 34.73,
+                    "raw": "C $34.73"
+                }
+            ],
+            "price": {
+                "value": 34.73,
+                "raw": "C $34.73"
+            }
+        },
+        {
+            "position": 55,
+            "title": "BRAND NEW SANDISK 64GB EXTREME PRO MICROSDXC UHS-I MEMORY CARD WITH ADAPTER",
+            "epid": "128056710358",
+            "link": "https://www.ebay.ca/itm/128056710358",
+            "image": "https://i.ebayimg.com/images/g/i5YAAeSw2Ztql5zo/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "campbell0588",
+                "review_count": "588",
+                "positive_feedback_percent": 96.1
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.15,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 13.88,
+                    "raw": "C $13.88"
+                }
+            ],
+            "price": {
+                "value": 13.88,
+                "raw": "C $13.88"
+            }
+        },
+        {
+            "position": 56,
+            "title": "SanDisk 256GB Extreme Pro microSDXC UHS-I Memory Card with Adapter",
+            "epid": "128056702033",
+            "link": "https://www.ebay.ca/itm/128056702033",
+            "image": "https://i.ebayimg.com/images/g/p-gAAeSwXyxql5uw/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "campbell0588",
+                "review_count": "588",
+                "positive_feedback_percent": 96.1
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 15.26,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 55.57,
+                    "raw": "C $55.57"
+                }
+            ],
+            "price": {
+                "value": 55.57,
+                "raw": "C $55.57"
+            }
+        },
+        {
+            "position": 57,
+            "title": "Lot of 10 MicroSD Micro SD TF Cards 2GB Bulk Tested & Working Sandisk Transcend",
+            "epid": "257591058418",
+            "link": "https://www.ebay.ca/itm/257591058418",
+            "image": "https://i.ebayimg.com/images/g/t9wAAeSwLFVp~RHo/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "seller_info": {
+                "name": "renesrarefinds",
+                "review_count": "3300",
+                "positive_feedback_percent": 100
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "shipping_cost": 9.83,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 38.88,
+                    "raw": "C $38.88"
+                }
+            ],
+            "price": {
+                "value": 38.88,
+                "raw": "C $38.88"
+            }
+        },
+        {
+            "position": 58,
+            "title": "Lenovo Micro SD TF Memory Card Class 10 High Speed 128GB 256GB 512GB to",
+            "epid": "377371832444",
+            "link": "https://www.ebay.ca/itm/377371832444",
+            "image": "https://i.ebayimg.com/images/g/dxIAAeSwwvJqZnIX/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "bargain-mart3",
+                "review_count": "301",
+                "positive_feedback_percent": 98.4
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.33,
+            "sponsored": false
+        },
+        {
+            "position": 59,
+            "title": "16M 32M 64MB 128M 256M 512MB 1GB 2GB SD Card Sdandard Memory Card Secure Digital to",
+            "epid": "198334905106",
+            "link": "https://www.ebay.ca/itm/198334905106",
+            "image": "https://i.ebayimg.com/images/g/tOoAAeSwWhJo3XR~/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "fuxindongli",
+                "review_count": "271",
+                "positive_feedback_percent": 98.8
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "china",
+            "sponsored": false
+        },
+        {
+            "position": 60,
+            "title": "Micro SD Memory Card for Phone Table High Speed 1TB 256GB 128GB 64GB US Lot  to",
+            "epid": "398262788949",
+            "link": "https://www.ebay.ca/itm/398262788949",
+            "image": "https://i.ebayimg.com/images/g/FCYAAeSw9HxqX0OP/s-l140.jpg",
+            "condition": "Brand New",
+            "seller_info": {
+                "name": "chance709",
+                "review_count": "2400",
+                "positive_feedback_percent": 98
+            },
+            "is_auction": false,
+            "buy_it_now": false,
+            "free_returns": true,
+            "item_location": "united states",
+            "shipping_cost": 17.91,
+            "sponsored": false
+        }
+    ],
+    "search_information": {
+        "original_search_term": "memory cards"
+    },
+    "pagination": {
+        "has_next_page": true,
+        "next_page": 2,
+        "current_page": 1,
+        "total_results": 76000
+    }
+}

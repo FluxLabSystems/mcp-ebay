@@ -1,0 +1,16 @@
+{
+    "request_info": {
+        "success": true,
+        "demo": true
+    },
+    "request_parameters": {
+        "type": "product",
+        "ebay_domain": "ebay.ca",
+        "epid": "233599133856",
+        "customer_location": "ca"
+    },
+    "request_metadata": {
+        "ebay_url": "https://www.ebay.ca/itm/233599133856?_fcid=2"
+    },
+    "message": "Product not found."
+}
