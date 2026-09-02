@@ -158,6 +158,51 @@ describe('navigation + revisions + snapshot (FR-02/03, §14)', () => {
     expect(tabs.find((tab) => tab.tabId === tabId)?.active).toBe(true);
   });
 
+  // 2026-09-02 wardrobe fire (windows-agent+connector_defect+zazzle-
+  // personalize-button-newtab-not-capturable): a "(opens in new tab)"
+  // control was clicked, changed:false came back (correct — the ORIGINAL tab
+  // did not change) and browser_tabs never listed a second tab. Nothing in
+  // the click result said whether a popup was opened, adopted, or denied by
+  // the URL policy and closed. Now the result carries the popup's fate.
+  it('a click that opens a same-profile popup reports the adopted tab, and browser_tabs lists it', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
+    const snap = await snapshot(harness.session, tabId, 3000);
+    const link = snap.snapshot.find((node) => node.name.includes('Open second page in new tab'));
+    expect(link?.elementRef).toBeTruthy();
+    const before = (await harness.session.listTabs()).length;
+    const result = await click(harness.session, tabId, link!.elementRef!, 10_000);
+    expect(result.changed).toBe(false);
+    expect(result.openedTab).not.toBeNull();
+    expect(result.openedTab?.url).toBe(`${fixtures.baseUrl}/pages/second.html`);
+    expect(result.popupDenied).toBeNull();
+    const tabs = await harness.session.listTabs();
+    expect(tabs.length).toBe(before + 1);
+    expect(tabs.some((tab) => tab.tabId === result.openedTab?.tabId)).toBe(true);
+    // The original tab stays the active one; the popup is reachable by id.
+    const popup = harness.session.getTab(result.openedTab!.tabId);
+    await popup.page.close();
+    harness.session.getTab(tabId);
+  });
+
+  it('a click whose popup targets a host outside the allowlist reports the denial instead of losing it', async () => {
+    const snap = await snapshot(harness.session, tabId, 3000);
+    const link = snap.snapshot.find((node) => node.name.includes('Open external design tool in new tab'));
+    expect(link?.elementRef).toBeTruthy();
+    const before = (await harness.session.listTabs()).length;
+    const result = await click(harness.session, tabId, link!.elementRef!, 10_000);
+    expect(result.openedTab).toBeNull();
+    expect(result.popupDenied).toBe('https://example.com/design-tool');
+    expect((await harness.session.listTabs()).length).toBe(before);
+  });
+
+  it('an ordinary click reports no popup', async () => {
+    const snap = await snapshot(harness.session, tabId, 3000);
+    const button = snap.snapshot.find((node) => node.name.includes('Increment counter'));
+    const result = await click(harness.session, tabId, button!.elementRef!, 10_000);
+    expect(result.openedTab).toBeNull();
+    expect(result.popupDenied).toBeNull();
+  });
+
   it('scrolls and reports positions; sends allowed keys only', async () => {
     const scrolled = await scroll(harness.session, tabId, 0, 800);
     expect(scrolled.scrollY).toBeGreaterThan(0);

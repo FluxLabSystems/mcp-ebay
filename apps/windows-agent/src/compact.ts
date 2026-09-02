@@ -29,6 +29,7 @@ import {
   ACK_DEADLINE_MS,
   BridgeError,
   compileTitleRegex,
+  DEFAULT_SEARCH_COMPACTION,
   SEARCH_TITLE_MATCH_MAX_CHARS,
   type SearchCompaction,
 } from '@browser-bridge/protocol';
@@ -233,6 +234,17 @@ export function compactItemRecord(
   record: unknown,
   warnings: readonly string[] = [],
 ): Record<string, unknown> {
+  // A candidate page (search, store, or an unclassified page that got the
+  // link scan) is not an item and must not be flattened into one. The
+  // 2026-09-02 deals fire ran three /usr/<loginId> seller pages through
+  // browser_extract_many and got {itemId:null, title:null, seller:null,
+  // itemPrice:null, …} back: the extractor had classified them correctly as
+  // 'store' pages with a candidate list, and this projection erased that.
+  // Compact them the way browser_open_and_extract does — the default
+  // candidate window — so pageKind, pageTitle and the rows survive.
+  if (isCandidatePage(record)) {
+    return compactSearchPage(record, DEFAULT_SEARCH_COMPACTION).record;
+  }
   if (siteProfile !== null && siteProfile.startsWith('kijiji')) {
     return compactKijijiAd(record) as unknown as Record<string, unknown>;
   }
@@ -243,6 +255,18 @@ export function compactItemRecord(
     return compactEbayItem(record, warnings) as unknown as Record<string, unknown>;
   }
   return (asObject(record) ?? {}) as Record<string, unknown>;
+}
+
+/**
+ * A record is a candidate page when it carries a candidate list under a
+ * non-item page kind. Item records never carry `candidates`; every site's
+ * search/store/other branch always does, even when it is empty.
+ */
+export function isCandidatePage(record: unknown): boolean {
+  const source = asObject(record);
+  if (source === null || !Array.isArray(source.candidates)) return false;
+  const kind = readString(source.pageKind);
+  return kind !== null && kind !== 'listing';
 }
 
 // ---------------------------------------------------------------------------
@@ -311,6 +335,10 @@ const PRESERVED_ROOT_FIELDS = [
   'siteProfile',
   'pageKind',
   'pageUrl',
+  // The rendered <title> of an eBay candidate page. On a /usr/ or /str/
+  // page it is how an unavailable profile (eBay's error template, empty
+  // title) is told from a live store with nothing listed.
+  'pageTitle',
   'hasNextPage',
   'nextPageUrl',
   'totalResults',

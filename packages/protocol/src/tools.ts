@@ -169,6 +169,19 @@ export const ClickOutput = z.strictObject({
   pageRevision: z.int(),
   url: z.string(),
   changed: z.boolean(),
+  /**
+   * The fate of a popup the click opened (target=_blank / window.open).
+   * `changed` describes the ORIGINAL tab and is false for a successful
+   * popup, which is what the 2026-09-02 wardrobe fire saw on Zazzle's
+   * "Personalize this design (opens in new tab)" button with no way to tell
+   * a popup that opened from one the URL policy denied and closed.
+   * openedTab: the adopted tab, addressable by every other browser_* tool.
+   * popupDenied: the URL of a popup refused by the site allowlist.
+   * NOTE: adding these fields changed the advertised tool schema — a
+   * gateway redeploy plus a claude.ai connector reconnect applies.
+   */
+  openedTab: z.object({ tabId: z.string(), url: z.string() }).nullable(),
+  popupDenied: z.string().nullable(),
 });
 
 export const FillInput = z.strictObject({
