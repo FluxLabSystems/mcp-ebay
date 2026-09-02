@@ -103,6 +103,43 @@ describe('browser_extract dispatches by page kind instead of refusing', () => {
     expect(record.candidateCount).toBeGreaterThan(0);
   });
 
+  // 2026-09-02 deals fire: three /usr/<loginId> seller pages came back as
+  // all-null item records (see compact.test.ts for the projection half).
+  // The classifier half: /usr/ is a store page, and a store page names
+  // itself — the rendered <title> rides on the record so an unavailable
+  // profile (eBay's error template, empty title) can be told from a live
+  // store with no active listings without a second browser_snapshot call.
+  it('eBay /usr/ seller-profile pages are store pages carrying the rendered title', async () => {
+    const outcome = await runExtract(
+      'https://www.ebay.ca/usr/brickdeals_toronto',
+      fixture('ebay', 'seller-store.html'),
+      'ebay.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as { pageKind: string; pageTitle: string; candidateCount: number };
+    expect(record.pageKind).toBe('store');
+    expect(record.pageTitle).toBe('brickdeals_toronto on eBay');
+    expect(record.candidateCount).toBeGreaterThan(0);
+    expect(parsed.warnings.some((warning) => warning.startsWith('UNCLASSIFIED_PAGE'))).toBe(false);
+  });
+
+  it('an empty eBay store page says the title was empty instead of a generic candidate miss', async () => {
+    const outcome = await runExtract(
+      'https://www.ebay.ca/usr/audi2005store',
+      '<html><head><title></title></head><body><img alt="Attention"></body></html>',
+      'ebay.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as { pageKind: string; pageTitle: string; candidateCount: number };
+    expect(record.pageKind).toBe('store');
+    expect(record.pageTitle).toBe('');
+    expect(record.candidateCount).toBe(0);
+    const empty = parsed.warnings.find((warning) => warning.startsWith('STORE_NO_CANDIDATES'));
+    expect(empty).toBeDefined();
+    expect(empty).toContain('empty <title>');
+    expect(parsed.warnings.some((warning) => warning.startsWith('NO_LISTING_CANDIDATES'))).toBe(false);
+  });
+
   it('an unclassified eBay page still extracts, scanning it for /itm/ links', async () => {
     // The eBay homepage classifies as 'other'. It is not a refusal: the same
     // scan the search pages use runs, and it finds whatever item links exist.
@@ -158,6 +195,15 @@ describe('browser_extract dispatches by page kind instead of refusing', () => {
     expect(record.pageKind).toBe('search');
     expect(record.candidateCount).toBeGreaterThan(0);
     expect(record.candidates[0]!.adId).toMatch(/^\d+$/);
+    // 2026-09-02 (site-kijiji+extractor_defect+radius-param-ineffective-
+    // l1700273): kijiji.ca ignores radius= and address= outright — the same
+    // params without a region id returned Edmonton and Winnipeg ads for a
+    // 45 km radius around M6H 2W9. A search URL still carrying them gets a
+    // warning so no run reports a radius the site never applied.
+    const inert = parsed.warnings.find((warning) => warning.startsWith('RADIUS_PARAM_INERT'));
+    expect(inert).toBeDefined();
+    expect(inert).toContain('radius=45');
+    expect(inert).toContain('l1700273');
     expect(record.hasNextPage).toBe(true);
     expect(record.nextPageUrl).toContain('page-2');
   });

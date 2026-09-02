@@ -66,6 +66,7 @@ import {
   isKijijiAdImageUrl,
   KIJIJI_GALLERY_SELECTORS,
   KIJIJI_SITE_PROFILE_ID,
+  kijijiSearchUrlWarnings,
   normalizeKijijiImageUrl,
 } from '@browser-bridge/site-kijiji';
 import {
@@ -609,7 +610,10 @@ async function executeExtract(
     // use. Worst case it finds nothing and says so.
     if (kind === 'search' || kind === 'other') {
       const searchPage = extractSearchResults(document, pageUrl, { observedAt: source.capturedAt });
-      const warnings = [...intentWarnings];
+      // radius=/address= are ignored by kijiji.ca (2026-09-02, isolated
+      // live); a URL that still carries them must not be read as a radius
+      // sweep.
+      const warnings = [...intentWarnings, ...kijijiSearchUrlWarnings(pageUrl)];
       if (kind === 'other') {
         warnings.push(
           `UNCLASSIFIED_PAGE: ${pageUrl} is not a Kijiji ad or search URL; returned a best-effort ad-link scan. An empty candidate list here may mean the page has no ads, not that extraction failed.`,
@@ -744,7 +748,22 @@ async function executeExtract(
         `UNCLASSIFIED_PAGE: ${pageUrl} is not an item (/itm/), search (/sch/) or store (/str/, /usr/) URL; returned a best-effort /itm/-link scan. An empty candidate list here may mean the page has no listings, not that extraction failed.`,
       );
     }
-    if (candidates.length === 0) {
+    const pageTitle = normalizeTitle(document.querySelector('title')?.textContent);
+    if (candidates.length === 0 && kind === 'store') {
+      // A seller page with nothing to list is two different things: a live
+      // store with no active listings (the seller header still renders and
+      // titles the page) or an unavailable/suspended profile, which the
+      // 2026-09-02 deals fire saw render eBay's "Attention" error template
+      // with an EMPTY <title>. The generic candidate miss hid that
+      // difference; the title is the cheapest signal that separates them.
+      // NEEDS-LIVE-VERIFICATION: no live /usr/ page has been captured as a
+      // fixture yet, so this reports the title rather than classifying.
+      warnings.push(
+        pageTitle.length === 0
+          ? `STORE_NO_CANDIDATES: no /itm/ links on ${pageUrl} and the page has an empty <title> — consistent with eBay's error template for an unavailable or suspended profile rather than a live store with no listings. Confirm with browser_snapshot before treating the seller as gone.`
+          : `STORE_NO_CANDIDATES: no /itm/ links on ${pageUrl}; the page titles itself "${pageTitle}", so the profile rendered but no active listings were found (or the store-card selectors need updating).`,
+      );
+    } else if (candidates.length === 0) {
       warnings.push(
         'NO_LISTING_CANDIDATES: no /itm/ links found — an empty results page, or the result-card selectors need updating.',
       );
@@ -754,6 +773,7 @@ async function executeExtract(
         siteProfile: EBAY_SITE_PROFILE_ID,
         pageKind: kind,
         pageUrl,
+        pageTitle,
         observedAt: source.capturedAt.toISOString(),
         candidateCount: candidates.length,
         candidates,
@@ -825,6 +845,10 @@ async function executeExtract(
  * load-bearing: browser_extract with no `search` must keep returning the
  * bytes it always returned.
  */
+function normalizeTitle(raw: string | null | undefined): string {
+  return (raw ?? '').replace(/[\u00a0\u202f]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 function applySearchCompaction(
   record: Record<string, unknown>,
   searchOptions: SearchCompaction | undefined,

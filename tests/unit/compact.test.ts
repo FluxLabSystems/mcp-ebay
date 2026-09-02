@@ -459,3 +459,67 @@ describe('search response byte budget', () => {
     expect(bytes).toBeLessThan(80 * 1024);
   });
 });
+
+// Filed by the 2026-09-02 deals fire (site-ebay+extractor_defect+
+// usr-profile-page-dispatched-as-item-page): browser_extract_many with the
+// default compact:true ran every slot through the ITEM projection, so a
+// /usr/<loginId> seller page — which the extractor had correctly classified
+// as pageKind 'store' with a candidate list — came back as
+// {itemId:null, title:null, seller:null, itemPrice:null, …} plus
+// NO_LISTING_CANDIDATES, indistinguishable from an item page that failed.
+// A candidate page compacts as a candidate page, whatever tool it rode in on.
+describe('item compaction keeps candidate pages as candidate pages', () => {
+  it('an eBay store page keeps pageKind, pageTitle and its candidates', () => {
+    const store = {
+      siteProfile: 'ebay.ca.v1',
+      pageKind: 'store',
+      pageUrl: 'https://www.ebay.ca/usr/The_Brick_World',
+      pageTitle: 'The_Brick_World on eBay',
+      observedAt: '2026-09-02T15:40:00Z',
+      candidateCount: 2,
+      candidates: [
+        { itemId: '555666777888', url: trackingUrl('555666777888', 'LEGO tiles'), title: 'LEGO tiles', order: 0 },
+        { itemId: '123456789012', url: trackingUrl('123456789012', 'LEGO minifigs'), title: 'LEGO minifigs', order: 1 },
+      ],
+      note: 'Candidate snippets are traversal hints.',
+    };
+    const compact = compactItemRecord('ebay.ca.v1', store, ['NO_LISTING_CANDIDATES: nope']);
+    expect(compact.pageKind).toBe('store');
+    expect(compact.pageTitle).toBe('The_Brick_World on eBay');
+    expect(compact.pageUrl).toBe('https://www.ebay.ca/usr/The_Brick_World');
+    expect(compact.candidateCount).toBe(2);
+    expect((compact.candidates as { itemId: string; url: string }[]).map((row) => row.itemId)).toEqual([
+      '555666777888',
+      '123456789012',
+    ]);
+    expect((compact.candidates as { url: string }[])[0]!.url).toBe('https://www.ebay.ca/itm/555666777888');
+    // The item-shape keys must not appear as an all-null decoy.
+    expect('itemId' in compact).toBe(false);
+    expect('itemPrice' in compact).toBe(false);
+  });
+
+  it('a Kijiji search page keeps its pagination and candidates', () => {
+    const search = {
+      siteProfile: 'kijiji.ca.v1',
+      pageKind: 'search',
+      pageUrl: 'https://www.kijiji.ca/b-gta-greater-toronto-area/lego/k0l1700273?sort=dateDesc',
+      candidateCount: 1,
+      candidates: [{ adId: '1742364312', url: 'https://www.kijiji.ca/v-toys-games/city-of-toronto/lego/1742364312', title: 'LEGO' }],
+      hasNextPage: true,
+      nextPageUrl: 'https://www.kijiji.ca/b-gta-greater-toronto-area/lego/page-2/k0l1700273',
+      totalResults: 3915,
+    };
+    const compact = compactItemRecord('kijiji.ca.v1', search);
+    expect(compact.pageKind).toBe('search');
+    expect(compact.totalResults).toBe(3915);
+    expect(compact.hasNextPage).toBe(true);
+    expect((compact.candidates as { adId: string }[])[0]!.adId).toBe('1742364312');
+    expect('adId' in compact).toBe(false);
+  });
+
+  it('an item record still takes the item projection', () => {
+    const compact = compactItemRecord('ebay.ca.v1', { siteProfile: 'ebay.ca.v1', itemId: field('9') });
+    expect(compact.itemId).toBe('9');
+    expect('candidates' in compact).toBe(false);
+  });
+});
