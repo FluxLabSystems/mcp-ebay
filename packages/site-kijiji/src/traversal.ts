@@ -9,6 +9,17 @@
  * run both first, deduplicate afterward). This module only builds search
  * URLs and parses result pages; pass orchestration, dedupe across passes,
  * and search-run audit records live with the caller.
+ *
+ * Observed live 2026-09-02 (deals fire, fingerprint site-kijiji+
+ * extractor_defect+radius-param-ineffective-l1700273): kijiji.ca IGNORES
+ * the radius= and address= query parameters. Under k0l1700273, radius=45.0
+ * and radius=65.0 returned byte-identical sets (totalResults=3915, same
+ * first 40 rows in the same order); the same radius=45.0&address=M6H 2W9
+ * with no region id returned 31,536 ads led by Laval, Edmonton and
+ * Winnipeg. Location scope comes ONLY from the l<regionId> path segment,
+ * so two radius passes are one pass until two verified region ids are
+ * pinned. The builders below therefore never emit those parameters, and
+ * kijijiSearchUrlWarnings() flags a URL that still carries them.
  */
 import { apolloActivationDate, readKijijiApolloCache } from './extract.js';
 import { adIdFromUrl, parseKijijiPostedText, parseKijijiPrice } from './normalize.js';
@@ -323,12 +334,9 @@ export interface KijijiSearchUrlInput {
    * Caller-provided category/location path segments in "b-buy-sell/canada"
    * style (e.g. "b-buy-sell/city-of-toronto/c10l1700273"). Leading and
    * trailing slashes are tolerated; empty falls back to "b-buy-sell/canada".
+   * The l<regionId> segment is the ONLY location scope Kijiji honours.
    */
   categoryPath: string;
-  /** Radius in km. The Fluxology 45 and 65 passes are separate calls. */
-  radiusKm: number;
-  /** Centre address Kijiji geocodes (e.g. "M6H 2W9"); null omits it. */
-  address: string | null;
   sortByNewest: boolean;
 }
 
@@ -337,23 +345,83 @@ export interface KijijiSearchUrlInput {
  * yields a syntactically valid URL, and each parameter is emitted in one
  * obvious place so live adjustments are single-line changes.
  *
- * NEEDS-LIVE-VERIFICATION: current Kijiji radius search uses query params
- * in the ?radius=45&address=... style and sort=dateDesc for newest-first,
- * and the free-text query is passed here as "q"; confirm all four against
- * live search URLs (the live site may embed the query as a path segment
- * before the category code instead of a parameter).
+ * Deliberately no radius or address: both parameters are ignored by the
+ * live site (module header). A caller that wants a wider or narrower area
+ * changes the l<regionId> in categoryPath, and only to an id whose rendered
+ * page header was confirmed live — l1700273 renders "City of Toronto"
+ * (office fire, 2026-09-02), not the GTA.
+ *
+ * NEEDS-LIVE-VERIFICATION: sort=dateDesc for newest-first was observed
+ * live on 2026-09-02; the free-text query as "q" has NOT been, and the
+ * observed working form puts the keyword in the path instead — see
+ * buildKeywordSearchUrl(). Prefer that builder for keyword searches.
  */
 export function buildSearchUrl(input: KijijiSearchUrlInput): string {
   const path = input.categoryPath.replace(/^\/+|\/+$/g, '');
   const url = new URL(`https://www.kijiji.ca/${path.length > 0 ? path : 'b-buy-sell/canada'}`);
   const query = input.query.trim();
   if (query.length > 0) url.searchParams.set('q', query);
-  if (Number.isFinite(input.radiusKm) && input.radiusKm > 0) {
-    url.searchParams.set('radius', String(input.radiusKm));
-  }
-  if (input.address !== null && input.address.trim().length > 0) {
-    url.searchParams.set('address', input.address.trim());
-  }
   if (input.sortByNewest) url.searchParams.set('sort', 'dateDesc');
   return url.toString();
+}
+
+export interface KijijiKeywordSearchUrlInput {
+  /** Free-text keyword; whitespace runs become '-' like Kijiji's own slugs. */
+  keyword: string;
+  /** Location slug as Kijiji renders it, e.g. "gta-greater-toronto-area". Decorative: the id scopes. */
+  locationSlug: string;
+  /** Region id, digits only ("1700273"); a leading "l" is tolerated. */
+  regionId: string;
+  sortByNewest: boolean;
+}
+
+/**
+ * The keyword-in-path search form observed live on 2026-09-02:
+ * https://www.kijiji.ca/b-gta-greater-toronto-area/lego/k0l1700273?sort=dateDesc
+ * returned totalResults=3915 of genuine LEGO ads. k0 is "all categories";
+ * the region id after the l is the only location scope. The keyword MUST be
+ * the second segment: the same fire saw /b-lego/gta-greater-toronto-area/
+ * k0l1700273 silently drop the keyword and return 77 unrelated ads.
+ */
+export function buildKeywordSearchUrl(input: KijijiKeywordSearchUrlInput): string {
+  const keyword = input.keyword
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const location = input.locationSlug.replace(/^\/+|\/+$/g, '').replace(/^b-/, '');
+  const regionId = input.regionId.trim().replace(/^l/i, '');
+  const url = new URL(`https://www.kijiji.ca/b-${location}/${keyword}/k0l${regionId}`);
+  if (input.sortByNewest) url.searchParams.set('sort', 'dateDesc');
+  return url.toString();
+}
+
+/** Warning-code prefix for a search URL carrying the inert radius/address parameters. */
+export const RADIUS_PARAM_INERT_WARNING_PREFIX = 'RADIUS_PARAM_INERT';
+
+/**
+ * Warnings for a search URL as it was actually requested. A URL carrying
+ * radius= or address= reads like a radius sweep and is not one: the site
+ * ignores both (module header). Naming the region id in the text keeps the
+ * reader looking at the one segment that does scope the results.
+ */
+export function kijijiSearchUrlWarnings(pageUrl: string): string[] {
+  let url: URL;
+  try {
+    url = new URL(pageUrl);
+  } catch {
+    return [];
+  }
+  const inert: string[] = [];
+  for (const name of ['radius', 'address'] as const) {
+    const value = url.searchParams.get(name);
+    if (value !== null) inert.push(`${name}=${value}`);
+  }
+  if (inert.length === 0) return [];
+  // Trailing segment shapes: k0l1700273 (all categories), c10l1700273 (a category).
+  const region = /\/[a-z]\d*(l\d+)(?:[/?#]|$)/i.exec(url.pathname);
+  const scope = region === null ? 'no l<regionId> path segment (all of Canada)' : `the ${region[1]} path segment alone`;
+  return [
+    `${RADIUS_PARAM_INERT_WARNING_PREFIX}: kijiji.ca ignores ${inert.join(' and ')} (observed live 2026-09-02: identical result sets for radius=45 and radius=65, and Edmonton/Winnipeg ads for a 45 km radius around M6H 2W9 without a region id). Results are scoped by ${scope}; do not report this as a radius pass.`,
+  ];
 }

@@ -8,12 +8,14 @@ import { describe, expect, it } from 'vitest';
 // linked into tests/node_modules; tsc and vitest both resolve the
 // TypeScript source directly through this path.
 import {
+  buildKeywordSearchUrl,
   buildSearchUrl,
   classifyKijijiPage,
   extractKijijiListing,
   extractSearchResults,
   isKijijiListingPage,
   KijijiExtractionRecordSchema,
+  kijijiSearchUrlWarnings,
 } from '../../packages/site-kijiji/src/index.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'kijiji');
@@ -115,28 +117,60 @@ describe('kijiji search traversal', () => {
     expect(page.nextPageUrl).toBe('https://www.kijiji.ca/b-buy-sell/city-of-toronto/lego/page-2/c10l1700273?radius=45');
   });
 
-  it('builds radius search URLs for the independent 45 km and 65 km passes', () => {
+  // 2026-09-02 deals fire (site-kijiji+extractor_defect+radius-param-
+  // ineffective-l1700273), isolated on the corrected URL form: radius=45.0
+  // and radius=65.0 returned byte-identical sets (totalResults=3915) under
+  // k0l1700273, and radius=45.0&address=M6H 2W9 with NO region id returned
+  // 31,536 ads led by Laval, Edmonton and Winnipeg. The site ignores both
+  // parameters; scope comes only from the l<regionId> path segment.
+  it('never emits radius= or address=, which kijiji.ca ignores', () => {
     expect(
       buildSearchUrl({
         query: 'lego bulk lot',
         categoryPath: 'b-buy-sell/city-of-toronto/c10l1700273',
-        radiusKm: 45,
-        address: 'M6H 2W9',
         sortByNewest: true,
       }),
-    ).toBe('https://www.kijiji.ca/b-buy-sell/city-of-toronto/c10l1700273?q=lego+bulk+lot&radius=45&address=M6H+2W9&sort=dateDesc');
+    ).toBe('https://www.kijiji.ca/b-buy-sell/city-of-toronto/c10l1700273?q=lego+bulk+lot&sort=dateDesc');
+    expect(buildSearchUrl({ query: 'lego bulk lot', categoryPath: '/b-buy-sell/canada/', sortByNewest: false })).toBe(
+      'https://www.kijiji.ca/b-buy-sell/canada?q=lego+bulk+lot',
+    );
+    expect(buildSearchUrl({ query: '', categoryPath: '', sortByNewest: false })).toBe(
+      'https://www.kijiji.ca/b-buy-sell/canada',
+    );
+  });
+
+  it('builds the keyword-in-path search form the 2026-09-02 fire saw return 3,915 LEGO ads', () => {
     expect(
-      buildSearchUrl({
-        query: 'lego bulk lot',
-        categoryPath: '/b-buy-sell/canada/',
-        radiusKm: 65,
-        address: 'M6H 2W9',
+      buildKeywordSearchUrl({
+        keyword: 'lego',
+        locationSlug: 'gta-greater-toronto-area',
+        regionId: '1700273',
+        sortByNewest: true,
+      }),
+    ).toBe('https://www.kijiji.ca/b-gta-greater-toronto-area/lego/k0l1700273?sort=dateDesc');
+    // Multi-word keywords join with '-', like Kijiji's own slugs; the
+    // region id is digits only and the slug never carries slashes.
+    expect(
+      buildKeywordSearchUrl({
+        keyword: ' Lego  Bulk Lot ',
+        locationSlug: '/city-of-toronto/',
+        regionId: 'l1700273',
         sortByNewest: false,
       }),
-    ).toBe('https://www.kijiji.ca/b-buy-sell/canada?q=lego+bulk+lot&radius=65&address=M6H+2W9');
-    expect(
-      buildSearchUrl({ query: '', categoryPath: '', radiusKm: Number.NaN, address: null, sortByNewest: false }),
-    ).toBe('https://www.kijiji.ca/b-buy-sell/canada');
+    ).toBe('https://www.kijiji.ca/b-city-of-toronto/lego-bulk-lot/k0l1700273');
+  });
+
+  it('warns about a search URL that still carries the inert radius/address parameters', () => {
+    const warnings = kijijiSearchUrlWarnings(
+      'https://www.kijiji.ca/b-gta-greater-toronto-area/lego/k0l1700273?radius=45.0&address=M6H%202W9&sort=dateDesc',
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/^RADIUS_PARAM_INERT: /);
+    expect(warnings[0]).toContain('radius=45.0');
+    expect(warnings[0]).toContain('address=');
+    expect(warnings[0]).toContain('l1700273');
+    expect(kijijiSearchUrlWarnings('https://www.kijiji.ca/b-gta-greater-toronto-area/lego/k0l1700273?sort=dateDesc')).toEqual([]);
+    expect(kijijiSearchUrlWarnings('not a url')).toEqual([]);
   });
 });
 
