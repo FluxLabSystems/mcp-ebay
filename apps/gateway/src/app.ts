@@ -31,6 +31,7 @@ import {
 import type { ArtifactTokenIssuer } from './agentAuth.js';
 import type { ArtifactStore } from './artifacts/store.js';
 import type { CommandBroker } from './broker.js';
+import { CountdownSource } from './countdown/source.js';
 import { DashboardClient } from './dashboards/client.js';
 import type { DeviceRegistry } from './devices/registry.js';
 import { buildMcpServer } from './mcp/server.js';
@@ -51,6 +52,8 @@ export interface GatewayAppDeps {
   serverVersion: string;
   /** Injectable fetch for the dashboard write-path (tests); defaults to global fetch. */
   dashboardFetch?: typeof fetch;
+  /** Injectable fetch for the Countdown API source (tests); defaults to global fetch. */
+  countdownFetch?: typeof fetch;
 }
 
 export interface GatewayApp {
@@ -109,9 +112,23 @@ export function buildGatewayApp(deps: GatewayAppDeps): GatewayApp {
       ? null
       : new RunCheckpointService({ store: deps.store.runCheckpoints, dashboard: RUN_TOOL_DASHBOARD });
 
+  // The ebay_api_* source tools exist only while a vendor key is configured
+  // (docs/COUNTDOWN-API-PLAN.md §2): one source per process holds the key,
+  // the credit balance and the reserve gate, and writes its audit rows to
+  // the same store as the broker.
+  const countdown =
+    config.countdown === null
+      ? null
+      : new CountdownSource({
+          config: config.countdown,
+          store: deps.store,
+          logger,
+          ...(deps.countdownFetch === undefined ? {} : { fetchImpl: deps.countdownFetch }),
+        });
+
   const mcpHandler = createMcpHandler(
     ({ authInfo }) =>
-      buildMcpServer({ broker: deps.broker, serverVersion: deps.serverVersion, dashboards, runs }, authInfo),
+      buildMcpServer({ broker: deps.broker, serverVersion: deps.serverVersion, dashboards, runs, countdown }, authInfo),
     {
       // §9: only the 2026-07-28 modern profile unless compatibility is
       // explicitly enabled by configuration.
