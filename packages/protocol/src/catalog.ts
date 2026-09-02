@@ -11,6 +11,15 @@ import {
   DashboardFeedOutput,
   DashboardUpsertInput,
   DashboardUpsertOutput,
+  EBAY_API_ITEMS_MAX,
+  EBAY_API_MAX_PAGE,
+  EBAY_API_SEARCH_DEFAULT_LIMIT,
+  EbayApiItemsInput,
+  EbayApiItemsOutput,
+  EbayApiSearchInput,
+  EbayApiSearchOutput,
+  EbayApiSellerInput,
+  EbayApiSellerOutput,
   EXTRACT_MANY_MAX_URLS,
   ExtractInput,
   ExtractManyInput,
@@ -506,4 +515,76 @@ const RUN_CATALOG_BY_NAME = new Map(RUN_TOOL_CATALOG.map((entry) => [entry.name,
 
 export function getRunToolEntry(name: string): RunToolCatalogEntry | undefined {
   return RUN_CATALOG_BY_NAME.get(name);
+}
+
+/* ------------------------------------------------------------------------- *
+ * Countdown API source tools — gateway-served, no device on the path
+ * (docs/COUNTDOWN-API-PLAN.md §2, §3, §6.3).
+ *
+ * Their own catalog, not TOOL_CATALOG: they are not browser tools, carry no
+ * agent command or policy class, and getToolEntry — which drives the agent
+ * wire — must not know them. Scope is browser:read for all three, the scope
+ * that already gates browser_extract: these are marketplace reads of the
+ * same sensitivity, they are not browser actions, and reusing the scope
+ * avoids a Keycloak realm change (recorded in the ADR). The gateway
+ * registers them only when it holds a vendor key; absent tools are the
+ * documented "unconfigured" state.
+ * ------------------------------------------------------------------------- */
+
+export interface SourceToolCatalogEntry {
+  /** Public MCP tool name, e.g. `ebay_api_search`. Dot-free: hosts rewrite dots before permission matching. */
+  name: string;
+  /** Required OAuth scope (§10.2) — always browser:read; see the block comment. */
+  scope: typeof SCOPE_READ;
+  /** Gateway tool-call deadline in milliseconds. */
+  timeoutMs: number;
+  description: string;
+  inputSchema: z.ZodType;
+  outputSchema: z.ZodType;
+}
+
+/**
+ * A five-page search is up to ten upstream requests, and a full item batch
+ * is EBAY_API_ITEMS_MAX product requests through a bounded pool; either can
+ * take most of a minute at the vendor's per-request timeout. A seller
+ * profile is one request.
+ */
+export const SOURCE_SEARCH_TIMEOUT_MS = 120_000;
+export const SOURCE_ITEMS_TIMEOUT_MS = 120_000;
+export const SOURCE_SELLER_TIMEOUT_MS = 30_000;
+
+export const SOURCE_TOOL_CATALOG: readonly SourceToolCatalogEntry[] = [
+  {
+    name: 'ebay_api_search',
+    scope: SCOPE_READ,
+    timeoutMs: SOURCE_SEARCH_TIMEOUT_MS,
+    description:
+      `Search eBay (ebay.ca or ebay.com) through the Countdown API instead of the browser, by searchTerm or by your own https eBay /sch/ URL, and return the same compacted candidate list browser_open_and_extract returns for a search page, so the usual audit and filter rules apply unchanged. Every page fetched spends one vendor credit (maxPage is capped at ${EBAY_API_MAX_PAGE}), and listingType 'all' costs two vendor requests per page — a buy_it_now search and an auction search merged by item id — because an unfiltered search cannot tell an auction from a fixed price; credits.used reports both. destination is a named value: 'toronto' makes a row's shippingCost eBay's own card estimate for the Toronto postal code, 'forwarder' uses the US forwarder suite, and 'domain_default' sends no location; a shippingCost of null means the card showed nothing readable, never free. Rows carry no bid count or time left: bidCount is always null, and auction bids, end times and prices come only from the Bridge browser tools. With a url, sortBy, listingType, condition, categoryId and page are refused because the vendor ignores them; put them in the URL's query string instead. The returned window defaults to search.limit ${EBAY_API_SEARCH_DEFAULT_LIMIT} (a whole page) because paging with search.offset re-issues the vendor requests and spends credits again; narrow or raise search.limit instead of paging.`,
+    inputSchema: EbayApiSearchInput,
+    outputSchema: EbayApiSearchOutput,
+  },
+  {
+    name: 'ebay_api_items',
+    scope: SCOPE_READ,
+    timeoutMs: SOURCE_ITEMS_TIMEOUT_MS,
+    description:
+      `Read up to ${EBAY_API_ITEMS_MAX} eBay item pages through the Countdown API in one call, by itemId or by https /itm/ URL, and return one browser_extract_many-style result slot per input in input order (mode 'inline', jobId null), so only slots with ok:true are upsert candidates and a LISTING_UNAVAILABLE slot keeps its record as evidence. Each item spends one vendor credit. Item-page shipping from this source is never resolved to a postal code and is not a Canadian figure: the vendor's browser resolves delivery to its own US zip whatever destination says, so every slot carries a DESTINATION_UNVERIFIED warning and the Bridge shipping pass is still required for a landed cost. Pass expectedFormat from the search that found the row: the vendor's item page reports live auctions as fixed price, so an auction slot returns no price, bids or end time (AUCTION_DETAIL_UNAVAILABLE_FROM_SOURCE) — auction prices come only from the Bridge. Without expectedFormat a slot's format is unknown and its price is unconfirmed (PRICE_UNCONFIRMED, confidence 0.4): pass expectedFormat from the search that found the row before treating a price as purchasable. A slot that fails maps its own error and never fails the batch.`,
+    inputSchema: EbayApiItemsInput,
+    outputSchema: EbayApiItemsOutput,
+  },
+  {
+    name: 'ebay_api_seller',
+    scope: SCOPE_READ,
+    timeoutMs: SOURCE_SELLER_TIMEOUT_MS,
+    description:
+      'Look up one eBay seller profile through the Countdown API, by loginId or by https /usr/ or /str/ URL, for the seller-confirmation step of the deals rules: name, profile URL, login id or store slug, member-since, positive-feedback percent, followers, location, top-rated flag and a short description, each null when the vendor did not return it. resolved is false when the vendor returned no seller block, and the vendor\'s message is then in warnings. Each call spends one vendor credit, even when nothing resolves. This tool reads no listing, so it carries no price and no shipping figure; item-page shipping and auction prices are the concern of ebay_api_items and the Bridge.',
+    inputSchema: EbayApiSellerInput,
+    outputSchema: EbayApiSellerOutput,
+  },
+];
+
+const SOURCE_CATALOG_BY_NAME = new Map(SOURCE_TOOL_CATALOG.map((entry) => [entry.name, entry]));
+
+export function getSourceToolEntry(name: string): SourceToolCatalogEntry | undefined {
+  return SOURCE_CATALOG_BY_NAME.get(name);
 }

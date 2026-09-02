@@ -1,0 +1,22 @@
+{
+  "name": "@browser-bridge/source-countdown",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Countdown API (Traject Data) eBay data source: HTTP client with injectable fetch, loose response schemas, and mappers onto the ebay.ca.v1 candidate and extraction-record shapes (docs/COUNTDOWN-API-PLAN.md)",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@browser-bridge/protocol": "workspace:*",
+    "@browser-bridge/site-ebay": "workspace:*",
+    "zod": "^4.4.3"
+  }
+}

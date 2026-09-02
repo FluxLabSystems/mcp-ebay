@@ -24,6 +24,8 @@ import {
   type ToolCatalogEntry,
 } from '@browser-bridge/protocol';
 import type { CommandBroker } from '../broker.js';
+import type { CountdownSource } from '../countdown/source.js';
+import { registerSourceTools } from '../countdown/tools.js';
 import type { DashboardClient } from '../dashboards/client.js';
 import type { RunCheckpointService } from '../runs/checkpoints.js';
 
@@ -34,6 +36,12 @@ export interface McpFactoryDeps {
   dashboards?: DashboardClient | null;
   /** Run bookkeeping for the deals.* tools; registered with the dashboards. */
   runs?: RunCheckpointService | null;
+  /**
+   * Countdown API source behind the ebay_api_* tools; present only when
+   * COUNTDOWN_API_KEY is configured. Absent tools are the documented
+   * "unconfigured" state (docs/COUNTDOWN-API-PLAN.md §2).
+   */
+  countdown?: CountdownSource | null;
 }
 
 interface ToolResultShape {
@@ -69,6 +77,9 @@ export function buildMcpServer(deps: McpFactoryDeps, authInfo: { scopes: string[
     for (const entry of RUN_TOOL_CATALOG) {
       registerRunTool(server, deps.runs, entry, authInfo);
     }
+  }
+  if (deps.countdown !== undefined && deps.countdown !== null) {
+    registerSourceTools(server, deps.countdown, authInfo);
   }
   return server;
 }

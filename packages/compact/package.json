@@ -1,0 +1,23 @@
+{
+  "name": "@browser-bridge/compact",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Compact projections shared by the Windows agent and the gateway: item-record flattening and search-page compaction (SDD Appendix A, Phase 2 call-budget work)",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@browser-bridge/protocol": "workspace:*",
+    "@browser-bridge/site-ebay": "workspace:*",
+    "@browser-bridge/site-kijiji": "workspace:*",
+    "@browser-bridge/site-zazzle": "workspace:*"
+  }
+}

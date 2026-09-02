@@ -19,10 +19,15 @@ import {
 } from '@browser-bridge/protocol';
 
 describe('error catalog (§17)', () => {
-  it('contains exactly the 24 normative codes', () => {
-    expect(BRIDGE_ERROR_CODES).toHaveLength(24);
+  it('contains exactly the 27 normative codes', () => {
+    // 24 from SDD v0.5 §17 plus the three Countdown API source codes
+    // (docs/COUNTDOWN-API-PLAN.md §2).
+    expect(BRIDGE_ERROR_CODES).toHaveLength(27);
     expect(BRIDGE_ERROR_CODES).toContain('DESTINATION_UNVERIFIED');
     expect(BRIDGE_ERROR_CODES).toContain('PROFILE_IN_USE');
+    expect(BRIDGE_ERROR_CODES).toContain('SOURCE_UNAVAILABLE');
+    expect(BRIDGE_ERROR_CODES).toContain('SOURCE_CREDITS_EXHAUSTED');
+    expect(BRIDGE_ERROR_CODES).toContain('SOURCE_REJECTED');
   });
 
   it('matches the normative retryability table', () => {
@@ -36,6 +41,9 @@ describe('error catalog (§17)', () => {
       'CONDITION_TIMEOUT',
       'EXTRACTION_INCOMPLETE',
       'RATE_LIMITED',
+      // A vendor incident, 5xx or timeout clears on its own; exhausted
+      // credits and a rejected request do not, so only this one retries.
+      'SOURCE_UNAVAILABLE',
       'INTERNAL_ERROR',
     ];
     for (const code of BRIDGE_ERROR_CODES) {

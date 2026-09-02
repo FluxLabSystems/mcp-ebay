@@ -32,6 +32,9 @@ importers:
       '@browser-bridge/audit':
         specifier: workspace:*
         version: link:../../packages/audit
+      '@browser-bridge/compact':
+        specifier: workspace:*
+        version: link:../../packages/compact
       '@browser-bridge/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -41,6 +44,12 @@ importers:
       '@browser-bridge/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@browser-bridge/site-ebay':
+        specifier: workspace:*
+        version: link:../../packages/site-ebay
+      '@browser-bridge/source-countdown':
+        specifier: workspace:*
+        version: link:../../packages/source-countdown
       '@hono/node-server':
         specifier: ^2.1.0
         version: 2.1.0(hono@4.13.2)
@@ -81,6 +90,9 @@ importers:
       '@browser-bridge/browser-core':
         specifier: workspace:*
         version: link:../../packages/browser-core
+      '@browser-bridge/compact':
+        specifier: workspace:*
+        version: link:../../packages/compact
       '@browser-bridge/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -140,6 +152,21 @@ importers:
         specifier: 1.56.1
         version: 1.56.1
 
+  packages/compact:
+    dependencies:
+      '@browser-bridge/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@browser-bridge/site-ebay':
+        specifier: workspace:*
+        version: link:../site-ebay
+      '@browser-bridge/site-kijiji':
+        specifier: workspace:*
+        version: link:../site-kijiji
+      '@browser-bridge/site-zazzle':
+        specifier: workspace:*
+        version: link:../site-zazzle
+
   packages/config:
     dependencies:
       '@browser-bridge/protocol':
@@ -197,6 +224,18 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
+  packages/source-countdown:
+    dependencies:
+      '@browser-bridge/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@browser-bridge/site-ebay':
+        specifier: workspace:*
+        version: link:../site-ebay
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
   packages/telemetry: {}
 
   tests:
@@ -207,6 +246,9 @@ importers:
       '@browser-bridge/browser-core':
         specifier: workspace:*
         version: link:../packages/browser-core
+      '@browser-bridge/compact':
+        specifier: workspace:*
+        version: link:../packages/compact
       '@browser-bridge/config':
         specifier: workspace:*
         version: link:../packages/config
@@ -231,6 +273,9 @@ importers:
       '@browser-bridge/site-zazzle':
         specifier: workspace:*
         version: link:../packages/site-zazzle
+      '@browser-bridge/source-countdown':
+        specifier: workspace:*
+        version: link:../packages/source-countdown
       '@browser-bridge/windows-agent':
         specifier: workspace:*
         version: link:../apps/windows-agent

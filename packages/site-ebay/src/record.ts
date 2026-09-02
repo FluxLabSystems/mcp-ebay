@@ -5,7 +5,11 @@
  */
 import * as z from 'zod/v4';
 
-export const FieldSourceSchema = z.enum(['dom', 'jsonld', 'meta', 'computed']);
+/**
+ * 'api' marks a value read from a structured data source (the Countdown API
+ * mapper, siteProfile 'ebay.api.v1') rather than from a rendered page.
+ */
+export const FieldSourceSchema = z.enum(['dom', 'jsonld', 'meta', 'computed', 'api']);
 export type FieldSource = z.infer<typeof FieldSourceSchema>;
 
 const stringField = z.strictObject({
@@ -22,6 +26,18 @@ const countField = z.strictObject({
 
 const instantField = z.strictObject({
   value: z.iso.datetime({ offset: true }),
+  source: FieldSourceSchema,
+  confidence: z.number().min(0).max(1),
+});
+
+const numberField = z.strictObject({
+  value: z.number(),
+  source: FieldSourceSchema,
+  confidence: z.number().min(0).max(1),
+});
+
+const booleanField = z.strictObject({
+  value: z.boolean(),
   source: FieldSourceSchema,
   confidence: z.number().min(0).max(1),
 });
@@ -43,8 +59,16 @@ export type ListingStatus = z.infer<typeof ListingStatusSchema>;
 export const SellingFormatKindSchema = z.enum(['auction', 'fixed_price', 'auction_with_bin', 'unknown']);
 export type SellingFormatKind = z.infer<typeof SellingFormatKindSchema>;
 
+/**
+ * 'ebay.ca.v1' is the DOM extractor on the Bridge; 'ebay.api.v1' is the
+ * Countdown API mapper in @browser-bridge/source-countdown. Both produce this
+ * shape; the API profile additionally fills the optional fields at the end.
+ */
+export const ExtractionSiteProfileSchema = z.enum(['ebay.ca.v1', 'ebay.api.v1']);
+export type ExtractionSiteProfile = z.infer<typeof ExtractionSiteProfileSchema>;
+
 export const ExtractionRecordSchema = z.strictObject({
-  siteProfile: z.literal('ebay.ca.v1'),
+  siteProfile: ExtractionSiteProfileSchema,
   itemId: stringField.nullable(),
   canonicalUrl: stringField.nullable(),
   title: stringField.nullable(),
@@ -125,6 +149,38 @@ export const ExtractionRecordSchema = z.strictObject({
    * move when the record only gains fields.
    */
   profileRevision: z.int(),
+
+  // --- Additive fields (ebay.api.v1, docs/COUNTDOWN-API-PLAN.md §4.2) ---
+  // Every one is nullable AND optional so that a record from the DOM
+  // extractor, which never sets them, still validates unchanged.
+  /** "Ships to" text as rendered; a truncated list or "Worldwide". Never route evidence. */
+  shipsToText: stringField.nullable().optional(),
+  /** Delivery estimate as rendered, resolved to the source's own location. */
+  deliveryEstimateText: stringField.nullable().optional(),
+  /** Condition as rendered ("Used", "Brand New"). */
+  conditionText: stringField.nullable().optional(),
+  /** Returns policy as rendered ("30 days return. Seller pays for return shipping."). */
+  returnsText: stringField.nullable().optional(),
+  returnsAccepted: booleanField.nullable().optional(),
+  /** Seller display name; NOT a login id (store names differ from login ids). */
+  sellerDisplayName: stringField.nullable().optional(),
+  /** The /str/<slug> segment when the seller link is a store page; not a login id. */
+  sellerStoreSlug: stringField.nullable().optional(),
+  sellerFeedbackScore: numberField.nullable().optional(),
+  sellerPositivePercent: numberField.nullable().optional(),
+  /** The seller link as the source gave it (/usr/, /str/ or /sch/<id>/m.html form). */
+  sellerProfileUrl: stringField.nullable().optional(),
+  /** Whether the listing accepts offers, as the source reports it. */
+  makeOffer: booleanField.nullable().optional(),
+  imageCount: countField.nullable().optional(),
+  /** Item specifics as name/value pairs, capped at 40. */
+  attributes: z
+    .array(z.strictObject({ name: z.string(), value: z.string() }))
+    .max(40)
+    .nullable()
+    .optional(),
+  /** Category breadcrumb names, root first. */
+  categories: z.array(z.string()).nullable().optional(),
 });
 
 export type ExtractionRecord = z.infer<typeof ExtractionRecordSchema>;

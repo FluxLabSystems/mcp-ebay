@@ -20,6 +20,17 @@ export const EBAY_SITE_PROFILE_ID = 'ebay.ca.v1';
  */
 export const EBAY_PROFILE_REVISION = 2;
 
+/**
+ * The Countdown API mapper (@browser-bridge/source-countdown) produces the
+ * same ExtractionRecord shape under its own profile id, so a consumer can
+ * tell an API record from a Bridge record without a separate field. The
+ * Bridge never produces this id and the browser tools' siteProfile enums do
+ * not list it. Revision 1 = the shape shipped with docs/COUNTDOWN-API-PLAN.md
+ * §4.2 (the additive fields shipsToText … categories).
+ */
+export const EBAY_API_SITE_PROFILE_ID = 'ebay.api.v1';
+export const EBAY_API_PROFILE_REVISION = 1;
+
 export const EBAY_DESTINATION_POSTAL_CODE = 'M6H 2W9';
 
 /**

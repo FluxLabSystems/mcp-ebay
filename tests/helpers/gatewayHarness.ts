@@ -43,6 +43,10 @@ export interface HarnessOptions {
   heartbeatSeconds?: number;
   /** Stub the dashboard write-path's outbound fetch (dashboard.* tools). */
   dashboardFetch?: typeof fetch;
+  /** Stub the Countdown API source's outbound fetch (ebay_api_* tools). */
+  countdownFetch?: typeof fetch;
+  /** Sets COUNTDOWN_API_KEY, which is what registers the ebay_api_* tools; unset by default. */
+  countdownApiKey?: string;
 }
 
 export function buildGatewayHarness(options: HarnessOptions = {}): GatewayHarness {
@@ -57,6 +61,7 @@ export function buildGatewayHarness(options: HarnessOptions = {}): GatewayHarnes
     OAUTH_JWKS_URI: 'https://idp.test.example/.well-known/jwks.json',
     ARTIFACT_DIR: artifactDir,
     EXTRA_ALLOWED_HOSTS: 'browser-mcp.test.example',
+    ...(options.countdownApiKey === undefined ? {} : { COUNTDOWN_API_KEY: options.countdownApiKey }),
     ...(options.env ?? {}),
   });
   const logger = pino({ level: 'silent' });
@@ -88,6 +93,7 @@ export function buildGatewayHarness(options: HarnessOptions = {}): GatewayHarnes
     logger,
     serverVersion: '0.1.0-test',
     ...(options.dashboardFetch === undefined ? {} : { dashboardFetch: options.dashboardFetch }),
+    ...(options.countdownFetch === undefined ? {} : { countdownFetch: options.countdownFetch }),
   });
   gatewayApp.markReady();
 

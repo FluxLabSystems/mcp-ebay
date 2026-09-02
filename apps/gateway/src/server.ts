@@ -25,7 +25,29 @@ async function main(): Promise<void> {
   const logger = pino({
     name: 'browser-mcp-gateway',
     level: config.logLevel,
-    redact: { paths: ['authorization', '*.authorization', 'token', '*.token', 'artifactToken', '*.artifactToken'], censor: '[REDACTED]' },
+    redact: {
+      paths: [
+        'authorization',
+        '*.authorization',
+        'token',
+        '*.token',
+        'artifactToken',
+        '*.artifactToken',
+        // The Countdown API key (docs/COUNTDOWN-API-PLAN.md §2, Credits).
+        // pino wildcards match one level each, so the deeper paths cover a
+        // config or client object logged whole (nothing does today; belt
+        // and braces).
+        'api_key',
+        '*.api_key',
+        '*.*.api_key',
+        'apiKey',
+        '*.apiKey',
+        '*.*.apiKey',
+        '*.*.*.apiKey',
+        'config.countdown.apiKey',
+      ],
+      censor: '[REDACTED]',
+    },
   });
 
   const store = new PgStore(config.databaseUrl);
