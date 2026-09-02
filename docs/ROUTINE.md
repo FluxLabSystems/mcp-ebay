@@ -90,9 +90,10 @@ What the API never provides, so no call above waits for it:
   (eBay requires a signed-in session for them).
 - **Kijiji.** eBay only; Track B runs exactly as in the table above.
 
-Every API response carries `credits {used, remaining}`; the last
-`credits.remaining` of the run goes into the completion report next to the
-call count.
+Every API response carries `credits {used, remaining, usedThisRequest}`:
+`usedThisRequest` is what that call spent, `used` is the account's
+month-to-date total (not the call's spend), and the last `credits.remaining`
+of the run goes into the completion report next to the call count.
 
 ## Why each call is one call
 

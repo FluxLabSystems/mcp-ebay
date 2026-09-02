@@ -318,8 +318,11 @@ keep working.
 data; the outbound URL is never included in an error or log with its query
 string attached.
 
-**Credits.** Every response carries `credits: {used, remaining}` from the
-vendor's `request_info`. The gateway keeps the last `remaining` in memory for
+**Credits.** Every response carries `credits: {used, remaining, usedThisRequest}`
+from the vendor's `request_info`: `usedThisRequest` is what the call spent,
+summed over its vendor requests; `used` is the account's month-to-date total,
+not the call's spend (2026-09-02 live check: three parallel one-credit calls all
+reported `used: 15`). The gateway keeps the last `remaining` in memory for
 the reserve gate and writes one audit row per upstream call (tool name, vendor
 request id, credits used, HTTP status), using `store.audit.insert` as
 `broker.ts` does. Extend the pino `redact` list in `apps/gateway/src/server.ts`
@@ -367,7 +370,7 @@ source: 'countdown', siteProfile: 'ebay.api.v1', pageKind: 'search',
 pageUrl (vendor's request_metadata.ebay_url), domain, destination,
 totalResults (pagination.total_results as int|null), candidateCount (rows received),
 pagesFetched, hasNextPage, candidates[], offset, hasMore, nextOffset,
-warnings[], credits {used, remaining}, requestId
+warnings[], credits {used, remaining, usedThisRequest}, requestId
 ```
 
 Each candidate is a `ListingCandidate` (from `packages/site-ebay/src/traversal.ts`)
@@ -377,7 +380,8 @@ plus API-only fields, mapped per §4.1. `bidCount` is always `null` and a single
 `auction`, merged and de-duplicated by item id: a row in both sets is
 `auction_with_bin`, auction-only is `auction`, buy-it-now-only is `fixed_price`.
 An unfiltered vendor search is never issued, because its `is_auction` flag is
-false on auctions (§1.3). `credits.used` reports both requests.
+false on auctions (§1.3). `credits.usedThisRequest` reports both requests;
+`credits.used` is the account's month-to-date total.
 
 Candidates also carry `shippingCost` (a number, or `null` when the card showed
 nothing the vendor could read; never inferred as free), `priceRange` (true on a

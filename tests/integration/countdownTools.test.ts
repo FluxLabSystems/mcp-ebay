@@ -44,7 +44,12 @@ async function mintToken(scope: string): Promise<string> {
     .sign(privateKey);
 }
 
-/** The captured fixtures have their credit counters nulled; a live vendor reports them and an id on every response. */
+/**
+ * The captured fixtures have their credit counters nulled; the stub reports
+ * the counters, the per-request figure and an id on every response. (The
+ * live vendor sent no request_metadata.id on any 2026-09-02 response, so
+ * requestIds is empty there; the field stays for when it does.)
+ */
 function served(body: Json): Response {
   vendorSeq += 1;
   const withCredits = {
@@ -139,6 +144,8 @@ describe('ebay_api_* tools over the live MCP surface', () => {
     expect(structured.hasMore).toBe(true);
     expect(structured.nextOffset).toBe(50);
     expect(structured.credits.remaining).not.toBeNull();
+    // Two vendor requests, two credits; used is the account total, not the call's spend.
+    expect(structured.credits.usedThisRequest).toBe(2);
     expect(structured.requestIds).toHaveLength(2);
     // The auction twin proves the 30 shared rows are auctions with a BIN.
     const formats = new Set(structured.candidates.map((candidate) => candidate.sellingFormat));
@@ -192,6 +199,8 @@ describe('ebay_api_* tools over the live MCP surface', () => {
     const structured = EbayApiItemsOutput.parse(response.body.result?.structuredContent);
     expect(structured).toMatchObject({ source: 'countdown', mode: 'inline', jobId: null, status: 'completed', requested: 3, completed: 3, succeeded: 2, failed: 1, compact: true, resultsFrom: 0 });
     expect(structured.requestIds).toHaveLength(3);
+    // Three charged responses, the dead listing's included.
+    expect(structured.credits.usedThisRequest).toBe(3);
 
     const [fixed, auction, gone] = structured.results;
     expect(fixed).toMatchObject({ url: 'https://www.ebay.ca/itm/287557851282', ok: true, siteProfile: 'ebay.api.v1', pageRevision: 0, error: null });
@@ -235,6 +244,12 @@ describe('ebay_api_* tools over the live MCP surface', () => {
       followers: '79 followers',
     });
     expect(structured.requestIds).toHaveLength(1);
+    expect(structured.credits.usedThisRequest).toBe(1);
+    // The keyed capture carries no member_since, location, top_rated_seller
+    // or description; the warning is what tells omission from absence.
+    expect(structured.warnings).toContain(
+      'SELLER_FIELDS_ABSENT_FROM_SOURCE: the vendor returned no member-since, location, top-rated or description for this profile',
+    );
     expect(vendorRequests.at(-1)?.query.get('url')).toBe('https://www.ebay.ca/usr/tweedsidesales');
     expect(JSON.stringify(response.body)).not.toContain(API_KEY);
   });

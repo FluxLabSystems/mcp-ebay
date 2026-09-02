@@ -56,6 +56,8 @@ function json(body: unknown, status = 200): Response {
 interface Credits {
   used?: number | null;
   remaining?: number | null;
+  /** credits_used_this_request; null makes the stub omit the figure the way a nulled capture does. */
+  usedThisRequest?: number | null;
 }
 
 function requestInfo(credits: Credits = {}): Record<string, unknown> {
@@ -63,7 +65,7 @@ function requestInfo(credits: Credits = {}): Record<string, unknown> {
     success: true,
     credits_used: credits.used === undefined ? 10 : credits.used,
     credits_remaining: credits.remaining === undefined ? 990 : credits.remaining,
-    credits_used_this_request: 1,
+    credits_used_this_request: credits.usedThisRequest === undefined ? 1 : credits.usedThisRequest,
   };
 }
 
@@ -280,7 +282,7 @@ describe('credit reserve gate (§2 Credits)', () => {
       return json(searchBody([searchRow('333333333333', 1)], { used: 11, remaining: 499 }));
     });
     const result = await source.search(search({ searchTerm: 'lego' }));
-    expect(result.credits).toEqual({ used: 11, remaining: 499 });
+    expect(result.credits).toEqual({ used: 11, remaining: 499, usedThisRequest: 2 });
     expect(source.creditsRemaining).toBe(499);
   });
 
@@ -345,6 +347,68 @@ describe('credit reserve gate (§2 Credits)', () => {
     expect(probes).toHaveLength(2);
     expect(probes.every((event) => event.outcome === 'ok' && event.actionClass === 'source')).toBe(true);
     expect(JSON.stringify(probes)).not.toContain(API_KEY);
+  });
+});
+
+describe('credits.usedThisRequest (what this call spent)', () => {
+  const splitSets =
+    (bin: Credits, auction: Credits): Responder =>
+    ({ query }) => {
+      const listingType = query.get('listing_type');
+      if (listingType === 'buy_it_now') return json(searchBody([searchRow('111111111111', 20)], bin));
+      if (listingType === 'auction') return json(searchBody([searchRow('333333333333', 1)], auction));
+      return json({ request_info: { success: false, message: 'unfiltered search issued' } }, 400);
+    };
+
+  it('sums credits_used_this_request over both halves of a split search, while used stays the account total', async () => {
+    const { source } = build(splitSets({ used: 15, remaining: 85, usedThisRequest: 1 }, { used: 16, remaining: 84, usedThisRequest: 1 }));
+    const result = await source.search(search({ searchTerm: 'lego' }));
+    expect(result.credits).toEqual({ used: 16, remaining: 84, usedThisRequest: 2 });
+  });
+
+  it('counts a response that omits the figure at its contract cost: one credit per page fetched', async () => {
+    const { source } = build(splitSets({ usedThisRequest: 1 }, { usedThisRequest: null }));
+    const oneOmitted = await source.search(search({ searchTerm: 'lego' }));
+    expect(oneOmitted.credits.usedThisRequest).toBe(2);
+
+    // A three-page request is one response costing three credits. The
+    // buy_it_now half says so; the auction half omits the figure and is
+    // counted at the same contract cost, one per page fetched.
+    const threePages = build(({ query }) => {
+      const reports = query.get('listing_type') === 'buy_it_now';
+      return json({
+        request_info: requestInfo({ usedThisRequest: reports ? 3 : null }),
+        request_metadata: { pages: [{ ebay_url: 'https://www.ebay.ca/sch/i.html?_nkw=lego' }] },
+        search_results: [searchRow(reports ? '111111111111' : '333333333333', 20)],
+        pagination: {
+          pages: [
+            { current_page: 1, total_results: 3, has_next_page: true },
+            { current_page: 2, total_results: 3, has_next_page: true },
+            { current_page: 3, total_results: 3, has_next_page: false },
+          ],
+        },
+      });
+    });
+    const paged = await threePages.source.search(search({ searchTerm: 'lego', maxPage: 3 }));
+    expect(paged.pagesFetched).toBe(3);
+    expect(paged.credits.usedThisRequest).toBe(6);
+  });
+
+  it('is null only when no response carried the figure, and 0 when nothing was charged', async () => {
+    const { source } = build(splitSets({ usedThisRequest: null }, { usedThisRequest: null }));
+    const unreported = await source.search(search({ searchTerm: 'lego' }));
+    expect(unreported.credits).toEqual({ used: 10, remaining: 990, usedThisRequest: null });
+    // The same on a one-request call: an entirely assumed figure is never
+    // reported as a measured one, so the contract cost fills gaps only.
+    const single = build(routed({ usedThisRequest: null }));
+    const profile = await single.source.seller(seller({ loginId: 'tweedsidesales' }));
+    expect(profile.credits).toEqual({ used: 10, remaining: 990, usedThisRequest: null });
+
+    // Every item rejected: no charged response, so the call spent nothing.
+    const rejected = build(() => json({ request_info: { success: false, message: 'Invalid url' } }, 400));
+    const nothing = await rejected.source.items(items({ items: [{ itemId: '100000000001' }, { itemId: '100000000002' }] }));
+    expect(nothing).toMatchObject({ status: 'completed', requested: 2, completed: 2, succeeded: 0, failed: 2 });
+    expect(nothing.credits).toEqual({ used: null, remaining: null, usedThisRequest: 0 });
   });
 });
 
@@ -431,10 +495,11 @@ describe('split search (§3.1)', () => {
     expect(formats.get('111111111111')).toBe('fixed_price');
     expect(formats.get('222222222222')).toBe('auction_with_bin');
     expect(formats.get('333333333333')).toBe('auction');
-    // Both filters' totals, both request ids, the latest balance.
+    // Both filters' totals, both request ids, the latest balance, and the
+    // two credits this call spent (used is the account total, not the spend).
     expect(result.totalResults).toBe(4);
     expect(result.requestIds).toHaveLength(2);
-    expect(result.credits).toEqual({ used: 12, remaining: 988 });
+    expect(result.credits).toEqual({ used: 12, remaining: 988, usedThisRequest: 2 });
     expect(result.pagesFetched).toBe(1);
     expect(result.hasNextPage).toBe(false);
     expect(result.warnings.some((warning) => warning.startsWith('BID_COUNT_UNAVAILABLE_FROM_SOURCE:'))).toBe(true);
@@ -560,6 +625,7 @@ describe('item pool (§3.2)', () => {
       expect(slot.error).toBeNull();
     }
     expect(result.requestIds).toHaveLength(5);
+    expect(result.credits.usedThisRequest).toBe(5);
     const { source: _source, credits: _credits, requestIds: _requestIds, ...bridgeShape } = result;
     expect(ExtractManyOutput.parse(bridgeShape)).toBeTruthy();
   });
@@ -576,6 +642,9 @@ describe('item pool (§3.2)', () => {
     expect(result).toMatchObject({ status: 'completed', requested: 3, completed: 3, succeeded: 1, failed: 2 });
 
     expect(result.results[0]!.ok).toBe(true);
+    // The dead listing was a charged response like the live one; the
+    // rejected request was answered with nothing and cost nothing.
+    expect(result.credits.usedThisRequest).toBe(2);
 
     const rejected = result.results[1]!;
     expect(rejected.ok).toBe(false);
@@ -623,7 +692,8 @@ describe('item pool (§3.2)', () => {
     expect(result.results[1]!.error?.code).toBe('SOURCE_CREDITS_EXHAUSTED');
     expect(result.results[2]!.error?.code).toBe('SOURCE_CREDITS_EXHAUSTED');
     expect(result.warnings.some((warning) => warning.startsWith('SOURCE_CREDITS_EXHAUSTED:'))).toBe(true);
-    expect(result.credits).toEqual({ used: 10, remaining: 49 });
+    // One credit spent: the two refused slots never reached the vendor.
+    expect(result.credits).toEqual({ used: 10, remaining: 49, usedThisRequest: 1 });
   });
 
   it('serves the full provenance record when compact is false and takes the domain from an item url', async () => {
@@ -678,8 +748,12 @@ describe('seller lookup (§3.3)', () => {
       positivePercent: 99.8,
       followers: '79 followers',
     });
-    expect(result.credits).toEqual({ used: 3, remaining: 97 });
+    expect(result.credits).toEqual({ used: 3, remaining: 97, usedThisRequest: 1 });
     expect(result.requestIds).toHaveLength(1);
+    // The stub's seller block, like the measured one, has none of the four optional fields.
+    expect(result.warnings).toContain(
+      'SELLER_FIELDS_ABSENT_FROM_SOURCE: the vendor returned no member-since, location, top-rated or description for this profile',
+    );
   });
 
   it('reports resolved:false with the vendor message when no seller block comes back', async () => {

@@ -670,7 +670,7 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
       results: [slot],
       warnings: [],
       source: 'countdown',
-      credits: { used: 1, remaining: 9_998 },
+      credits: { used: 16, remaining: 9_998, usedThisRequest: 1 },
       requestIds: ['req_1'],
     };
     expect(EbayApiItemsOutput.safeParse(output).success).toBe(true);
@@ -682,7 +682,13 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
     expect(ExtractManyOutput.safeParse(output).success).toBe(false);
     expect(EbayApiItemsOutput.safeParse(bridgeShaped).success).toBe(false);
     expect(EbayApiItemsOutput.safeParse({ ...output, credits: { used: 1 } }).success).toBe(false);
-    expect(EbayApiItemsOutput.safeParse({ ...output, credits: { used: null, remaining: null } }).success).toBe(true);
+    // usedThisRequest is the only per-call figure (the vendor's used is the
+    // account's month-to-date total), so it is required, a whole number,
+    // never negative, and null only when the vendor omitted it throughout.
+    expect(EbayApiItemsOutput.safeParse({ ...output, credits: { used: 16, remaining: 9_998 } }).success).toBe(false);
+    expect(EbayApiItemsOutput.safeParse({ ...output, credits: { used: 16, remaining: 9_998, usedThisRequest: -1 } }).success).toBe(false);
+    expect(EbayApiItemsOutput.safeParse({ ...output, credits: { used: 16, remaining: 9_998, usedThisRequest: 1.5 } }).success).toBe(false);
+    expect(EbayApiItemsOutput.safeParse({ ...output, credits: { used: null, remaining: null, usedThisRequest: null } }).success).toBe(true);
   });
 
   it('ebay_api_seller takes a loginId or a /usr/ or /str/ url, never both', () => {
@@ -720,7 +726,7 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
         description: null,
       },
       warnings: [],
-      credits: { used: 1, remaining: null },
+      credits: { used: 16, remaining: null, usedThisRequest: 1 },
       requestIds: ['req_1'],
     };
     expect(schema.safeParse(resolved).success).toBe(true);
@@ -754,8 +760,8 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
       offset: 0,
       hasMore: true,
       nextOffset: 40,
-      warnings: ['BID_COUNT_UNAVAILABLE_FROM_SOURCE: search rows from this source carry no bid count'],
-      credits: { used: 2, remaining: 9_998 },
+      warnings: ['BID_COUNT_UNAVAILABLE_FROM_SOURCE: search rows carry no bid count or time left; bids and end times come only from the Bridge item page'],
+      credits: { used: 17, remaining: 9_998, usedThisRequest: 2 },
       requestIds: ['req_1', 'req_2'],
     };
     expect(schema.safeParse(output).success).toBe(true);
@@ -787,8 +793,17 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
     const byName = new Map(SOURCE_TOOL_CATALOG.map((entry) => [entry.name, entry.description]));
     for (const [name, description] of byName) {
       expect(description, name).toMatch(/credit/);
+      // The 2026-09-02 live check: three parallel one-credit calls all
+      // reported used 15, and no response carried a request id.
+      expect(description, name).toMatch(/what this call spent is credits\.usedThisRequest/i);
+      expect(description, name).toMatch(/credits\.used is the account's month-to-date total/);
+      expect(description, name).toMatch(/credits\.remaining is the balance to put in the completion report/);
+      expect(description, name).toMatch(/requestIds is empty when the vendor omits request ids, which it did on every observed response/);
+      expect(description, name).not.toMatch(/credits\.used reports/);
     }
     expect(byName.get('ebay_api_search')).toMatch(/two vendor requests/);
+    expect(byName.get('ebay_api_search')).toMatch(/Bridge item page/);
+    expect(byName.get('ebay_api_seller')).toMatch(/SELLER_FIELDS_ABSENT_FROM_SOURCE/);
     expect(byName.get('ebay_api_search')).toMatch(/only from the Bridge/);
     expect(byName.get('ebay_api_items')).toMatch(/never resolved to a postal code/);
     expect(byName.get('ebay_api_items')).toMatch(/not a Canadian figure/);

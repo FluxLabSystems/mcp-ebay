@@ -171,6 +171,10 @@ describe('mapSearchRows (§4.1)', () => {
     expect(candidates.every((candidate) => candidate.shippingSnippetText === null)).toBe(true);
     expect(candidates.every((candidate) => candidate.isNewListing === null)).toBe(true);
     expect(warnings.filter((w) => w.startsWith('BID_COUNT_UNAVAILABLE_FROM_SOURCE:'))).toHaveLength(1);
+    // Names the shape (the gateway's compact rows carry no bidCount key), not a null.
+    expect(warnings).toContain(
+      'BID_COUNT_UNAVAILABLE_FROM_SOURCE: search rows carry no bid count or time left; bids and end times come only from the Bridge item page',
+    );
   });
 
   it('reads shipping_cost as a number and leaves it null when absent (never free)', () => {
@@ -573,7 +577,11 @@ describe('mapSellerProfile (§4.3)', () => {
   it('resolves the /usr/ login id from the requested URL and the store slug from the vendor link', () => {
     const { resolved, seller, warnings } = mapSellerProfile({ body: profile, requestedUrl: 'https://www.ebay.ca/usr/tweedsidesales' });
     expect(resolved).toBe(true);
-    expect(warnings).toEqual([]);
+    // The measured profile carries none of the four optional fields; said
+    // once, so four nulls read as "the vendor omitted them", not "none".
+    expect(warnings).toEqual([
+      'SELLER_FIELDS_ABSENT_FROM_SOURCE: the vendor returned no member-since, location, top-rated or description for this profile',
+    ]);
     expect(seller).toEqual({
       name: 'Jeremy Doherty',
       profileUrl: 'https://www.ebay.ca/usr/tweedsidesales',
@@ -595,6 +603,19 @@ describe('mapSellerProfile (§4.3)', () => {
     const { seller } = mapSellerProfile({ body: profile });
     expect(seller?.loginId).toBe('tweedsidesales');
     expect(seller?.profileUrl).toBe('https://www.ebay.ca/usr/tweedsidesales');
+  });
+
+  it('says nothing about absent fields once the vendor returns any of the four', () => {
+    const body = structuredClone(profile);
+    // false is a value the vendor returned, not an absence.
+    (body.seller as Json).top_rated_seller = false;
+    const { seller, warnings } = mapSellerProfile({ body, requestedUrl: 'https://www.ebay.ca/usr/tweedsidesales' });
+    expect(seller).toMatchObject({ memberSince: null, location: null, topRated: false, description: null });
+    expect(warnings).toEqual([]);
+
+    const described = structuredClone(profile);
+    (described.seller as Json).description = 'Bricks since 2015';
+    expect(mapSellerProfile({ body: described }).warnings).toEqual([]);
   });
 
   it('reads a /sch/<id>/m.html link as the login id and synthesises the profile URL', () => {
