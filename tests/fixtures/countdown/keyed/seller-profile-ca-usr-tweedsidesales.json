@@ -1,0 +1,25 @@
+{
+ "request_info": {
+  "success": true,
+  "credits_used": null,
+  "credits_remaining": null,
+  "credits_used_this_request": null
+ },
+ "request_parameters": {
+  "type": "seller_profile",
+  "url": "https://www.ebay.ca/usr/tweedsidesales"
+ },
+ "request_metadata": {
+  "created_at": "2026-09-02T17:42:31.661Z",
+  "processed_at": "2026-09-02T17:42:36.483Z",
+  "total_time_taken": 4.82,
+  "ebay_url": "https://www.ebay.ca/usr/tweedsidesales?_fcid=2"
+ },
+ "seller": {
+  "name": "Jeremy Doherty",
+  "link": "https://www.ebay.ca/str/jeremydoherty",
+  "positive_ratings_percent": 99.8,
+  "followers": "79 followers",
+  "image": "https://i.ebayimg.com/images/g/1tIAAOSweM5kSqsu/s-l140.png"
+ }
+}

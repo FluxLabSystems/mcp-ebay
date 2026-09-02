@@ -1,8 +1,9 @@
 # Countdown API as a Track A source: implementation and integration plan
 
 Status: **Proposed, ready for execution**
-Date: 2026-09-02 (revised the same evening with live demo-key captures; see §1.5 and
-`tests/fixtures/countdown/demo/`)
+Date: 2026-09-02 (revised the same evening with live demo-key captures and the
+Phase 0 keyed captures; see §1.5, `tests/fixtures/countdown/demo/` and
+`tests/fixtures/countdown/keyed/`)
 Scope: `ethanbissbort/mcp-ebay` (code), `ethanbissbort/FluxLab` (deploy),
 `ethanbissbort/fluxlab-boards` (skill and routine data)
 Routine affected: the current **FluxLab Deals Dashboard** routine
@@ -117,12 +118,15 @@ rows; fixtures in `tests/fixtures/countdown/demo/`):
 - `prices[]` entries carry `value` and `raw` only. **No `currency` field on
   either domain**; the raw string is `C $20.00` on ebay.ca and `$40.61` on
   ebay.com. Currency is parsed from `raw`, with the domain as the fallback.
-- `is_auction: false` **and** `buy_it_now: false` on every one of 540
-  fixed-price rows, so `buy_it_now` is not a format signal. The Bridge's
-  card rule applies: a priced card with no auction signal is fixed price.
-  On an auction-filtered search (`listing_type=auction`, which reaches eBay as
-  `LH_Auction=1`; `sort_by=newly_listed` becomes `_sop=10`) all 60 rows carried
-  `is_auction: true`, so the flag is reliable in the positive direction.
+- **`is_auction` is false on every row of an unfiltered search, auctions
+  included.** The keyed newly-listed sweep for `lego minifigure lot` carried 30
+  rows that its auction-filtered twin (`listing_type=auction`, which reaches
+  eBay as `LH_Auction=1`) proves are live auctions, and every one of them read
+  `is_auction: false` on the unfiltered page. `buy_it_now` is false on every
+  fixed-price row too. So neither flag on an unfiltered page says anything, and
+  a `C $1.00` current bid there is indistinguishable from a purchasable price.
+  On an auction-filtered search the flag is true on every row. Format therefore
+  comes only from the filter a row was retrieved under (§3.1, §4.1).
 - **Price-range rows are damaged.** A multi-variant listing (quantity tiers,
   sizes) renders its price as a range, and the vendor's title for such a row
   ends in a stray ` to` (titles up to 83 characters against eBay's 80-character
@@ -166,6 +170,45 @@ An item eBay no longer serves comes back **HTTP 200** with
 `request_info.success: true`, no `product` block and
 `message: "Product not found."` (measured on the docs' example epid on both
 domains); `redirected` is a separate case.
+
+Item pages, **as measured** on 2026-09-02 (nine ebay.ca and ebay.com item
+pages; fixtures in `tests/fixtures/countdown/keyed/`):
+
+- **A live ebay.ca auction came back as `is_auction: false` with no `auction`
+  block and `offer.price 19.99 CAD`**, while the auction-filtered search row
+  for the same item showed a `C $37.54` current bid. The item page cannot be
+  trusted for auction format, bids, end time or price; auctions stay on the
+  Bridge for everything but identity and availability.
+- `offer` carries `price` and `currency` (`CAD` on ebay.ca, `USD` on ebay.com).
+- `shipping.price` is a **string**, not a number, in mixed forms: `"C $68.71"`,
+  `"GBP 21.56 "`, `"7.95 "`, `"19.85 "`, `"Free"`. The delivery-estimate key is
+  camel-cased `deliveryEstimate`. The raw HTML behind one capture reads
+  "Estimated between … to 91722": the vendor's browser resolves item pages
+  to its own California zip whatever `customer_location` says, so an item-page
+  shipping figure is not even a country-level Canadian figure.
+- `shipping.ships_to` is a truncated alphabetical list ("Albania, Algeria,
+  American Samoa, and many other countries") or "Worldwide" on a seller the
+  roster records as excluding Canada. It is not route evidence.
+- Ended and sold are signalled by `stock_status`, not `end_date` (absent on all
+  three ended items): `raw` `https://schema.org/OutOfStock`, `status`
+  `not_in_stock`, `quantity_available 0`, plus `message` "This listing sold on
+  Sun, Aug 30 at 3:03." when it sold. `quantity_available: 0` also appears on
+  live single-quantity listings, so it means "not shown" unless the status is
+  `not_in_stock`.
+- `seller.link` comes in three forms: `/usr/<loginId>`, `/str/<storeSlug>` and
+  `/sch/<loginId>/m.html?item=…`. Store slugs differ from login ids
+  (`tweedsidesales` is `/str/jeremydoherty`; Bluebird Brick Designs is
+  `/str/almtshop88`). `seller` carries no feedback fields on ebay.ca.
+- `variants` is empty on a quantity-tier lot; `offer.price` is the lowest tier.
+- `condition.name` is normalised lowercase (`used`); `product.is_master` sits
+  inside `product`, not at the top level.
+- `seller_profile` by `/usr/` URL returned name, store link, positive percent
+  and followers only (no `member_since`, `location` or `top_rated_seller`); an
+  unavailable profile and the `seller_name` form both hit the vendor's generic
+  uncharged 500 on every attempt.
+- `include_html=true` returns the full rendered item page (650 KB) with the DOM
+  extractor's selectors present, so the vendor can supply the ebay.ca fixtures
+  a dev box cannot fetch.
 
 Seller profile (`type=seller_profile`, by `seller_name` or `url`): `seller
 {name, link, member_since, positive_ratings_percent, followers, location,
@@ -250,7 +293,10 @@ skill's "never invent a destination" rule enforceable in code. The gateway
 normalises the postal code to uppercase with no space before sending it. On a
 search, the zip reaches eBay as `_stpos`, so a row's `shipping_cost` under
 `destination: 'toronto'` is eBay's own rendered estimate for M6H 2W9: card-level
-and sparse, but not a country-level proxy.
+and sparse, but not a country-level proxy. On an item page `destination` only
+sets `customer_location`; the vendor's browser still resolves delivery to its own
+zip (91722 observed), so item-page shipping is recorded as observed text with
+no destination at all.
 
 **URL policy.** When a caller passes `url`, the gateway accepts only
 `https://www.ebay.ca/…`, `https://www.ebay.com/…` (and the bare-host forms) with
@@ -302,7 +348,7 @@ domain:        'ebay.ca' | 'ebay.com'            (default 'ebay.ca'; ignored whe
 searchTerm?:   string (1..200)
 url?:          string  (eBay search URL; mutually exclusive with searchTerm/sortBy/listingType/condition/categoryId/page)
 sortBy?:       'best_match' | 'newly_listed' | 'ending_soonest' | 'price_low_to_high' | 'price_high_to_low'
-listingType?:  'all' | 'buy_it_now' | 'auction' | 'accepts_offers'   (default 'all')
+listingType?:  'all' | 'buy_it_now' | 'auction' | 'accepts_offers'   (default 'all'; 'all' costs two vendor requests, see below)
 condition?:    'all' | 'new' | 'used'                                (default 'all')
 categoryId?:   string
 num?:          60 | 120 | 240                                         (default 240)
@@ -327,6 +373,12 @@ warnings[], credits {used, remaining}, requestId
 Each candidate is a `ListingCandidate` (from `packages/site-ebay/src/traversal.ts`)
 plus API-only fields, mapped per §4.1. `bidCount` is always `null` and a single
 `BID_COUNT_UNAVAILABLE_FROM_SOURCE` warning says so; the item tool carries bids.
+`listingType: 'all'` is served as **two vendor requests**, `buy_it_now` and
+`auction`, merged and de-duplicated by item id: a row in both sets is
+`auction_with_bin`, auction-only is `auction`, buy-it-now-only is `fixed_price`.
+An unfiltered vendor search is never issued, because its `is_auction` flag is
+false on auctions (§1.3). `credits.used` reports both requests.
+
 Candidates also carry `shippingCost` (a number, or `null` when the card showed
 nothing the vendor could read; never inferred as free), `priceRange` (true on a
 variant listing whose card price is a range or was lost), `page` and
@@ -339,9 +391,9 @@ variant listing whose card price is a range or was lost), `page` and
 Input:
 
 ```
-items:        array 1..25 of { itemId: string (10..14 digits) } | { url: string }
+items:        array 1..25 of { itemId: string (10..14 digits), expectedFormat?: 'auction' | 'auction_with_bin' | 'fixed_price' } | { url: string, expectedFormat?: … }
 domain:       'ebay.ca' | 'ebay.com'                     (default 'ebay.ca'; per-item url overrides)
-destination:  'domain_default' | 'toronto' | 'forwarder'  (country-level only; see warnings)
+destination:  'domain_default' | 'toronto' | 'forwarder'  (sets customer_location only; see warnings)
 compact:      boolean (default true)
 ```
 
@@ -354,8 +406,14 @@ without any new rule. `record` is `compactItemRecord(...)` of the mapped
 `DESTINATION_UNVERIFIED: item-page shipping from this source is never resolved
 to a postal code` (the vendor rejects `customer_zipcode` on product requests),
 and auction slots carry the same `AUCTION_PRICE` warning the DOM extractor
-emits. Requests run with the configured concurrency; a slot that fails maps its
-own error and never fails the batch.
+emits. `expectedFormat` is the format the search that found the row
+established (§3.1); the vendor's item-page `is_auction` is ignored because it
+reads false on live auctions. A slot whose `expectedFormat` is an auction kind
+returns `sellingFormat.kind` from the caller, `itemPrice: null`, `endsAt` and
+`timeLeftText` null, and the warning `AUCTION_DETAIL_UNAVAILABLE_FROM_SOURCE`:
+the Bridge is the only source for a bid, an end time or a landed figure on an
+auction. Requests run with the configured concurrency; a slot that fails maps
+its own error and never fails the batch.
 
 ### 3.3 `ebay_api_seller`
 
@@ -389,7 +447,7 @@ question; until answered, `resolved:false` plus the vendor message in
 | `title` | `title` | `cleanTitle`, then strip one trailing ` to` and set `priceRange: true` when it was present (the vendor leaks the range separator into the title) |
 | `snippetPrice` | `price` else `prices[0]` | `{value, currency}`; currency from `parseMoney(raw)`, falling back to the domain's currency (`CAD` for ebay.ca, `USD` for ebay.com) because the rows carry no `currency` field; on a two-entry range keep the low value and put the high in `snippetPriceHigh` |
 | `priceRange` | title marker or `prices.length === 2` | a price-less range row keeps `snippetPrice: null`, `priceRange: true`, and is counted once per response in `PRICE_RANGE_UNPARSED`; the compactor's `EXCLUDED_NO_PRICE` count still reports it when a price bound drops it |
-| `sellingFormat` | `is_auction`, `buy_it_now`, price presence | `is_auction` with `buy_it_now` → `auction_with_bin`; `is_auction` → `auction`; otherwise `fixed_price` when the row has a price or the range marker; `unknown` only when it has neither |
+| `sellingFormat` | the filter the row was retrieved under (§3.1) | in both the `buy_it_now` and `auction` sets → `auction_with_bin`; auction set only → `auction`; buy-it-now set only → `fixed_price`. The row's own `is_auction` and `buy_it_now` flags are never read: both are false on auctions in an unfiltered search |
 | `bidCount` | none | `null` always |
 | `shippingSnippetText` | none | `null`; the numeric `shippingCost` from `shipping_cost` replaces it, `null` when absent |
 | `itemLocationText` | `item_location` | strip a leading `located in ` |
@@ -418,15 +476,15 @@ the Bridge never produces `ebay.api.v1`. `profileRevision` is bumped.
 | `itemId` | `product.epid` cross-checked against `itemIdFromUrl(product.link)` | the link wins on disagreement; add `ITEM_ID_MISMATCH` warning |
 | `canonicalUrl` | `product.link` | canonicalised |
 | `title` | `product.title` | |
-| `seller` | `seller.link` | path segment after `/usr/` or `/str/`, same convention as the DOM extractor; `seller.name` kept in `sellerDisplayName` |
-| `itemPrice` | auction: `auction.winning_bid_price` (+ `winning_bid_price_raw` parsed with `parseMoney` for currency); fixed: `offer.price`/`offer.currency` | auction records get the `AUCTION_PRICE` warning |
+| `seller` | `seller.link` | `/usr/<id>` and `/sch/<id>/m.html` yield the login id; `/str/<slug>` yields a store slug that is **not** a login id (`tweedsidesales` is `/str/jeremydoherty`) and is stored as `sellerStoreSlug` with `seller: null`; `seller.name` kept in `sellerDisplayName` |
+| `itemPrice` | fixed price only: `offer.price` / `offer.currency` | null with `AUCTION_DETAIL_UNAVAILABLE_FROM_SOURCE` when `expectedFormat` is an auction kind; the vendor reported a live auction as a fixed price at a different figure |
 | `offer` | `make_offer`, `offer.best_offer_accepted` | `available = make_offer === true` |
-| `shipping` | `shipping.price`, currency from raw text or domain | `destinationPostalCode: null`, `destinationVerified: false`, `observedText: shipping.raw ?? shipping.service`; confidence 0.7 |
-| `listingStatus` | `message: "Product not found."` with no `product`, or `redirected` → `unavailable` (slot `ok:false`, `LISTING_UNAVAILABLE`); `end_date` present → `ended`, or `sold` when `offer.sale_date` is also present; price present → `active`; else `unknown` | the `sold` branch is confirmed or corrected by the Phase 0 sold-item fixture |
-| `sellingFormat` | `is_auction`, `auction.buy_it_now`, `auction.bids` | |
-| `endsAt`, `timeLeftText` | `auction.end_date.utc`, `auction.time_left.raw` | source `api`, confidence 0.95; both null when absent |
+| `shipping` | `shipping.price` is a string (`"C $68.71"`, `"GBP 21.56 "`, `"7.95 "`, `"Free"`) parsed with `parseMoney`; a bare number takes the domain currency at confidence 0.4 | `destinationPostalCode: null`, `destinationVerified: false`, `observedText` = the raw string plus `shipping.service`; the figure is resolved to the vendor's own zip, so it is evidence of the service offered, never of a Toronto or Canadian cost; `shipsToText` kept but never used for route eligibility |
+| `listingStatus` | `message: "Product not found."` with no `product`, or `redirected` → `unavailable` (slot `ok:false`, `LISTING_UNAVAILABLE`); `stock_status.status: not_in_stock` (raw `OutOfStock`) → `sold` when `stock_status.message` says "This listing sold on …", otherwise `ended`; `end_date` present → `ended`; `in_stock` with a price → `active`; else `unknown` | the `sold` branch is confirmed or corrected by the Phase 0 sold-item fixture |
+| `sellingFormat` | `expectedFormat` from the caller | the item page's `is_auction` is ignored (false on live auctions); `bidCount` null |
+| `endsAt`, `timeLeftText` | `auction.end_date.utc`, `auction.time_left.raw` when the vendor ever returns them | null on every auction captured; source `api`, confidence 0.95 if present |
 | `itemLocationText` | `shipping.location` | |
-| `quantityAvailable`, `quantitySold` | `stock_status` | |
+| `quantityAvailable`, `quantitySold` | `stock_status` | `quantity_available: 0` on an `in_stock` listing means "not shown" and maps to null, not zero |
 | `watcherCount` | none | `null` |
 | `variants` | `product.variants` | name/attributes only |
 | `observedAt`, `pageRevision` | now, `0` | API records have no page revision; `0` marks that |
@@ -439,6 +497,13 @@ Straight field rename; `loginId` derived from `seller.link`'s path segment, and
 ---
 
 ## 5. Phase 0: trial fixtures and open questions
+
+**Status: executed on 2026-09-02** at 14 credits. The captures are in
+`tests/fixtures/countdown/keyed/` with a README that answers the questions
+below; §1.3 and §4 carry the corrections they forced. The capture script in
+deliverable 1 is still to be written so the set can be refreshed; two profile
+requests (an unavailable `/usr/` page and the `seller_name` form) never got past
+the vendor's transient 500 and stay unverified.
 
 Operator prerequisites: sign up at `https://app.countdownapi.com/signup` (free
 trial, 100 requests, no card), create an API key, and export it into the
@@ -664,8 +729,12 @@ connector does not serve.
    - Audit counts come from `totalResults`, `candidateCount` and the warning
      counts of the API response, same rule as today.
    - An `ebay_api_items` slot with `ok:true` is a current direct canonical fetch
-     of the item page and satisfies canonical validation for item id, title,
-     price, format and status (`validationStatus: live_canonical_verified`).
+     of the item page and satisfies canonical validation for item id, title and
+     availability status, and for price on a fixed-price row
+     (`validationStatus: live_canonical_verified`). It establishes nothing about
+     an auction beyond identity and availability: the vendor reports live
+     auctions as fixed price, so every bid, end time and max-bid figure comes
+     from the Bridge item page.
    - Shipping from this source is never destination-resolved: every API item
      carries `DESTINATION_UNVERIFIED`, `shippingResolved` stays false, and no
      record may go `active:true` with a landed figure until the Bridge pass on
@@ -749,12 +818,12 @@ and single 240-row pages. Not measured; Phase 4 replaces it with a measured row.
 
 | Step | Requests per fire |
 |---|---|
-| Broad sweeps: ten queries × two domains × one page | 20 |
+| Broad sweeps: ten queries × two domains × two vendor requests each (`buy_it_now` + `auction`) | 40 |
 | Watched-seller sweeps: 23 sellers × two domains | 46 |
 | Item pages: shortlist plus re-validation of active eBay records | 30 to 60 |
 | Seller-profile verifications | 0 to 2 |
-| **Per fire** | **≈ 100 to 130** |
-| **Per month at two fires a day** | **≈ 6,000 to 8,000** |
+| **Per fire** | **≈ 120 to 150** |
+| **Per month at two fires a day** | **≈ 7,000 to 9,000** |
 
 Guardrails: the reserve gate (`COUNTDOWN_CREDIT_RESERVE`), the `maxPage ≤ 5`
 schema bound, the 25-item batch bound, and the completion-report credits line.
@@ -769,6 +838,8 @@ a month if the cap is ever in reach.
 |---|---|
 | `epid` mistaken for the item id | item id always from the link; unit test on the docs' own counter-example |
 | Vendor parse defects on range rows (lost prices, ` to` titles) | mapper marks `priceRange`, keeps the row, counts it; skill opens such rows before excluding on price |
+| Auctions invisible to the vendor (unfiltered rows and item pages both read fixed price) | format only from split searches; item tool takes `expectedFormat` and nulls auction prices; the Bridge owns bids, end times and landed math |
+| Item-page shipping resolved to the vendor's own zip | recorded as observed text with no destination; never a Canadian figure; `ships_to` never used for route eligibility |
 | Unreliable flags (`sponsored` always false, `buy_it_now` false on fixed-price rows) | neither is used as a signal; format comes from `is_auction` plus price presence |
 | Transient vendor 500s (`(G)`), uncharged | two retries with backoff in the client; `SOURCE_UNAVAILABLE` only after both fail |
 | Response shape changes with `max_page` > 1 | handler accepts both `pagination` shapes; fixture-backed test |

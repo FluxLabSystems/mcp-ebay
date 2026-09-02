@@ -1,0 +1,337 @@
+{
+ "request_info": {
+  "success": true,
+  "credits_used": null,
+  "credits_remaining": null,
+  "credits_used_this_request": null
+ },
+ "request_parameters": {
+  "type": "search",
+  "url": "https://www.ebay.com/sch/i.html?_ssn=theLEGOlady&_nkw=lego&_sop=10&_ipg=60",
+  "customer_location": "us",
+  "customer_zipcode": "34249"
+ },
+ "request_metadata": {
+  "created_at": "2026-09-02T17:42:28.383Z",
+  "processed_at": "2026-09-02T17:42:31.027Z",
+  "total_time_taken": 2.64,
+  "ebay_url": "https://www.ebay.com/sch/i.html?_ssn=theLEGOlady&_nkw=lego&_sop=10&_ipg=60&_fcid=1&_stpos=34249"
+ },
+ "search_results": [
+  {
+   "position": 1,
+   "title": "Genuine LEGO | Street Skater Torso col057 | Series 4 Collectible | 973pb0843c01",
+   "epid": "167665350336",
+   "link": "https://www.ebay.com/itm/167665350336",
+   "image": "https://i.ebayimg.com/images/g/oqEAAeSwQkRof70s/s-l500.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united kingdom",
+   "shipping_cost": 16.22,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 2.03,
+     "raw": "$2.03"
+    }
+   ],
+   "price": {
+    "value": 2.03,
+    "raw": "$2.03"
+   }
+  },
+  {
+   "position": 2,
+   "title": "Genuine LEGO | Clock King Torso coltlbm27 | Batman Movie | 973pb2933c01",
+   "epid": "167665320216",
+   "link": "https://www.ebay.com/itm/167665320216",
+   "image": "https://i.ebayimg.com/images/g/ijQAAeSwSNNof7cA/s-l500.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united kingdom",
+   "shipping_cost": 16.22,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 2.03,
+     "raw": "$2.03"
+    }
+   ],
+   "price": {
+    "value": 2.03,
+    "raw": "$2.03"
+   }
+  },
+  {
+   "position": 3,
+   "title": "Genuine LEGO | Pilot Torso col036 | Series 3 | Collectible Series | 973pb0792c01",
+   "epid": "167665127991",
+   "link": "https://www.ebay.com/itm/167665127991",
+   "image": "https://i.ebayimg.com/images/g/4awAAeSwM01of5vL/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united kingdom",
+   "shipping_cost": 16.22,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 2.03,
+     "raw": "$2.03"
+    }
+   ],
+   "price": {
+    "value": 2.03,
+    "raw": "$2.03"
+   }
+  },
+  {
+   "position": 4,
+   "title": "Genuine LEGO | Wither Skeleton - Straight Arms min025 | Minecraft",
+   "epid": "167665097142",
+   "link": "https://www.ebay.com/itm/167665097142",
+   "image": "https://i.ebayimg.com/images/g/C1gAAeSwG8Fof5hT/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united kingdom",
+   "shipping_cost": 16.22,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 4.05,
+     "raw": "$4.05"
+    }
+   ],
+   "price": {
+    "value": 4.05,
+    "raw": "$4.05"
+   }
+  },
+  {
+   "position": 5,
+   "title": "Genuine LEGO Minifigure | Loki Legs sh0033 | Super Heroes | 970c00pb0172",
+   "epid": "167663279712",
+   "link": "https://www.ebay.com/itm/167663279712",
+   "image": "https://i.ebayimg.com/images/g/cCoAAeSw0xtofonG/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united kingdom",
+   "shipping_cost": 16.22,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 1.62,
+     "raw": "$1.62"
+    }
+   ],
+   "price": {
+    "value": 1.62,
+    "raw": "$1.62"
+   }
+  },
+  {
+   "position": 6,
+   "title": "Genuine LEGO Minifigure | Blizzard Archer Samurai Torso Ninjago | 973pb3538c01",
+   "epid": "167663261348",
+   "link": "https://www.ebay.com/itm/167663261348",
+   "image": "https://i.ebayimg.com/images/g/ao4AAeSwKtNofofG/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united kingdom",
+   "shipping_cost": 16.22,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 1.62,
+     "raw": "$1.62"
+    }
+   ],
+   "price": {
+    "value": 1.62,
+    "raw": "$1.62"
+   }
+  },
+  {
+   "position": 7,
+   "title": "Genuine LEGO Minifigure | Blizzard Archer, Samurai Leg  | 970c85pb28 | Ninjago",
+   "epid": "167663253121",
+   "link": "https://www.ebay.com/itm/167663253121",
+   "image": "https://i.ebayimg.com/images/g/cZsAAeSwavdofoWZ/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united kingdom",
+   "shipping_cost": 16.22,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 1.62,
+     "raw": "$1.62"
+    }
+   ],
+   "price": {
+    "value": 1.62,
+    "raw": "$1.62"
+   }
+  },
+  {
+   "position": 8,
+   "title": "Genuine LEGO | Zombie min010 | Dark Purple Legs | Minecraft",
+   "epid": "166659323039",
+   "link": "https://www.ebay.com/itm/166659323039",
+   "image": "https://i.ebayimg.com/images/g/C-sAAOSwNR5l-sIj/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united kingdom",
+   "shipping_cost": 16.22,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 2.43,
+     "raw": "$2.43"
+    }
+   ],
+   "price": {
+    "value": 2.43,
+    "raw": "$2.43"
+   }
+  },
+  {
+   "position": 9,
+   "title": "Genuine LEGO Minifigure | Monster Truck Driver cty0856 | City | 60180",
+   "epid": "166647958795",
+   "link": "https://www.ebay.com/itm/166647958795",
+   "image": "https://i.ebayimg.com/images/g/vOcAAOSwpZhl81EP/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united kingdom",
+   "shipping_cost": 16.22,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 2.43,
+     "raw": "$2.43"
+    }
+   ],
+   "price": {
+    "value": 2.43,
+    "raw": "$2.43"
+   }
+  },
+  {
+   "position": 10,
+   "title": "Genuine LEGO Minifigure | Shuri sh735 | The Infinity Saga | 76186 76266 76212",
+   "epid": "166647578863",
+   "link": "https://www.ebay.com/itm/166647578863",
+   "image": "https://i.ebayimg.com/images/g/KP0AAOSwdG5l8xCQ/s-l140.jpg",
+   "condition": "Brand New",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united kingdom",
+   "shipping_cost": 16.22,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 4.73,
+     "raw": "$4.73"
+    }
+   ],
+   "price": {
+    "value": 4.73,
+    "raw": "$4.73"
+   }
+  },
+  {
+   "position": 11,
+   "title": "Genuine LEGO Minifigure | Chitauri sh730 | The Infinity Saga | 76186 76269 76192",
+   "epid": "166647554851",
+   "link": "https://www.ebay.com/itm/166647554851",
+   "image": "https://i.ebayimg.com/images/g/L7UAAOSw2-9l8wy1/s-l140.jpg",
+   "condition": "Brand New",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united kingdom",
+   "shipping_cost": 16.22,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 5.41,
+     "raw": "$5.41"
+    }
+   ],
+   "price": {
+    "value": 5.41,
+    "raw": "$5.41"
+   }
+  },
+  {
+   "position": 12,
+   "title": "Genuine LEGO Minifigure | Aaron nex136 | Nexo Knights | Set 72005",
+   "epid": "165907489669",
+   "link": "https://www.ebay.com/itm/165907489669",
+   "image": "https://i.ebayimg.com/images/g/OMMAAOSwZ~lj0rKR/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united kingdom",
+   "shipping_cost": 16.22,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 3.38,
+     "raw": "$3.38"
+    }
+   ],
+   "price": {
+    "value": 3.38,
+    "raw": "$3.38"
+   }
+  },
+  {
+   "position": 13,
+   "title": "Genuine LEGO Minifigure - City Jungle Explorer cty0804",
+   "epid": "165336037997",
+   "link": "https://www.ebay.com/itm/165336037997",
+   "image": "https://i.ebayimg.com/images/g/YWsAAOSwMWZiCpxp/s-l140.jpg",
+   "condition": "Pre-Owned",
+   "is_auction": false,
+   "buy_it_now": false,
+   "free_returns": false,
+   "item_location": "located in united kingdom",
+   "shipping_cost": 16.22,
+   "sponsored": false,
+   "prices": [
+    {
+     "value": 2.43,
+     "raw": "$2.43"
+    }
+   ],
+   "price": {
+    "value": 2.43,
+    "raw": "$2.43"
+   }
+  }
+ ],
+ "pagination": {
+  "total_results": 13
+ }
+}

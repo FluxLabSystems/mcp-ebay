@@ -1,0 +1,200 @@
+{
+ "request_info": {
+  "success": true,
+  "credits_used": null,
+  "credits_remaining": null,
+  "credits_used_this_request": null
+ },
+ "request_parameters": {
+  "type": "product",
+  "url": "https://www.ebay.ca/itm/800523282681",
+  "customer_location": "ca"
+ },
+ "request_metadata": {
+  "created_at": "2026-09-02T17:43:13.516Z",
+  "processed_at": "2026-09-02T17:43:23.005Z",
+  "total_time_taken": 9.49,
+  "ebay_url": "https://www.ebay.ca/itm/800523282681?_fcid=2"
+ },
+ "product": {
+  "is_master": false,
+  "title": "LEGO 5 bags unsorted Bulk Lot Bricks 10 Pounds Mixed Parts and Pieces people lbs",
+  "categories": [
+   {
+    "name": "Toys & Hobbies",
+    "link": "https://www.ebay.ca/b/Toys-Hobbies/220/bn_1865497"
+   },
+   {
+    "name": "Building Toys",
+    "link": "https://www.ebay.ca/b/Building-Toys/183446/bn_1865257"
+   },
+   {
+    "name": "LEGO (R) Building Toys",
+    "link": "https://www.ebay.ca/b/LEGO-R-Building-Toys/183447/bn_1937200"
+   },
+   {
+    "name": "LEGO (R) Bricks, Pieces & Parts",
+    "link": "https://www.ebay.ca/b/LEGO-R-Bricks-Pieces-Parts/183448/bn_16564827"
+   }
+  ],
+  "images": [
+   {
+    "link": "https://i.ebayimg.com/images/g/qjEAAeSwiCJqgvEr/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/1uoAAeSwM89qgvFG/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/-0gAAeSwdK5qgvFi/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/zRkAAeSw3EVqgvF-/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/3MUAAeSwsx9qgvGN/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/~mUAAeSwFfJqgvGa/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/mUIAAeSwu3ZqgvGk/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/uQYAAeSwgwRqgvGw/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/ukMAAeSw~vdqgvHF/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/20kAAeSwbLhqgvHX/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/1RcAAeSw0BpqgvHm/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/r5kAAeSwiCJqgvHw/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/2lwAAeSwWOBqgvH8/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/3CEAAeSwCqtqgvIH/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/oTUAAeSw2DJqgvIV/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/tmsAAeSwvEZqgvIe/s-l1600.png"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/MWcAAeSwS7ZqguRg/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/F70AAeSw2DJqguRh/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/Fz4AAeSwTgpqguRh/s-l1600.jpg"
+   }
+  ],
+  "image_count": 19,
+  "primary_image": "https://i.ebayimg.com/thumbs/images/g/qjEAAeSwiCJqgvEr/s-l500.jpg",
+  "description": "LEGO 5 bags unsorted Bulk Lot Bricks 10 Pounds Mixed Parts and Pieces people lbs | eBay",
+  "description_external_url": "https://itm.ebaydesc.com/itmdesc/800523282681?t=0&category=183448&seller=4-the-dogs&excSoj=1&ver=1&excTrk=1&lsite=0&ittenable=false&domain=ebay.com&descgauge=1&cspheader=1&oneClk=2&secureDesc=1&lang=en",
+  "attributes": [
+   {
+    "name": "Condition",
+    "value": "Used: An item that has been used previously. See the seller’s listing for full details and ... "
+   },
+   {
+    "name": "LEGO Theme",
+    "value": "Creator"
+   },
+   {
+    "name": "Number of Pieces",
+    "value": "10 lbs"
+   },
+   {
+    "name": "Color",
+    "value": "Mixed Colors"
+   },
+   {
+    "name": "Material",
+    "value": "Plastic"
+   },
+   {
+    "name": "Age Level",
+    "value": "3+"
+   },
+   {
+    "name": "Interests",
+    "value": "Building"
+   },
+   {
+    "name": "Brand",
+    "value": "LEGO"
+   },
+   {
+    "name": "Type",
+    "value": "Bricks & Building Pieces"
+   },
+   {
+    "name": "LEGO Set Name",
+    "value": "Bricks Bricks Bricks"
+   },
+   {
+    "name": "Packaging",
+    "value": "Box"
+   },
+   {
+    "name": "Features",
+    "value": "Bulk Lot"
+   },
+   {
+    "name": "LEGO Subtheme",
+    "value": "Creator 3-in-1"
+   },
+   {
+    "name": "Country of Origin",
+    "value": "Mexico"
+   },
+   {
+    "name": "UPC",
+    "value": "Does Not Apply"
+   }
+  ],
+  "color": "Mixed Colors",
+  "brand": "LEGO"
+ },
+ "returns_policy": {
+  "raw": "30 days return. Seller pays for return shipping.",
+  "returns_accepted": true
+ },
+ "stock_status": {
+  "raw": "https://schema.org/OutOfStock",
+  "status": "not_in_stock",
+  "quantity_available": 0
+ },
+ "condition": {
+  "raw": "Used",
+  "name": "used",
+  "is_new": false,
+  "is_used": true
+ },
+ "is_auction": false,
+ "offer": {
+  "price": 32,
+  "currency": "CAD"
+ },
+ "seller": {
+  "name": "4-the-dogs",
+  "link": "https://www.ebay.ca/str/4thedogs"
+ },
+ "shipping": {
+  "price": "19.85 ",
+  "service": "USPS Ground Advantage",
+  "location": "Lakeland, Florida, United States",
+  "deliveryEstimate": "Sat, Sep 5 and Sat, Sep 12",
+  "link": "https://www.ebay.ca/str/4thedogs",
+  "ships_to": "Albania, Algeria, American Samoa, and many other countries"
+ }
+}

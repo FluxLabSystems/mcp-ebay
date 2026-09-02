@@ -1,0 +1,179 @@
+{
+ "request_info": {
+  "success": true,
+  "credits_used": null,
+  "credits_remaining": null,
+  "credits_used_this_request": null
+ },
+ "request_parameters": {
+  "type": "product",
+  "url": "https://www.ebay.ca/itm/398236132742",
+  "customer_location": "ca"
+ },
+ "request_metadata": {
+  "created_at": "2026-09-02T17:42:22.642Z",
+  "processed_at": "2026-09-02T17:42:25.666Z",
+  "total_time_taken": 3.02,
+  "ebay_url": "https://www.ebay.ca/itm/398236132742?_fcid=2"
+ },
+ "product": {
+  "is_master": false,
+  "title": "LEGO Random Parts Pieces Building Blocks Bulk Lot Sort out Mixed 18 pounds",
+  "categories": [
+   {
+    "name": "Toys & Hobbies",
+    "link": "https://www.ebay.ca/b/Toys-Hobbies/220/bn_1865497"
+   },
+   {
+    "name": "Building Toys",
+    "link": "https://www.ebay.ca/b/Building-Toys/183446/bn_1865257"
+   },
+   {
+    "name": "LEGO (R) Building Toys",
+    "link": "https://www.ebay.ca/b/LEGO-R-Building-Toys/183447/bn_1937200"
+   },
+   {
+    "name": "LEGO (R) Bricks, Pieces & Parts",
+    "link": "https://www.ebay.ca/b/LEGO-R-Bricks-Pieces-Parts/183448/bn_16564827"
+   }
+  ],
+  "images": [
+   {
+    "link": "https://i.ebayimg.com/images/g/CuwAAeSw9ZVqa75N/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/tCYAAeSwUKRqa75N/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/iVkAAeSwYG9qa75N/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/9poAAeSwGjJqa75N/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/SaIAAeSwAY9qa75O/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/t8MAAeSw529qa75O/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/I88AAeSw9Hxqa75O/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/-SsAAeSw2~5qa75O/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/XScAAeSw8QJqa75P/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/9VUAAeSwRT1qa75P/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/ikEAAeSwrsFqa75P/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/-6QAAeSwD-lqa75P/s-l1600.jpg"
+   },
+   {
+    "link": "https://i.ebayimg.com/images/g/0jMAAeSwzmFqa75P/s-l1600.jpg"
+   }
+  ],
+  "image_count": 13,
+  "primary_image": "https://i.ebayimg.com/thumbs/images/g/CuwAAeSw9ZVqa75N/s-l500.jpg",
+  "description": "LEGO Random Parts Pieces Building Blocks Bulk Lot Sort out Mixed 18 pounds | eBay",
+  "description_external_url": "https://itm.ebaydesc.com/itmdesc/398236132742?t=0&category=183448&seller=kevinlalande&excSoj=1&ver=1&excTrk=1&lsite=2&ittenable=false&domain=ebay.com&descgauge=1&cspheader=1&oneClk=2&secureDesc=1&lang=en",
+  "attributes": [
+   {
+    "name": "Condition",
+    "value": "Used: An item that has been used previously. See the seller’s listing for full details and ... "
+   },
+   {
+    "name": "LEGO Theme",
+    "value": "Bulk Bricks"
+   },
+   {
+    "name": "Brand",
+    "value": "LEGO"
+   },
+   {
+    "name": "Type",
+    "value": "Brick"
+   },
+   {
+    "name": "LEGO Set Name",
+    "value": "Bricks Bricks Bricks"
+   },
+   {
+    "name": "LEGO Character",
+    "value": "Assorted"
+   },
+   {
+    "name": "Color",
+    "value": "Multi-Color"
+   },
+   {
+    "name": "Material",
+    "value": "Plastic"
+   },
+   {
+    "name": "Features",
+    "value": "Bulk Lot, Sold by Weight, pound, lego bulk, lego pound, MOC - My Own Creation, Washed & Sanitized"
+   },
+   {
+    "name": "Age Level",
+    "value": "6+"
+   },
+   {
+    "name": "LEGO Subtheme",
+    "value": "Building"
+   },
+   {
+    "name": "Interests",
+    "value": "Bulk lego"
+   },
+   {
+    "name": "Country of Origin",
+    "value": "Denmark"
+   },
+   {
+    "name": "UPC",
+    "value": "Does not apply"
+   }
+  ],
+  "brand": "LEGO",
+  "color": "Multi-Color"
+ },
+ "returns_policy": {
+  "raw": "30 days return. Buyer pays for return shipping. If you use an eBay shipping label, it will be deducted from your refund amount.",
+  "returns_accepted": true
+ },
+ "stock_status": {
+  "raw": "https://schema.org/OutOfStock",
+  "message": "This listing sold on Sun, Aug 30 at 3:03. ",
+  "status": "not_in_stock",
+  "quantity_available": 0
+ },
+ "condition": {
+  "raw": "Used",
+  "name": "used",
+  "is_new": false,
+  "is_used": true
+ },
+ "is_auction": false,
+ "offer": {
+  "price": 62.99,
+  "currency": "CAD"
+ },
+ "seller": {
+  "name": "ZoomTreasury",
+  "link": "https://www.ebay.ca/str/zoomtreasury"
+ },
+ "shipping": {
+  "price": "C $68.71",
+  "service": "UPS Standard United States",
+  "location": "Lachute, Quebec, Canada",
+  "deliveryEstimate": "Tue, Sep 8 and Thu, Sep 17",
+  "link": "https://www.ebay.ca/str/zoomtreasury",
+  "ships_to": "Canada, United States"
+ }
+}
