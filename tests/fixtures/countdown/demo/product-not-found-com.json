@@ -1,0 +1,15 @@
+{
+    "request_info": {
+        "success": true,
+        "demo": true
+    },
+    "request_parameters": {
+        "type": "product",
+        "ebay_domain": "ebay.com",
+        "epid": "233599133856"
+    },
+    "request_metadata": {
+        "ebay_url": "https://www.ebay.com/itm/233599133856?_fcid=1"
+    },
+    "message": "Product not found."
+}

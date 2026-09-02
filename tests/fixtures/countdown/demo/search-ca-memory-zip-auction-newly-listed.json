@@ -1,0 +1,1499 @@
+{
+    "request_info": {
+        "success": true,
+        "demo": true
+    },
+    "request_parameters": {
+        "type": "search",
+        "ebay_domain": "ebay.ca",
+        "search_term": "memory cards",
+        "customer_location": "ca",
+        "customer_zipcode": "M6H2W9",
+        "listing_type": "auction",
+        "sort_by": "newly_listed"
+    },
+    "request_metadata": {
+        "ebay_url": "https://www.ebay.ca/sch/i.html?_nkw=memory+cards&_sacat=0&LH_Auction=1&_sop=10&_dmd=1&_fcid=2&_stpos=M6H2W9"
+    },
+    "search_results": [
+        {
+            "position": 1,
+            "title": "Verbatim Premium SDXC 256GB SD Card",
+            "epid": "820078942485",
+            "link": "https://www.ebay.ca/itm/820078942485",
+            "image": "https://i.ebayimg.com/images/g/gckAAeSwTtFqlw9u/s-l500.jpg",
+            "condition": "Brand New",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "shipping_cost": 9.99,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 0.99,
+                    "raw": "C $0.99"
+                }
+            ],
+            "price": {
+                "value": 0.99,
+                "raw": "C $0.99"
+            }
+        },
+        {
+            "position": 2,
+            "title": "Performance Mega Memory Card for Sony PlayStation (ps1 or ps2)",
+            "epid": "168658452269",
+            "link": "https://www.ebay.ca/itm/168658452269",
+            "image": "https://i.ebayimg.com/images/g/XX0AAeSw9OVqlGW1/s-l500.jpg",
+            "condition": "New (Other)",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 25.36,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 6.93,
+                    "raw": "C $6.93"
+                }
+            ],
+            "price": {
+                "value": 6.93,
+                "raw": "C $6.93"
+            }
+        },
+        {
+            "position": 3,
+            "title": "1890 Memorial Cards Samuel & Robert Morris Washington Iowa & Mary Davis Kentucky",
+            "epid": "206531446244",
+            "link": "https://www.ebay.ca/itm/206531446244",
+            "image": "https://i.ebayimg.com/images/g/KdYAAeSwvk9qmCNv/s-l140.jpg",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 21.21,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 13.83,
+                    "raw": "C $13.83"
+                }
+            ],
+            "price": {
+                "value": 13.83,
+                "raw": "C $13.83"
+            }
+        },
+        {
+            "position": 4,
+            "title": "SanDisk 2TB MicroSD Memory Card For ROG Xbox Ally X",
+            "epid": "407187497089",
+            "link": "https://www.ebay.ca/itm/407187497089",
+            "image": "https://i.ebayimg.com/images/g/sjYAAeSw9fJqmBDR/s-l140.jpg",
+            "condition": "New (Other)",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 42.55,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 555.84,
+                    "raw": "C $555.84"
+                }
+            ],
+            "price": {
+                "value": 555.84,
+                "raw": "C $555.84"
+            }
+        },
+        {
+            "position": 5,
+            "title": "2005 Sakurado Japanese Model Pure Memory Card-14",
+            "epid": "257718157580",
+            "link": "https://www.ebay.ca/itm/257718157580",
+            "image": "https://i.ebayimg.com/images/g/4cwAAeSwF5Bql~hZ/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 15.19,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 1.38,
+                    "raw": "C $1.38"
+                }
+            ],
+            "price": {
+                "value": 1.38,
+                "raw": "C $1.38"
+            }
+        },
+        {
+            "position": 6,
+            "title": "Patriot LX Series 64GB Micro SDXC w/ SD Adapter Class 10 Memory Card - 64 GB",
+            "epid": "117391167757",
+            "link": "https://www.ebay.ca/itm/117391167757",
+            "image": "https://i.ebayimg.com/images/g/4KMAAeSwL8lqgP5g/s-l140.jpg",
+            "condition": "Brand New",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 21.83,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 4.17,
+                    "raw": "C $4.17"
+                }
+            ],
+            "price": {
+                "value": 4.17,
+                "raw": "C $4.17"
+            }
+        },
+        {
+            "position": 7,
+            "title": "2 Vintage Pair of Swap Cards, \"Thomas Jefferson Memorial & Woodward Wright & CO,",
+            "epid": "206530304394",
+            "link": "https://www.ebay.ca/itm/206530304394",
+            "image": "https://i.ebayimg.com/images/g/DZsAAeSwM6Bql5Az/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.42,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 1.22,
+                    "raw": "C $1.22"
+                }
+            ],
+            "price": {
+                "value": 1.22,
+                "raw": "C $1.22"
+            }
+        },
+        {
+            "position": 8,
+            "title": "Sony PlayStation 2 FAT console With Box, Memory Card",
+            "epid": "227501744606",
+            "link": "https://www.ebay.ca/itm/227501744606",
+            "image": "https://i.ebayimg.com/images/g/3rYAAeSwQUJql3kT/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 147.06,
+            "rating": 4.5,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 13.88,
+                    "raw": "C $13.88"
+                }
+            ],
+            "price": {
+                "value": 13.88,
+                "raw": "C $13.88"
+            }
+        },
+        {
+            "position": 9,
+            "title": "X2: Wolverine's Revenge Sony PlayStation 2 Game With Case And Manual PS2",
+            "epid": "158248162933",
+            "link": "https://www.ebay.ca/itm/158248162933",
+            "image": "https://i.ebayimg.com/images/g/d4YAAeSw131ql30L/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 24.64,
+            "rating": 4.5,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 1.38,
+                    "raw": "C $1.38"
+                }
+            ],
+            "price": {
+                "value": 1.38,
+                "raw": "C $1.38"
+            }
+        },
+        {
+            "position": 10,
+            "title": "SONY PocketStation SCPH-4000 PS1 Memory Card Lot of 8 Tested As Is 9269 UT",
+            "epid": "407183976708",
+            "link": "https://www.ebay.ca/itm/407183976708",
+            "image": "https://i.ebayimg.com/images/g/aaQAAeSwwMBqOkDE/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 48.64,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 111.15,
+                    "raw": "C $111.15"
+                }
+            ],
+            "price": {
+                "value": 111.15,
+                "raw": "C $111.15"
+            }
+        },
+        {
+            "position": 11,
+            "title": "SONY Pocket Station White SCPH-4000 PS Memory Card Lot of 8 Tested As Is 9252 UT",
+            "epid": "407183976775",
+            "link": "https://www.ebay.ca/itm/407183976775",
+            "image": "https://i.ebayimg.com/images/g/o50AAeSwubhqPNgj/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 34.74,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 138.95,
+                    "raw": "C $138.95"
+                }
+            ],
+            "price": {
+                "value": 138.95,
+                "raw": "C $138.95"
+            }
+        },
+        {
+            "position": 12,
+            "title": "SONY Pocket Station Crystal SCPH-4000 PS Memory Card Lot of 8 Tested 2356 UT",
+            "epid": "407183976763",
+            "link": "https://www.ebay.ca/itm/407183976763",
+            "image": "https://i.ebayimg.com/images/g/ID0AAeSwzI5qRiQk/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 34.74,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 138.95,
+                    "raw": "C $138.95"
+                }
+            ],
+            "price": {
+                "value": 138.95,
+                "raw": "C $138.95"
+            }
+        },
+        {
+            "position": 13,
+            "title": "SEGA DreamCast Controller HKT-7700 Assorted Set of 6 Tested Works Japan 9472 UT",
+            "epid": "407183976760",
+            "link": "https://www.ebay.ca/itm/407183976760",
+            "image": "https://i.ebayimg.com/images/g/jjoAAeSwX4xqjqkG/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 55.58,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 389.07,
+                    "raw": "C $389.07"
+                }
+            ],
+            "price": {
+                "value": 389.07,
+                "raw": "C $389.07"
+            }
+        },
+        {
+            "position": 14,
+            "title": "Nintendo Switch Console (HAC-001) complete set w/ 128gb Memory Card And Case",
+            "epid": "117389285190",
+            "link": "https://www.ebay.ca/itm/117389285190",
+            "image": "https://i.ebayimg.com/images/g/osMAAeSwsoRqlk30/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 83.99,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 104.22,
+                    "raw": "C $104.22"
+                }
+            ],
+            "price": {
+                "value": 104.22,
+                "raw": "C $104.22"
+            }
+        },
+        {
+            "position": 15,
+            "title": "SEGA DreamCast Controller HKT-7700 Assorted Set of 6 Tested Works Japan 9489 UT",
+            "epid": "407183976776",
+            "link": "https://www.ebay.ca/itm/407183976776",
+            "image": "https://i.ebayimg.com/images/g/mxgAAeSwa1Bqjqny/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 55.58,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 389.07,
+                    "raw": "C $389.07"
+                }
+            ],
+            "price": {
+                "value": 389.07,
+                "raw": "C $389.07"
+            }
+        },
+        {
+            "position": 16,
+            "title": "CGC 9 Hit's 2013 Anri Sugihara Memories - DVD Card  #08",
+            "epid": "158247930876",
+            "link": "https://www.ebay.ca/itm/158247930876",
+            "image": "https://i.ebayimg.com/images/g/gO0AAeSw~8dpmDHf/s-l140.jpg",
+            "condition": "New (Other)",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 20.65,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 1.74,
+                    "raw": "C $1.74"
+                }
+            ],
+            "price": {
+                "value": 1.74,
+                "raw": "C $1.74"
+            }
+        },
+        {
+            "position": 17,
+            "title": "Vampire Chronicle For Matching Service (Sega Dreamcast, 2000)  Import US Seller",
+            "epid": "137688097474",
+            "link": "https://www.ebay.ca/itm/137688097474",
+            "image": "https://i.ebayimg.com/images/g/V0gAAeSwWg9ql2LF/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 25.94,
+            "rating": 5,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 109.78,
+                    "raw": "C $109.78"
+                }
+            ],
+            "price": {
+                "value": 109.78,
+                "raw": "C $109.78"
+            }
+        },
+        {
+            "position": 18,
+            "title": "Capcom vs. SNK: Millennium Fight 2000 Pro Sega Dreamcast, 2001 Import Us Seller",
+            "epid": "137688011617",
+            "link": "https://www.ebay.ca/itm/137688011617",
+            "image": "https://i.ebayimg.com/images/g/Ur0AAeSwicFql1wg/s-l140.jpg",
+            "condition": "New (Other)",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 24.18,
+            "rating": 5,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 68.09,
+                    "raw": "C $68.09"
+                }
+            ],
+            "price": {
+                "value": 68.09,
+                "raw": "C $68.09"
+            }
+        },
+        {
+            "position": 19,
+            "title": "Brand new Playstation 2 8MB Memory Card - Authentic OEM Sealed NOS",
+            "epid": "168648717301",
+            "link": "https://www.ebay.ca/itm/168648717301",
+            "image": "https://i.ebayimg.com/images/g/JDEAAeSwp05qkyYP/s-l140.jpg",
+            "condition": "Brand New",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 22.69,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 27.78,
+                    "raw": "C $27.78"
+                }
+            ],
+            "price": {
+                "value": 27.78,
+                "raw": "C $27.78"
+            }
+        },
+        {
+            "position": 20,
+            "title": "Sony PlayStation PS1 SCPH-9001 Console Controller Memory Card AV Bundle Tested",
+            "epid": "267773597400",
+            "link": "https://www.ebay.ca/itm/267773597400",
+            "image": "https://i.ebayimg.com/images/g/k8cAAeSw-qlql08M/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 66.03,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 69.47,
+                    "raw": "C $69.47"
+                }
+            ],
+            "price": {
+                "value": 69.47,
+                "raw": "C $69.47"
+            }
+        },
+        {
+            "position": 21,
+            "title": "Sony PlayStation 2 PS2 Fat Console SCPH-39001 NTSC Controller 8MB Memory Card",
+            "epid": "267773597381",
+            "link": "https://www.ebay.ca/itm/267773597381",
+            "image": "https://i.ebayimg.com/images/g/7KgAAeSw2DJql06f/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 67.63,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 76.41,
+                    "raw": "C $76.41"
+                }
+            ],
+            "price": {
+                "value": 76.41,
+                "raw": "C $76.41"
+            }
+        },
+        {
+            "position": 22,
+            "title": "Sony PlayStation 2 PS2 Fat Console SCPH-30001 R Black 1 Controller Memory Card",
+            "epid": "267773597050",
+            "link": "https://www.ebay.ca/itm/267773597050",
+            "image": "https://i.ebayimg.com/images/g/cQkAAeSwGflql056/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 69.23,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 83.36,
+                    "raw": "C $83.36"
+                }
+            ],
+            "price": {
+                "value": 83.36,
+                "raw": "C $83.36"
+            }
+        },
+        {
+            "position": 23,
+            "title": "Sony PlayStation 2 PS2 Fat Console SCPH-30001 Controller Memory Card Bundle Set",
+            "epid": "267773597055",
+            "link": "https://www.ebay.ca/itm/267773597055",
+            "image": "https://i.ebayimg.com/images/g/oqQAAeSw2Ztql06D/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 67.63,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 76.41,
+                    "raw": "C $76.41"
+                }
+            ],
+            "price": {
+                "value": 76.41,
+                "raw": "C $76.41"
+            }
+        },
+        {
+            "position": 24,
+            "title": "Vintage Console Memory Cards Inc Playstation 1 And 2 Untested",
+            "epid": "178447317261",
+            "link": "https://www.ebay.ca/itm/178447317261",
+            "image": "https://i.ebayimg.com/images/g/4NkAAeSwmX1qkU1i/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united kingdom",
+            "shipping_cost": 35.33,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 58.22,
+                    "raw": "C $58.22"
+                }
+            ],
+            "price": {
+                "value": 58.22,
+                "raw": "C $58.22"
+            }
+        },
+        {
+            "position": 25,
+            "title": "1996 Fleer - Golden Memories Frank Thomas MLB Card # 9/10",
+            "epid": "237043234487",
+            "link": "https://www.ebay.ca/itm/237043234487",
+            "image": "https://i.ebayimg.com/images/g/7rYAAeSwe9ZqlzZy/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 20.45,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 4.86,
+                    "raw": "C $4.86"
+                }
+            ],
+            "price": {
+                "value": 4.86,
+                "raw": "C $4.86"
+            }
+        },
+        {
+            "position": 26,
+            "title": "Nintendo 64 Rare Hello Mac Black/Grey Controller TIGHT Stick",
+            "epid": "168656333934",
+            "link": "https://www.ebay.ca/itm/168656333934",
+            "image": "https://i.ebayimg.com/images/g/W9MAAeSwF4hoy0FV/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 42.79,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 104.22,
+                    "raw": "C $104.22"
+                }
+            ],
+            "price": {
+                "value": 104.22,
+                "raw": "C $104.22"
+            }
+        },
+        {
+            "position": 27,
+            "title": "MFLASH 64GB U3 MicroSD Adapter",
+            "epid": "820074987011",
+            "link": "https://www.ebay.ca/itm/820074987011",
+            "image": "https://i.ebayimg.com/images/g/XzsAAeSwuxVqlvpy/s-l140.jpg",
+            "condition": "Brand New",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "shipping_cost": 9.99,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 0.99,
+                    "raw": "C $0.99"
+                }
+            ],
+            "price": {
+                "value": 0.99,
+                "raw": "C $0.99"
+            }
+        },
+        {
+            "position": 28,
+            "title": "2 NEW DAVEY ALLISON IN MEMORY OF WOODEN WALL PLAQUES W/ RACE WINS CARDS.",
+            "epid": "147542688733",
+            "link": "https://www.ebay.ca/itm/147542688733",
+            "image": "https://i.ebayimg.com/images/g/KkEAAeSw0FZqlx0f/s-l140.jpg",
+            "condition": "Brand New",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 38.19,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 10.55,
+                    "raw": "C $10.55"
+                }
+            ],
+            "price": {
+                "value": 10.55,
+                "raw": "C $10.55"
+            }
+        },
+        {
+            "position": 29,
+            "title": "Verbatim Premium SDXC 256GB SD Card",
+            "epid": "366642504343",
+            "link": "https://www.ebay.ca/itm/366642504343",
+            "image": "https://i.ebayimg.com/images/g/vuMAAeSw5rdqlw9o/s-l140.jpg",
+            "condition": "Brand New",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "shipping_cost": 9.99,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 4.25,
+                    "raw": "C $4.25"
+                }
+            ],
+            "price": {
+                "value": 4.25,
+                "raw": "C $4.25"
+            }
+        },
+        {
+            "position": 30,
+            "title": "Sony PSP 1006 Black Console Bundle,Working 2GB Memory Card,Case,Charger,manual",
+            "epid": "178458973673",
+            "link": "https://www.ebay.ca/itm/178458973673",
+            "image": "https://i.ebayimg.com/images/g/UGQAAeSw-qlqluvf/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united kingdom",
+            "shipping_cost": 41.43,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 75.13,
+                    "raw": "C $75.13"
+                }
+            ],
+            "price": {
+                "value": 75.13,
+                "raw": "C $75.13"
+            }
+        },
+        {
+            "position": 31,
+            "title": "Nintendo Wii Sandisk Memory Card 2GB",
+            "epid": "820073595840",
+            "link": "https://www.ebay.ca/itm/820073595840",
+            "image": "https://i.ebayimg.com/images/g/9goAAeSw~7pqlsiQ/s-l140.jpg",
+            "condition": "Brand New",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 21.41,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 27.79,
+                    "raw": "C $27.79"
+                }
+            ],
+            "price": {
+                "value": 27.79,
+                "raw": "C $27.79"
+            }
+        },
+        {
+            "position": 32,
+            "title": "128MB Memory Card for Ps2 PlayStation 2",
+            "epid": "237042101922",
+            "link": "https://www.ebay.ca/itm/237042101922",
+            "image": "https://i.ebayimg.com/images/g/C1UAAeSwXyxqloj~/s-l140.jpg",
+            "condition": "Brand New",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 23.87,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 13.9,
+                    "raw": "C $13.90"
+                }
+            ],
+            "price": {
+                "value": 13.9,
+                "raw": "C $13.90"
+            }
+        },
+        {
+            "position": 33,
+            "title": "Pokemon Diamond (no label)",
+            "epid": "257715442956",
+            "link": "https://www.ebay.ca/itm/257715442956",
+            "image": "https://i.ebayimg.com/images/g/vUsAAeSw1qNqlkYY/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 20.68,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 12.88,
+                    "raw": "C $12.88"
+                }
+            ],
+            "price": {
+                "value": 12.88,
+                "raw": "C $12.88"
+            }
+        },
+        {
+            "position": 34,
+            "title": "Nintendo Game Cube Memory Card Club Nintendo Edition DOL-014 3 set As Is 7262 UT",
+            "epid": "407181566508",
+            "link": "https://www.ebay.ca/itm/407181566508",
+            "image": "https://i.ebayimg.com/images/g/dpUAAeSwdw1otqVq/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 34.74,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 102.82,
+                    "raw": "C $102.82"
+                }
+            ],
+            "price": {
+                "value": 102.82,
+                "raw": "C $102.82"
+            }
+        },
+        {
+            "position": 35,
+            "title": "SONY Pocket Station White SCPH-4000 PS Memory Card Lot of 8 Tested As Is 9245 UT",
+            "epid": "407181566543",
+            "link": "https://www.ebay.ca/itm/407181566543",
+            "image": "https://i.ebayimg.com/images/g/d2MAAeSwzEZqL6B9/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 48.64,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 138.95,
+                    "raw": "C $138.95"
+                }
+            ],
+            "price": {
+                "value": 138.95,
+                "raw": "C $138.95"
+            }
+        },
+        {
+            "position": 36,
+            "title": "Nintendo GameCube GC Controller 5 set DOL-003 As Is From Japan 8510 UT",
+            "epid": "407181566581",
+            "link": "https://www.ebay.ca/itm/407181566581",
+            "image": "https://i.ebayimg.com/images/g/HKwAAeSw7QVpKAgF/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 48.64,
+            "rating": 4.5,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 125.05,
+                    "raw": "C $125.05"
+                }
+            ],
+            "price": {
+                "value": 125.05,
+                "raw": "C $125.05"
+            }
+        },
+        {
+            "position": 37,
+            "title": "SONY PlayStation 2 HORI Memory Card Fighting Jam etc. 3 set  As Is 7255 UT",
+            "epid": "407181566577",
+            "link": "https://www.ebay.ca/itm/407181566577",
+            "image": "https://i.ebayimg.com/images/g/IokAAeSwxMVotVv9/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 34.74,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 72.25,
+                    "raw": "C $72.25"
+                }
+            ],
+            "price": {
+                "value": 72.25,
+                "raw": "C $72.25"
+            }
+        },
+        {
+            "position": 38,
+            "title": "SONY Pocket Station SCPH-4000 PS Memory Card Lot of 8 for Parts Repair 2251 UT",
+            "epid": "407181566568",
+            "link": "https://www.ebay.ca/itm/407181566568",
+            "image": "https://i.ebayimg.com/images/g/6nwAAeSwLQ5qPijb/s-l140.jpg",
+            "condition": "Parts Only",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 48.64,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 83.36,
+                    "raw": "C $83.36"
+                }
+            ],
+            "price": {
+                "value": 83.36,
+                "raw": "C $83.36"
+            }
+        },
+        {
+            "position": 39,
+            "title": "SEGA DreamCast Controller HKT-7700 Assorted Set of 6 Tested Works Japan 8523 UT",
+            "epid": "407181566586",
+            "link": "https://www.ebay.ca/itm/407181566586",
+            "image": "https://i.ebayimg.com/images/g/5EQAAeSwU6Vqca81/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 55.58,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 389.07,
+                    "raw": "C $389.07"
+                }
+            ],
+            "price": {
+                "value": 389.07,
+                "raw": "C $389.07"
+            }
+        },
+        {
+            "position": 40,
+            "title": "SONY Pocket Station White SCPH-4000 PS Memory Card Lot of 8 Tested As Is 9904 UT",
+            "epid": "407181566646",
+            "link": "https://www.ebay.ca/itm/407181566646",
+            "image": "https://i.ebayimg.com/images/g/oSMAAeSwKzZqZGwA/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 48.64,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 138.95,
+                    "raw": "C $138.95"
+                }
+            ],
+            "price": {
+                "value": 138.95,
+                "raw": "C $138.95"
+            }
+        },
+        {
+            "position": 41,
+            "title": "SONY Pocket Station White SCPH-4000 PS Memory Card Lot of 8 Tested As Is 8767 UT",
+            "epid": "407181566597",
+            "link": "https://www.ebay.ca/itm/407181566597",
+            "image": "https://i.ebayimg.com/images/g/wKoAAeSw5oRqVgOO/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 48.64,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 138.95,
+                    "raw": "C $138.95"
+                }
+            ],
+            "price": {
+                "value": 138.95,
+                "raw": "C $138.95"
+            }
+        },
+        {
+            "position": 42,
+            "title": "TESTED Performance N64 MASSIVE MEMORY CARD 32X Nintendo 64 Pak",
+            "epid": "227500037811",
+            "link": "https://www.ebay.ca/itm/227500037811",
+            "image": "https://i.ebayimg.com/images/g/MOoAAeSw6wNqljPJ/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 20.83,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 13.88,
+                    "raw": "C $13.88"
+                }
+            ],
+            "price": {
+                "value": 13.88,
+                "raw": "C $13.88"
+            }
+        },
+        {
+            "position": 43,
+            "title": "Nintendo GameCube GC Controller 5 set DOL-003 As Is From Japan 1000 UT",
+            "epid": "407181566542",
+            "link": "https://www.ebay.ca/itm/407181566542",
+            "image": "https://i.ebayimg.com/images/g/qMIAAeSwS~JpGtjI/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 48.64,
+            "rating": 4.5,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 145.89,
+                    "raw": "C $145.89"
+                }
+            ],
+            "price": {
+                "value": 145.89,
+                "raw": "C $145.89"
+            }
+        },
+        {
+            "position": 44,
+            "title": "SONY PlayStation PS1 Official Memory card Tekken etc. 10 Set As Is 7286 UT",
+            "epid": "407181566466",
+            "link": "https://www.ebay.ca/itm/407181566466",
+            "image": "https://i.ebayimg.com/images/g/xA0AAeSw5TJotWSp/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 48.64,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 83.36,
+                    "raw": "C $83.36"
+                }
+            ],
+            "price": {
+                "value": 83.36,
+                "raw": "C $83.36"
+            }
+        },
+        {
+            "position": 45,
+            "title": "SONY PlayStation 2 KOTOBUKI SYSTEM Memory card 8MB Lot of 14 As Is 7231 UT",
+            "epid": "407181566501",
+            "link": "https://www.ebay.ca/itm/407181566501",
+            "image": "https://i.ebayimg.com/images/g/bPcAAeSwkGtouT2B/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 48.64,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 62.52,
+                    "raw": "C $62.52"
+                }
+            ],
+            "price": {
+                "value": 62.52,
+                "raw": "C $62.52"
+            }
+        },
+        {
+            "position": 46,
+            "title": "SONY PlayStation 2 HORI Memory card Multi Color Lot of 12 As Is 7217 UT",
+            "epid": "407181566523",
+            "link": "https://www.ebay.ca/itm/407181566523",
+            "image": "https://i.ebayimg.com/images/g/l2wAAeSw6bxotq7~/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 48.64,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 63.91,
+                    "raw": "C $63.91"
+                }
+            ],
+            "price": {
+                "value": 63.91,
+                "raw": "C $63.91"
+            }
+        },
+        {
+            "position": 47,
+            "title": "Nintendo Switch Lite Bundle w/ Case, SanDisk 128GB microSD, 7 Games Lot",
+            "epid": "287557150381",
+            "link": "https://www.ebay.ca/itm/287557150381",
+            "image": "https://i.ebayimg.com/images/g/IKQAAeSwYspqlihL/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 48.84,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 107,
+                    "raw": "C $107.00"
+                }
+            ],
+            "price": {
+                "value": 107,
+                "raw": "C $107.00"
+            }
+        },
+        {
+            "position": 48,
+            "title": "Nintendo GameCube GC Controller 5 set DOL-003 As Is From Japan 0980 UT",
+            "epid": "407181566500",
+            "link": "https://www.ebay.ca/itm/407181566500",
+            "image": "https://i.ebayimg.com/images/g/OFsAAeSwiLtpGtb4/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 48.64,
+            "rating": 4.5,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 145.89,
+                    "raw": "C $145.89"
+                }
+            ],
+            "price": {
+                "value": 145.89,
+                "raw": "C $145.89"
+            }
+        },
+        {
+            "position": 49,
+            "title": "SONY Pocket Station Clear SCPH-4000 PS Memory Card Lot of 8 Tested As Is 9384 UT",
+            "epid": "407181566503",
+            "link": "https://www.ebay.ca/itm/407181566503",
+            "image": "https://i.ebayimg.com/images/g/Xu8AAeSwVUhqHozR/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 48.64,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 138.95,
+                    "raw": "C $138.95"
+                }
+            ],
+            "price": {
+                "value": 138.95,
+                "raw": "C $138.95"
+            }
+        },
+        {
+            "position": 50,
+            "title": "SONY PlayStation 2 MAGICGATE Memory card Multi Color Lot of 10 As Is 7057 UT",
+            "epid": "407181566489",
+            "link": "https://www.ebay.ca/itm/407181566489",
+            "image": "https://i.ebayimg.com/images/g/7XMAAeSwknJpFES6/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 27.79,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 73.63,
+                    "raw": "C $73.63"
+                }
+            ],
+            "price": {
+                "value": 73.63,
+                "raw": "C $73.63"
+            }
+        },
+        {
+            "position": 51,
+            "title": "\ud83d\udd25 Caffeine Critical Haunted Memories CATANNA Full Glory Waifu HOLO Card CAT07",
+            "epid": "800593444321",
+            "link": "https://www.ebay.ca/itm/800593444321",
+            "image": "https://i.ebayimg.com/images/g/FCcAAeSwqlBqlh0Y/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 13.97,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 5.91,
+                    "raw": "C $5.91"
+                }
+            ],
+            "price": {
+                "value": 5.91,
+                "raw": "C $5.91"
+            }
+        },
+        {
+            "position": 52,
+            "title": "\ud83d\udd25 Caffeine Critical Haunted Memories EMMA Full Glory Waifu HOLO Card #EMM08",
+            "epid": "800593430441",
+            "link": "https://www.ebay.ca/itm/800593430441",
+            "image": "https://i.ebayimg.com/images/g/ApUAAeSwRvdqlhyo/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 13.95,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 5.54,
+                    "raw": "C $5.54"
+                }
+            ],
+            "price": {
+                "value": 5.54,
+                "raw": "C $5.54"
+            }
+        },
+        {
+            "position": 53,
+            "title": "HORI SONY PS2 Memory card 8MB Lot of 4  Japan 4260 Tested UT",
+            "epid": "407181566524",
+            "link": "https://www.ebay.ca/itm/407181566524",
+            "image": "https://i.ebayimg.com/images/g/5bcAAeSwYCVpKr4V/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 48.64,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 75.02,
+                    "raw": "C $75.02"
+                }
+            ],
+            "price": {
+                "value": 75.02,
+                "raw": "C $75.02"
+            }
+        },
+        {
+            "position": 54,
+            "title": "\ud83d\udd25 Caffeine Critical Haunted Memories THALIA Full Glory Waifu HOLO Card #THA07",
+            "epid": "800593408070",
+            "link": "https://www.ebay.ca/itm/800593408070",
+            "image": "https://i.ebayimg.com/images/g/5rYAAeSwdABqlhw5/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 13.95,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 5.54,
+                    "raw": "C $5.54"
+                }
+            ],
+            "price": {
+                "value": 5.54,
+                "raw": "C $5.54"
+            }
+        },
+        {
+            "position": 55,
+            "title": "Pair of 2 Caffeine Critical Haunted Memories ENELWYNNE Full Glory Waifu Cards",
+            "epid": "800593393359",
+            "link": "https://www.ebay.ca/itm/800593393359",
+            "image": "https://i.ebayimg.com/images/g/BRkAAeSw8NRqlhpA/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 14.92,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 28.49,
+                    "raw": "C $28.49"
+                }
+            ],
+            "price": {
+                "value": 28.49,
+                "raw": "C $28.49"
+            }
+        },
+        {
+            "position": 56,
+            "title": "\ud83d\udd25 Pair of 2 Caffeine Critical Haunted Memories CATANNA Full Glory Waifu Cards",
+            "epid": "800593390658",
+            "link": "https://www.ebay.ca/itm/800593390658",
+            "image": "https://i.ebayimg.com/images/g/dfYAAeSw3B1qlhnj/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 13.9,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 4.15,
+                    "raw": "C $4.15"
+                }
+            ],
+            "price": {
+                "value": 4.15,
+                "raw": "C $4.15"
+            }
+        },
+        {
+            "position": 57,
+            "title": "\ud83d\udd25 Pair of 2 Caffeine Critical Haunted Memories EMMA Full Glory Waifu Cards",
+            "epid": "800593388561",
+            "link": "https://www.ebay.ca/itm/800593388561",
+            "image": "https://i.ebayimg.com/images/g/cyMAAeSw~vdqlhl4/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 13.9,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 4.15,
+                    "raw": "C $4.15"
+                }
+            ],
+            "price": {
+                "value": 4.15,
+                "raw": "C $4.15"
+            }
+        },
+        {
+            "position": 58,
+            "title": "\ud83d\udd25 Pair of 2 Caffeine Critical Haunted Memories MILLIE Full Glory Waifu Cards",
+            "epid": "800593382746",
+            "link": "https://www.ebay.ca/itm/800593382746",
+            "image": "https://i.ebayimg.com/images/g/JzEAAeSwVsxqlhkk/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 13.97,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 5.91,
+                    "raw": "C $5.91"
+                }
+            ],
+            "price": {
+                "value": 5.91,
+                "raw": "C $5.91"
+            }
+        },
+        {
+            "position": 59,
+            "title": "\ud83d\udd25 Pair of 2 Caffeine Critical Haunted Memories THALIA Full Glory Waifu Cards",
+            "epid": "800593380678",
+            "link": "https://www.ebay.ca/itm/800593380678",
+            "image": "https://i.ebayimg.com/images/g/7HwAAeSwFJZqlhis/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "united states",
+            "shipping_cost": 13.9,
+            "sponsored": false,
+            "prices": [
+                {
+                    "value": 4.15,
+                    "raw": "C $4.15"
+                }
+            ],
+            "price": {
+                "value": 4.15,
+                "raw": "C $4.15"
+            }
+        },
+        {
+            "position": 60,
+            "title": "Club Nintendo GameCube Controller OEM DOL-003 Luigi Model Tested Works 4226 HJ",
+            "epid": "407181715765",
+            "link": "https://www.ebay.ca/itm/407181715765",
+            "image": "https://i.ebayimg.com/images/g/POMAAeSwGEZqjBM5/s-l140.jpg",
+            "condition": "Pre-Owned",
+            "is_auction": true,
+            "buy_it_now": false,
+            "free_returns": false,
+            "item_location": "japan",
+            "shipping_cost": 48.64,
+            "rating": 4.5,
+            "sponsored": false,
+            "best_offer": true,
+            "prices": [
+                {
+                    "value": 173.69,
+                    "raw": "C $173.69"
+                }
+            ],
+            "price": {
+                "value": 173.69,
+                "raw": "C $173.69"
+            }
+        }
+    ],
+    "search_information": {
+        "original_search_term": "memory cards"
+    },
+    "pagination": {
+        "has_next_page": true,
+        "next_page": 2,
+        "current_page": 1,
+        "total_results": 649
+    }
+}
