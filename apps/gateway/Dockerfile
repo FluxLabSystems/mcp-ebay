@@ -55,6 +55,16 @@ COPY --chown=bridge:bridge db/migrations /app/db/migrations
 ENV NODE_ENV=production \
     PORT=3000 \
     MIGRATIONS_DIR=/app/db/migrations
+# Build provenance. The deploying compose passes the source commit
+# (--build-arg GATEWAY_BUILD_SHA=<sha>); a bare `docker build`, CI included,
+# keeps the default. Baked into the image twice: as the OCI revision label
+# (`docker inspect`) and as an env var the gateway reads through
+# packages/config so ebay_api_status can report which build is serving.
+# Declared in the runtime stage after the expensive layers, so a new SHA
+# invalidates only this metadata.
+ARG GATEWAY_BUILD_SHA=unknown
+ENV GATEWAY_BUILD_SHA=$GATEWAY_BUILD_SHA
+LABEL org.opencontainers.image.revision=$GATEWAY_BUILD_SHA
 USER bridge
 EXPOSE 3000
 CMD ["node", "apps/gateway/dist/server.js"]

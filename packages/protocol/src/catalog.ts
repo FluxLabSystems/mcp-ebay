@@ -20,6 +20,8 @@ import {
   EbayApiSearchOutput,
   EbayApiSellerInput,
   EbayApiSellerOutput,
+  EbayApiStatusInput,
+  EbayApiStatusOutput,
   EXTRACT_MANY_MAX_URLS,
   ExtractInput,
   ExtractManyInput,
@@ -536,30 +538,62 @@ export interface SourceToolCatalogEntry {
   name: string;
   /** Required OAuth scope (§10.2) — always browser:read; see the block comment. */
   scope: typeof SCOPE_READ;
-  /** Gateway tool-call deadline in milliseconds. */
+  /** Gateway tool-call deadline in milliseconds; every entry sits under MCP_CLIENT_TOOL_TIMEOUT_MS. */
   timeoutMs: number;
+  /**
+   * Whether a call spends vendor credits. Drives the idempotentHint the
+   * gateway advertises (a charged call is not free to repeat) and is the
+   * one entry that reads false: the account probe behind ebay_api_status.
+   */
+  spendsCredits: boolean;
   description: string;
   inputSchema: z.ZodType;
   outputSchema: z.ZodType;
 }
 
 /**
- * A five-page search is up to ten upstream requests, and a full item batch
- * is EBAY_API_ITEMS_MAX product requests through a bounded pool; either can
- * take most of a minute at the vendor's per-request timeout. A seller
- * profile is one request.
+ * The MCP client's own tool timeout — Claude Code in the cloud, the runtime
+ * the scheduled routines run on — observed 2026-09-03 on the redeployed
+ * gateway as `tool "ebay_api_search" timed out after 60s`. A call that
+ * outlives it loses its result while the vendor may still charge it, so
+ * every source tool's deadline sits under this figure with room for the
+ * gateway to map the response and for the answer to travel; the earlier
+ * 120 s deadlines (and a 90 s per-request timeout) could never be met.
+ * Vendor latency really does reach past a minute: the Phase 0 capture of a
+ * 240-row auction search took two 120-second timeouts and then 60 s.
  */
-export const SOURCE_SEARCH_TIMEOUT_MS = 120_000;
-export const SOURCE_ITEMS_TIMEOUT_MS = 120_000;
-export const SOURCE_SELLER_TIMEOUT_MS = 30_000;
+export const MCP_CLIENT_TOOL_TIMEOUT_MS = 60_000;
+
+/**
+ * Search and items answer inside 50 s: a split search runs its two vendor
+ * requests in parallel, and an item batch returns whatever the pool has
+ * answered by then (unanswered items come back as re-requestable slots). A
+ * seller profile and the free account probe are one request each.
+ */
+export const SOURCE_SEARCH_TIMEOUT_MS = 50_000;
+export const SOURCE_ITEMS_TIMEOUT_MS = 50_000;
+export const SOURCE_SELLER_TIMEOUT_MS = 25_000;
+export const SOURCE_STATUS_TIMEOUT_MS = 30_000;
+
+/**
+ * Ceiling for COUNTDOWN_TIMEOUT_MS, the per-vendor-request timeout: the
+ * charged tools' deadline less 2 s of headroom, so a vendor request times
+ * out on its own — and is reported as such — before the tool deadline cuts
+ * the whole call off.
+ */
+export const SOURCE_REQUEST_TIMEOUT_MAX_MS = Math.min(SOURCE_SEARCH_TIMEOUT_MS, SOURCE_ITEMS_TIMEOUT_MS) - 2_000;
+
+const SOURCE_CREDITS_SENTENCE =
+  "credits.used is the account's month-to-date total, not this call's spend; credits.remaining is the balance to put in the completion report. requestIds is empty when the vendor omits request ids, which it did on every observed response.";
 
 export const SOURCE_TOOL_CATALOG: readonly SourceToolCatalogEntry[] = [
   {
     name: 'ebay_api_search',
     scope: SCOPE_READ,
     timeoutMs: SOURCE_SEARCH_TIMEOUT_MS,
+    spendsCredits: true,
     description:
-      `Search eBay (ebay.ca or ebay.com) through the Countdown API instead of the browser, by searchTerm or by your own https eBay /sch/ URL, and return the same compacted candidate list browser_open_and_extract returns for a search page, so the usual audit and filter rules apply unchanged. Every page fetched spends one vendor credit (maxPage is capped at ${EBAY_API_MAX_PAGE}), and listingType 'all' costs two vendor requests per page — a buy_it_now search and an auction search merged by item id — because an unfiltered search cannot tell an auction from a fixed price. What this call spent is credits.usedThisRequest (both requests of a split search); credits.used is the account's month-to-date total, not this call's spend; credits.remaining is the balance to put in the completion report. requestIds is empty when the vendor omits request ids, which it did on every observed response. destination is a named value: 'toronto' makes a row's shippingCost eBay's own card estimate for the Toronto postal code, 'forwarder' uses the US forwarder suite, and 'domain_default' sends no location; a shippingCost of null means the card showed nothing readable, never free. Rows carry no bid count or time left (the default field list omits bidCount, and it is null when search.fields asks for it); bids and end times come only from the Bridge item page, and auction prices only from the Bridge browser tools. With a url, sortBy, listingType, condition, categoryId and page are refused because the vendor ignores them; put them in the URL's query string instead. The returned window defaults to search.limit ${EBAY_API_SEARCH_DEFAULT_LIMIT} (a whole page) because paging with search.offset re-issues the vendor requests and spends credits again; narrow or raise search.limit instead of paging.`,
+      `Search eBay (ebay.ca or ebay.com) through the Countdown API instead of the browser, by searchTerm or by your own https eBay /sch/ URL, and return the same compacted candidate list browser_open_and_extract returns for a search page, so the usual audit and filter rules apply unchanged. Every page fetched spends one vendor credit (maxPage is capped at ${EBAY_API_MAX_PAGE}), and listingType 'all' costs two vendor requests per page — a buy_it_now search and an auction search merged by item id — because an unfiltered search cannot tell an auction from a fixed price. What this call spent is credits.usedThisRequest (both requests of a split search); ${SOURCE_CREDITS_SENTENCE} Call ebay_api_status first and plan against its gate.spendable: this tool is refused with SOURCE_CREDITS_EXHAUSTED (details.reason 'below_reserve' or 'reserve_not_below_plan_limit') while the balance is below the credit reserve, and it never spends while the balance is unknown — the free account endpoint is read first. A vendor 402 that says the account is suspended is SOURCE_REJECTED with details.reason 'account_suspended' (no top-up lifts it; subscribing to a plan does) and is remembered for five minutes, during which every ebay_api_* call is refused without contacting the vendor. It answers inside its ${SOURCE_SEARCH_TIMEOUT_MS / 1000} s tool deadline (the MCP client allows ${MCP_CLIENT_TOOL_TIMEOUT_MS / 1000} s): a search the vendor has not answered by then fails with SOURCE_UNAVAILABLE carrying details.reason 'deadline' and possiblyCharged true, because a single vendor request cannot be partial and the vendor may still charge the abandoned page, so re-issue it after details.retryAfterMs, with a smaller num if it keeps happening. destination is a named value: 'toronto' makes a row's shippingCost eBay's own card estimate for the Toronto postal code, 'forwarder' uses the US forwarder suite, and 'domain_default' sends no location; a shippingCost of null means the card showed nothing readable, never free. Rows carry no bid count or time left (the default field list omits bidCount, and it is null when search.fields asks for it); bids and end times come only from the Bridge item page, and auction prices only from the Bridge browser tools. With a url, sortBy, listingType, condition, categoryId and page are refused because the vendor ignores them; put them in the URL's query string instead. The returned window defaults to search.limit ${EBAY_API_SEARCH_DEFAULT_LIMIT} (a whole page) because paging with search.offset re-issues the vendor requests and spends credits again; narrow or raise search.limit instead of paging.`,
     inputSchema: EbayApiSearchInput,
     outputSchema: EbayApiSearchOutput,
   },
@@ -567,8 +601,9 @@ export const SOURCE_TOOL_CATALOG: readonly SourceToolCatalogEntry[] = [
     name: 'ebay_api_items',
     scope: SCOPE_READ,
     timeoutMs: SOURCE_ITEMS_TIMEOUT_MS,
+    spendsCredits: true,
     description:
-      `Read up to ${EBAY_API_ITEMS_MAX} eBay item pages through the Countdown API in one call, by itemId or by https /itm/ URL, and return one browser_extract_many-style result slot per input in input order (mode 'inline', jobId null), so only slots with ok:true are upsert candidates and a LISTING_UNAVAILABLE slot keeps its record as evidence. Each item spends one vendor credit: what this call spent is credits.usedThisRequest, summed over every item the vendor answered; credits.used is the account's month-to-date total, not this call's spend; credits.remaining is the balance to put in the completion report. requestIds is empty when the vendor omits request ids, which it did on every observed response. Item-page shipping from this source is never resolved to a postal code and is not a Canadian figure: the vendor's browser resolves delivery to its own US zip whatever destination says, so every slot carries a DESTINATION_UNVERIFIED warning and the Bridge shipping pass is still required for a landed cost. Pass expectedFormat from the search that found the row: the vendor's item page reports live auctions as fixed price, so an auction slot returns no price, bids or end time (AUCTION_DETAIL_UNAVAILABLE_FROM_SOURCE) — auction prices come only from the Bridge. Without expectedFormat a slot's format is unknown and its price is unconfirmed (PRICE_UNCONFIRMED, confidence 0.4): pass expectedFormat from the search that found the row before treating a price as purchasable. A slot that fails maps its own error and never fails the batch.`,
+      `Read up to ${EBAY_API_ITEMS_MAX} eBay item pages through the Countdown API in one call, by itemId or by https /itm/ URL, and return one browser_extract_many-style result slot per input in input order (mode 'inline', jobId null), so only slots with ok:true are upsert candidates and a LISTING_UNAVAILABLE slot keeps its record as evidence. Each item spends one vendor credit: what this call spent is credits.usedThisRequest, summed over every item the vendor answered; ${SOURCE_CREDITS_SENTENCE} Call ebay_api_status first and plan against its gate.spendable: the call is refused with SOURCE_CREDITS_EXHAUSTED (details.reason 'below_reserve' or 'reserve_not_below_plan_limit') while the balance is below the credit reserve, it never spends while the balance is unknown, and a reserve crossed mid-batch refuses the remaining slots rather than the batch; a vendor 402 that says the account is suspended is SOURCE_REJECTED with details.reason 'account_suspended' and is remembered for five minutes. It answers inside its ${SOURCE_ITEMS_TIMEOUT_MS / 1000} s tool deadline (the MCP client allows ${MCP_CLIENT_TOOL_TIMEOUT_MS / 1000} s): items the pool could not answer in time come back as ok:false slots with error.code SOURCE_UNAVAILABLE and error.details.reason 'deadline' — requested:false means the item was never sent and never charged, requested:true with possiblyCharged:true means its request was abandoned in flight — under a BATCH_TRUNCATED_BY_DEADLINE warning that names the ids to re-request, and credits.usedThisRequest counts answered items only. Item-page shipping from this source is never resolved to a postal code and is not a Canadian figure: the vendor's browser resolves delivery to its own US zip whatever destination says, so every slot carries a DESTINATION_UNVERIFIED warning and the Bridge shipping pass is still required for a landed cost. Pass expectedFormat from the search that found the row: the vendor's item page reports live auctions as fixed price, so an auction slot returns no price, bids or end time (AUCTION_DETAIL_UNAVAILABLE_FROM_SOURCE) — auction prices come only from the Bridge. Without expectedFormat a slot's format is unknown and its price is unconfirmed (PRICE_UNCONFIRMED, confidence 0.4): pass expectedFormat from the search that found the row before treating a price as purchasable. A slot that fails maps its own error and never fails the batch.`,
     inputSchema: EbayApiItemsInput,
     outputSchema: EbayApiItemsOutput,
   },
@@ -576,10 +611,21 @@ export const SOURCE_TOOL_CATALOG: readonly SourceToolCatalogEntry[] = [
     name: 'ebay_api_seller',
     scope: SCOPE_READ,
     timeoutMs: SOURCE_SELLER_TIMEOUT_MS,
+    spendsCredits: true,
     description:
-      'Look up one eBay seller profile through the Countdown API, by loginId or by https /usr/ or /str/ URL, for the seller-confirmation step of the deals rules: name, profile URL, login id or store slug, member-since, positive-feedback percent, followers, location, top-rated flag and a short description, each null when the vendor did not return it; when member-since, location, top-rated and description are all missing, warnings carries SELLER_FIELDS_ABSENT_FROM_SOURCE so omission is not mistaken for absence. resolved is false when the vendor returned no seller block, and the vendor\'s message is then in warnings. Each call spends one vendor credit, even when nothing resolves: what this call spent is credits.usedThisRequest; credits.used is the account\'s month-to-date total, not this call\'s spend; credits.remaining is the balance to put in the completion report. requestIds is empty when the vendor omits request ids, which it did on every observed response. This tool reads no listing, so it carries no price and no shipping figure; item-page shipping and auction prices are the concern of ebay_api_items and the Bridge.',
+      `Look up one eBay seller profile through the Countdown API, by loginId or by https /usr/ or /str/ URL, for the seller-confirmation step of the deals rules: name, profile URL, login id or store slug, member-since, positive-feedback percent, followers, location, top-rated flag and a short description, each null when the vendor did not return it; when member-since, location, top-rated and description are all missing, warnings carries SELLER_FIELDS_ABSENT_FROM_SOURCE so omission is not mistaken for absence. resolved is false when the vendor returned no seller block, and the vendor's message is then in warnings. Each call spends one vendor credit, even when nothing resolves, and seller lookups are never refused by the credit reserve gate — only by a remembered account suspension (SOURCE_REJECTED, details.reason 'account_suspended', five minutes after a vendor 402 that said so): what this call spent is credits.usedThisRequest; ${SOURCE_CREDITS_SENTENCE} It answers inside its ${SOURCE_SELLER_TIMEOUT_MS / 1000} s tool deadline. This tool reads no listing, so it carries no price and no shipping figure; item-page shipping and auction prices are the concern of ebay_api_items and the Bridge.`,
     inputSchema: EbayApiSellerInput,
     outputSchema: EbayApiSellerOutput,
+  },
+  {
+    name: 'ebay_api_status',
+    scope: SCOPE_READ,
+    timeoutMs: SOURCE_STATUS_TIMEOUT_MS,
+    spendsCredits: false,
+    description:
+      'Read the Countdown API account budget in one call that spends no credit. Call it first, before any ebay_api_search or ebay_api_items, and plan the fire against gate.spendable: the credits the reserve gate will admit before it shuts, max(0, credits.remaining minus reserve.effective), null while the balance is unknown. credits.used is the account\'s month-to-date total (the same figure every charged result reports), never a per-call spend; credits.remaining is the balance that goes in the completion report. plan carries the vendor\'s plan name, credits_limit (the free trial\'s one-time 100 requests, or a paid plan\'s monthly allowance: Hobbyist 500, Starter 10,000, Production 250,000) and credits_reset_at; reserve carries COUNTDOWN_CREDIT_RESERVE as configured ("5%" of the plan limit or an absolute count such as "500"), the credit count it resolves to and its basis. gate.open says whether a search or item call would be admitted now; gate.reason names the refusal (below_reserve; reserve_not_below_plan_limit when an absolute reserve is not below the plan\'s limit and must be lowered or set to a percentage; account_suspended while the gateway remembers a vendor 402 that said the account is suspended, which shuts seller lookups too and which only subscribing to a plan lifts — account.suspended and account.vendorMessage carry the vendor\'s wording) or why the gate is open only by fallback (balance_unknown, reserve_unresolved: the vendor\'s own 402 is then the backstop). Seller lookups are never gated by the reserve. The account is probed fresh on every call with a short 8 s timeout and no retry; when the probe fails, probe.ok is false and the plan and credit figures are the last remembered ones, and when nothing is remembered at all the call fails with SOURCE_UNAVAILABLE (a suspension answer still returns the status). build.gateway is the serving gateway\'s GATEWAY_BUILD_SHA.',
+    inputSchema: EbayApiStatusInput,
+    outputSchema: EbayApiStatusOutput,
   },
 ];
 

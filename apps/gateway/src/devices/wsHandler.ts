@@ -147,6 +147,13 @@ export function handleAgentSocket(socket: WebSocket, deps: WsHandlerDeps): void 
 
       switch (message.type) {
         case 'heartbeat':
+          // devices.last_seen_at is what a later DEVICE_OFFLINE reports as
+          // "last seen" (devices/offline.ts). Stamped per heartbeat rather
+          // than only at hello so it stays within one interval of the truth
+          // even when the gateway itself dies before the close handler runs.
+          void deps.store.devices
+            .touchLastSeen(authenticatedDeviceId, new Date())
+            .catch((err) => deps.logger.warn({ err: String(err) }, 'Failed to stamp last_seen_at on heartbeat'));
           return;
         case 'ack':
           deps.registry.markAcked(message.requestId);
@@ -191,9 +198,15 @@ export function handleAgentSocket(socket: WebSocket, deps: WsHandlerDeps): void 
       // Mark sessions closed only when this close actually took the device
       // offline — a superseding reconnect keeps its own sessions (F-04).
       if (deps.registry.get(deviceId) === undefined) {
+        const droppedAt = new Date();
         void deps.store.browserSessions
-          .markClosedForDevice(deviceId, new Date())
+          .markClosedForDevice(deviceId, droppedAt)
           .catch((err) => deps.logger.warn({ err: String(err) }, 'Failed to close sessions on disconnect'));
+        // The drop is the last moment the device was seen: a DEVICE_OFFLINE
+        // raised from now on reports this stamp, not the connect time.
+        void deps.store.devices
+          .touchLastSeen(deviceId, droppedAt)
+          .catch((err) => deps.logger.warn({ err: String(err) }, 'Failed to stamp last_seen_at on disconnect'));
       }
       deps.logger.info({ deviceId }, 'Device disconnected');
     }

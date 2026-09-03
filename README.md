@@ -8,7 +8,7 @@ Implementation of the **Connected Browser Bridge for ChatGPT — SDD v0.5** (imp
 - Local policy engine is authoritative: URL/SSRF allowlist, secret-field blocking, protected-action deny rules, transaction-endpoint aborts
 - Purchases, bids, offers, seller messages, cart mutation, and credential/security actions are **blocked in MVP**
 
-The MCP tool surface (18 `browser_*` tools, two `dashboard_*` and two `deals_run_*` tools, plus three gateway-served `ebay_api_*` tools when `COUNTDOWN_API_KEY` is set), wire envelopes, error catalog, DB schema, and Compose topology follow the SDD's normative Appendix A/B/C shapes exactly.
+The MCP tool surface (18 `browser_*` tools, two `dashboard_*` and two `deals_run_*` tools, plus four gateway-served `ebay_api_*` tools — search, items, seller, and the credit-free `ebay_api_status` budget probe a run calls first — when `COUNTDOWN_API_KEY` is set), wire envelopes, error catalog, DB schema, and Compose topology follow the SDD's normative Appendix A/B/C shapes exactly.
 
 ## Repository layout (SDD §22)
 
@@ -131,13 +131,15 @@ First-run eBay state (SDD §32.1 step 11): with the agent's Chrome window open, 
 The stack **reuses** the pre-existing `fluxology-caddy` container on the external `fluxology-edge` network. It never creates, replaces, restarts, or reconfigures that Caddy, and no service publishes a host port.
 
 1. DNS A record for the MCP hostname → VPS public IPv4.
-2. `cp deploy/env.example deploy/.env`, fill in real values (`chmod 0600 deploy/.env`). Production requires `OAUTH_ISSUER`, `OAUTH_AUDIENCE`, `OAUTH_JWKS_URI`; a static bearer token is never accepted. The Countdown API source is configured in the same file: `COUNTDOWN_API_KEY` (blank disables the `ebay_api_*` tools; the key lives only in the gateway env), `EBAY_FORWARDER_ZIPCODE`, and the optional `COUNTDOWN_API_BASE_URL`, `COUNTDOWN_CREDIT_RESERVE`, `COUNTDOWN_MAX_CONCURRENCY` and `COUNTDOWN_TIMEOUT_MS` knobs.
+2. `cp deploy/env.example deploy/.env`, fill in real values (`chmod 0600 deploy/.env`). Production requires `OAUTH_ISSUER`, `OAUTH_AUDIENCE`, `OAUTH_JWKS_URI`; a static bearer token is never accepted. The Countdown API source is configured in the same file: `COUNTDOWN_API_KEY` (blank disables the `ebay_api_*` tools; the key lives only in the gateway env), `EBAY_FORWARDER_ZIPCODE`, and the optional `COUNTDOWN_API_BASE_URL`, `COUNTDOWN_CREDIT_RESERVE` (a percentage of the plan's credit limit, `5%` by default, or an absolute count; an absolute value the plan cannot satisfy is refused as such), `COUNTDOWN_MAX_CONCURRENCY` and `COUNTDOWN_TIMEOUT_MS` (per vendor request, at most 48 s: every `ebay_api_*` call answers inside the MCP client's 60 s) knobs. `GATEWAY_BUILD_SHA` is set by the image build and reported by `ebay_api_status` as `build.gateway`.
 3. Add `deploy/caddy-snippet.caddy` (with the real hostname) to the existing Caddy config; validate/reload Caddy with the existing method.
 4. `deploy/scripts/preflight.sh` — verifies `fluxology-edge` exists and `fluxology-caddy` is attached.
 5. `docker compose -f deploy/compose.yaml up -d --build`
 6. Migrations: `docker compose -f deploy/compose.yaml exec mcp-gateway node apps/gateway/dist/cli.js migrate up`
 7. Health: `https://<host>/healthz` and `/readyz` through Caddy.
 8. Pair a device: `docker compose -f deploy/compose.yaml exec mcp-gateway node apps/gateway/dist/cli.js device:pair --name <device-name>` (prints a one-time token valid 10 minutes).
+
+**Build provenance.** The image records the commit it was built from: `docker build -f apps/gateway/Dockerfile --build-arg GATEWAY_BUILD_SHA=$(git rev-parse --short=12 HEAD) -t <image> .` bakes the value into the OCI `org.opencontainers.image.revision` label (`docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' <image>`) and into the container's `GATEWAY_BUILD_SHA` environment, which the gateway reports through `ebay_api_status`. A build that does not pass the arg — CI's `docker build`, or a compose file without `build.args` such as `deploy/compose.yaml` — stamps the Dockerfile default `unknown`. The live FluxLab `vps/bridge` compose forwards it from its `deploy.sh`; keep it a build arg rather than an `.env` key, or `env_file` would override the baked value with a stale one.
 
 ## Windows agent setup (SDD §11, §13, §32)
 

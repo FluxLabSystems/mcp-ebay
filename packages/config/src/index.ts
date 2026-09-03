@@ -9,6 +9,8 @@ import {
   ARTIFACT_TTL_DEFAULT_SECONDS,
   ARTIFACT_TTL_MAX_SECONDS,
   HEARTBEAT_INTERVAL_SECONDS,
+  SOURCE_ITEMS_TIMEOUT_MS,
+  SOURCE_REQUEST_TIMEOUT_MAX_MS,
   type DashboardId,
 } from '@browser-bridge/protocol';
 
@@ -26,6 +28,47 @@ const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const
  */
 function compactPostalCode(value: string): string {
   return value.toUpperCase().replace(/\s+/g, '');
+}
+
+/**
+ * COUNTDOWN_CREDIT_RESERVE, parsed. An absolute form holds back a fixed
+ * credit count; a percent form holds back that share of the plan's
+ * credits_limit, which the gateway learns from the vendor's free account
+ * endpoint. The percent form is the default because an absolute figure
+ * silently outgrows a small plan: the first fire on the eBay API path
+ * (2026-09-03) was refused outright by a 500-credit reserve against the
+ * trial's one-time 100. `configured` is the normalised text ("500", "5%")
+ * for logs, refusal details and ebay_api_status.
+ */
+export type CountdownCreditReserve =
+  | { kind: 'absolute'; credits: number; configured: string }
+  | { kind: 'percent'; percent: number; configured: string };
+
+export const COUNTDOWN_CREDIT_RESERVE_DEFAULT = '5%';
+/** Reserving more than half a plan would refuse the fire the plan was bought for. */
+export const COUNTDOWN_CREDIT_RESERVE_MAX_PERCENT = 50;
+
+const CREDIT_RESERVE_FORMS = `an absolute credit count such as 500 (an integer of 0 or more) or a percentage of the plan's credit limit such as 5% (an integer from 0% to ${COUNTDOWN_CREDIT_RESERVE_MAX_PERCENT}%)`;
+
+/**
+ * Parse a COUNTDOWN_CREDIT_RESERVE value; null when it is neither accepted
+ * form. Blank reads as the default. Surrounding whitespace is trimmed, but
+ * nothing inside the value is ("5 %" is not a percentage).
+ */
+export function parseCreditReserve(raw: string | undefined): CountdownCreditReserve | null {
+  const trimmed = (raw ?? '').trim();
+  const text = trimmed === '' ? COUNTDOWN_CREDIT_RESERVE_DEFAULT : trimmed;
+  if (/^\d+$/.test(text)) {
+    const credits = Number(text);
+    return Number.isSafeInteger(credits) ? { kind: 'absolute', credits, configured: String(credits) } : null;
+  }
+  const percent = /^(\d+)%$/.exec(text);
+  if (percent !== null) {
+    const share = Number(percent[1]);
+    if (!Number.isSafeInteger(share) || share > COUNTDOWN_CREDIT_RESERVE_MAX_PERCENT) return null;
+    return { kind: 'percent', percent: share, configured: `${share}%` };
+  }
+  return null;
 }
 
 export const GatewayEnvSchema = z
@@ -105,20 +148,65 @@ export const GatewayEnvSchema = z
     COUNTDOWN_API_BASE_URL: httpsUrl.default('https://api.countdownapi.com'),
     /**
      * Search and item calls are refused with SOURCE_CREDITS_EXHAUSTED once
-     * the last observed credits_remaining is below this; a seller-profile
-     * call (one credit, rare) is still allowed.
+     * the last observed credits_remaining is below the reserve; a
+     * seller-profile call (one credit, rare) is still allowed. Either an
+     * absolute credit count ("500") or a percentage of the plan's credit
+     * limit ("5%", the default); see parseCreditReserve. Blank is the
+     * default, anything else fails validation naming the two forms.
      */
-    COUNTDOWN_CREDIT_RESERVE: z.coerce.number().int().min(0).default(500),
+    COUNTDOWN_CREDIT_RESERVE: z
+      .string()
+      .optional()
+      .transform((value, ctx) => {
+        const parsed = parseCreditReserve(value);
+        if (parsed === null) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `COUNTDOWN_CREDIT_RESERVE must be ${CREDIT_RESERVE_FORMS}, got ${JSON.stringify(value)}`,
+            input: value,
+          });
+          return z.NEVER;
+        }
+        return parsed;
+      }),
     /** Parallel product requests inside one ebay_api_items call. */
     COUNTDOWN_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(4),
-    /** Per upstream request; a five-page search can take most of a minute. */
-    COUNTDOWN_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(300_000).default(90_000),
+    /**
+     * Per vendor request. Bounded above by the tool deadline less 2 s of
+     * headroom (SOURCE_REQUEST_TIMEOUT_MAX_MS) so a slow vendor request
+     * times out on its own, and is reported as such, before the tool
+     * deadline cuts the call off: the MCP client allows a tool 60 s, so a
+     * request timeout the deadline cannot contain is a timeout the caller
+     * sees as a lost result while the vendor may still charge it.
+     */
+    COUNTDOWN_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(5_000)
+      .max(SOURCE_REQUEST_TIMEOUT_MAX_MS, {
+        message: `COUNTDOWN_TIMEOUT_MS must be at most ${SOURCE_REQUEST_TIMEOUT_MAX_MS} ms: the ${SOURCE_ITEMS_TIMEOUT_MS} ms tool deadline of ebay_api_search and ebay_api_items less 2000 ms of headroom, so a vendor request times out before the tool does`,
+      })
+      .default(45_000),
     /**
      * The MyUS Sarasota suite from the boards' multi-path shipping policy.
      * With EBAY_DESTINATION_POSTAL_CODE it is one of the only two zip codes
      * the gateway ever sends to the vendor (plans cap distinct zips).
      */
     EBAY_FORWARDER_ZIPCODE: z.string().default('34249'),
+    /**
+     * The git commit the gateway image was built from; the Dockerfile sets
+     * it from a build argument. ebay_api_status reports it as build.gateway
+     * so a run's report names the code that served it. Blank reads as
+     * 'unknown' rather than failing: an image built outside the Dockerfile
+     * still boots.
+     */
+    GATEWAY_BUILD_SHA: z
+      .string()
+      .optional()
+      .transform((value) => {
+        const sha = value?.trim();
+        return sha === undefined || sha === '' ? 'unknown' : sha;
+      }),
   })
   .check((ctx) => {
     const env = ctx.value;
@@ -201,11 +289,16 @@ export interface CountdownConfig {
   apiKey: string;
   /** Vendor root with trailing slashes stripped, e.g. https://api.countdownapi.com. */
   baseUrl: string;
-  /** Search and item calls are refused once the last observed credits_remaining is below this. */
-  creditReserve: number;
+  /**
+   * Search and item calls are refused once the last observed
+   * credits_remaining is below the reserve this resolves to: the absolute
+   * count as configured, or the percentage of the plan's credits_limit once
+   * the account endpoint has said what the limit is.
+   */
+  creditReserve: CountdownCreditReserve;
   /** Parallel product requests inside one ebay_api_items call (1..8). */
   maxConcurrency: number;
-  /** Per upstream request. */
+  /** Per vendor request; at most SOURCE_REQUEST_TIMEOUT_MAX_MS, so it expires before the tool deadline does. */
   timeoutMs: number;
   /**
    * The only two destinations the gateway ever sends; tool inputs name them
@@ -257,6 +350,8 @@ export interface GatewayConfig {
    * registered.
    */
   countdown: CountdownConfig | null;
+  /** GATEWAY_BUILD_SHA: the commit the image was built from, or 'unknown'. */
+  buildSha: string;
 }
 
 export function loadGatewayConfig(env: Record<string, string | undefined> = process.env): GatewayConfig {
@@ -317,6 +412,7 @@ export function loadGatewayConfig(env: Record<string, string | undefined> = proc
               forwarder: { customerLocation: 'us', customerZipcode: parsed.EBAY_FORWARDER_ZIPCODE },
             },
           },
+    buildSha: parsed.GATEWAY_BUILD_SHA,
     allowedHosts: [
       publicBaseUrl.hostname,
       'browser-mcp-gateway',

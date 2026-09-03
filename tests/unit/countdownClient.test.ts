@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { BridgeError } from '@browser-bridge/protocol';
-import { CountdownClient } from '@browser-bridge/source-countdown';
+import { COUNTDOWN_DEFAULT_TIMEOUT_MS, COUNTDOWN_RETRY_MIN_BUDGET_MS, CountdownClient } from '@browser-bridge/source-countdown';
 
 const API_KEY = 'sk-live-SECRET123';
 
@@ -240,6 +240,30 @@ describe('CountdownClient error mapping', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('maps a 402 whose message says the account is suspended to SOURCE_REJECTED, wherever the vendor puts the message', async () => {
+    // 2026-09-03: the trial account was suspended mid-fire, and every call
+    // answered 402 with this notice; a top-up cannot lift it.
+    const notice =
+      'Your account has been temporarily suspended as our systems detected multiple Free Trial accounts being active, or a disposable email address being used during signup. This suspension will automatically be removed when you subscribe to a Plan.';
+    const inRequestInfo = client(() => json(402, { request_info: { success: false, message: notice } }));
+    const err = await failure(inRequestInfo.instance.sellerProfile({ url: 'https://www.ebay.ca/usr/tweedsidesales' }));
+    expect(err.code).toBe('SOURCE_REJECTED');
+    expect(err.retryable).toBe(false);
+    expect(err.message).toBe(`Countdown API account suspended (HTTP 402): ${notice}`);
+    expect(err.details).toMatchObject({ reason: 'account_suspended', httpStatus: 402, status: 402, vendorMessage: notice, requestType: 'seller_profile', attempts: 1 });
+    expect(inRequestInfo.calls).toHaveLength(1);
+    assertNoKey(err);
+
+    const atRoot = client(() => json(402, { message: 'Account suspended.' }));
+    expect((await failure(atRoot.instance.account())).details).toMatchObject({ reason: 'account_suspended', vendorMessage: 'Account suspended.' });
+
+    // Out of credits is still out of credits.
+    const exhausted = client(() => json(402, { request_info: { success: false, message: 'Out of credits' } }));
+    const plain = await failure(exhausted.instance.search({ searchTerm: 'lego' }));
+    expect(plain.code).toBe('SOURCE_CREDITS_EXHAUSTED');
+    expect(plain.details.reason).toBeUndefined();
+  });
+
   it('maps 429 to RATE_LIMITED with the Retry-After header', async () => {
     const { instance, calls } = client(() => json(429, { request_info: { success: false, message: 'Too many requests' } }, { 'retry-after': '10' }));
     const err = await failure(instance.search({ searchTerm: 'lego' }));
@@ -320,5 +344,138 @@ describe('CountdownClient error mapping', () => {
     expect(err.message).toContain('search_results');
     expect(err.details).toMatchObject({ path: 'search_results', requestType: 'search' });
     assertNoKey(err);
+  });
+});
+
+describe('CountdownClient tool budget (plan §1.4: the MCP client allows a tool 60 s)', () => {
+  /** A fetch that never answers on its own and fails the way undici does when its signal aborts. */
+  const hanging: Responder = (call) =>
+    new Promise<Response>((_resolve, reject) => {
+      const signal = call.init?.signal;
+      if (signal === undefined || signal === null) return;
+      const fail = () => reject(signal.reason instanceof Error ? signal.reason : new DOMException('aborted', 'AbortError'));
+      if (signal.aborted) fail();
+      else signal.addEventListener('abort', fail, { once: true });
+    });
+  const budget = (remaining: number, signal?: AbortSignal) => ({ remainingMs: () => remaining, ...(signal === undefined ? {} : { signal }) });
+
+  it("caps an attempt's timeout to the remaining budget and skips a retry the budget cannot hold", async () => {
+    const { instance, calls, sleeps } = client(hanging, { timeoutMs: 30_000 });
+    const err = await failure(instance.search({ searchTerm: 'lego' }, { budget: budget(60) }));
+    expect(err.code).toBe('SOURCE_UNAVAILABLE');
+    expect(err.details).toMatchObject({ reason: 'timeout', timeoutMs: 60, attempts: 1, retrySkippedForBudget: true });
+    expect(err.message).toContain('timed out after 60 ms');
+    expect(calls).toHaveLength(1);
+    expect(sleeps).toEqual([]);
+    assertNoKey(err);
+  });
+
+  it('retries when the budget after the backoff still holds a request, and says so when it does not', async () => {
+    const generous = client((_call, attempt) => (attempt < 2 ? json(500, TRANSIENT_500) : json(200, OK_SEARCH)));
+    const result = await generous.instance.search({ searchTerm: 'lego' }, { budget: budget(20_000) });
+    expect(result.attempts).toBe(2);
+    expect(generous.calls).toHaveLength(2);
+
+    // 5 s left: a retry is a second timeout, not a second chance.
+    const tight = client(() => json(500, TRANSIENT_500));
+    const err = await failure(tight.instance.search({ searchTerm: 'lego' }, { budget: budget(5_000) }));
+    expect(err.code).toBe('SOURCE_UNAVAILABLE');
+    expect(err.details).toMatchObject({ status: 500, attempts: 1, retrySkippedForBudget: true, remainingBudgetMs: 5_000 });
+    expect(tight.calls).toHaveLength(1);
+    expect(tight.sleeps).toEqual([]);
+
+    // Exactly the minimum after the backoff still retries.
+    const exact = client((_call, attempt) => (attempt < 2 ? json(503, { request_info: { success: false, message: 'incident' } }) : json(200, OK_SEARCH)), {
+      retryDelaysMs: [2_000],
+      sleep: async () => {},
+    });
+    const served = await exact.instance.search({ searchTerm: 'lego' }, { budget: budget(12_000) });
+    expect(served.attempts).toBe(2);
+  });
+
+  it('a deadline that passes in flight abandons the request as possibly charged, without a retry', async () => {
+    const controller = new AbortController();
+    const { instance, calls } = client(hanging, { timeoutMs: 30_000 });
+    const pending = instance.product({ url: 'https://www.ebay.ca/itm/1' }, { budget: budget(30_000, controller.signal) });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    controller.abort(new Error('tool deadline'));
+    const err = await failure(pending);
+    expect(err.code).toBe('SOURCE_UNAVAILABLE');
+    expect(err.retryable).toBe(true);
+    expect(err.details).toMatchObject({ reason: 'deadline', requested: true, possiblyCharged: true, attempts: 1 });
+    expect(err.message).toMatch(/may still have served and charged/);
+    expect(calls).toHaveLength(1);
+    assertNoKey(err);
+  });
+
+  it('a deadline that has already passed sends nothing', async () => {
+    const controller = new AbortController();
+    controller.abort(new Error('tool deadline'));
+    const { instance, calls } = client(() => json(200, OK_SEARCH));
+    const err = await failure(instance.search({ searchTerm: 'lego' }, { budget: budget(0, controller.signal) }));
+    expect(err.code).toBe('SOURCE_UNAVAILABLE');
+    expect(err.details).toMatchObject({ reason: 'deadline', requested: false, possiblyCharged: false });
+    expect(err.message).toContain('not sent');
+    expect(calls).toHaveLength(0);
+  });
+
+  it("a call's own timeoutMs cap and retry:false override the configured terms: the account probe's", async () => {
+    const capped = client(hanging, { timeoutMs: 30_000 });
+    const err = await failure(capped.instance.account({ timeoutMs: 50, retry: false }));
+    expect(err.code).toBe('SOURCE_UNAVAILABLE');
+    expect(err.details).toMatchObject({ reason: 'timeout', timeoutMs: 50, attempts: 1 });
+    expect(err.details.retrySkippedForBudget).toBeUndefined();
+    expect(capped.calls).toHaveLength(1);
+
+    const noRetry = client(() => json(500, TRANSIENT_500));
+    const failed = await failure(noRetry.instance.account({ retry: false }));
+    expect(failed.details).toMatchObject({ status: 500, attempts: 1 });
+    expect(noRetry.calls).toHaveLength(1);
+    expect(noRetry.sleeps).toEqual([]);
+    // The cap never raises the configured timeout.
+    const raised = client(hanging, { timeoutMs: 40 });
+    expect((await failure(raised.instance.account({ timeoutMs: 5_000, retry: false }))).details).toMatchObject({ timeoutMs: 40 });
+  });
+
+  it('the constants match the catalog: retries need 10 s and the default request timeout is 45 s', () => {
+    expect(COUNTDOWN_RETRY_MIN_BUDGET_MS).toBe(10_000);
+    expect(COUNTDOWN_DEFAULT_TIMEOUT_MS).toBe(45_000);
+  });
+});
+
+describe('CountdownClient account()', () => {
+  const ACCOUNT = {
+    request_info: { success: true },
+    account_info: {
+      api_key: API_KEY,
+      name: 'Operator',
+      email: 'operator@example.com',
+      plan: 'free',
+      credits_used: 18,
+      credits_limit: 100,
+      credits_remaining: 82,
+      credits_reset_at: null,
+    },
+  };
+
+  it('reads the plan and credit figures, and strips the key and email the vendor echoes', async () => {
+    const { instance } = client(() => json(200, ACCOUNT));
+    const result = await instance.account();
+    expect(result.account).toEqual({ plan: 'free', creditsUsed: 18, creditsLimit: 100, creditsRemaining: 82, creditsResetAt: null });
+    expect(result.credits).toEqual({ used: 18, remaining: 82, usedThisRequest: null });
+    expect(result.body.account_info).toMatchObject({ plan: 'free', name: 'Operator' });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(API_KEY);
+    expect(serialized).not.toContain('operator@example.com');
+    expect(serialized).not.toContain('api_key');
+  });
+
+  it('reads every figure as null when the vendor sends no account block, and a reset date when it does', async () => {
+    const bare = client(() => json(200, { request_info: { success: true } }));
+    expect((await bare.instance.account()).account).toEqual({ plan: null, creditsUsed: null, creditsLimit: null, creditsRemaining: null, creditsResetAt: null });
+    const paid = client(() =>
+      json(200, { request_info: { success: true }, account_info: { plan: 'starter', credits_used: 640, credits_limit: 10_000, credits_remaining: 9_360, credits_reset_at: '2026-10-01T00:00:00Z' } }),
+    );
+    expect((await paid.instance.account()).account).toEqual({ plan: 'starter', creditsUsed: 640, creditsLimit: 10_000, creditsRemaining: 9_360, creditsResetAt: '2026-10-01T00:00:00Z' });
   });
 });

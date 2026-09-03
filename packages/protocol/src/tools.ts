@@ -658,13 +658,20 @@ export const BatchExtractItemSchema = z.strictObject({
    * Per-slot failure. Usually a catalogued bridge error from navigation or
    * extraction; the slot-only code LISTING_UNAVAILABLE (not in the §17
    * catalog — it is a page outcome, not a call failure) marks a page that
-   * answered but holds no listing.
+   * answered but holds no listing. `details` is the same free-form object a
+   * BridgeError payload carries, present only when the producer has
+   * something structured to say: ebay_api_items uses it on a slot the tool
+   * deadline cut off ({reason:'deadline', requested, possiblyCharged}) so a
+   * run can tell an item that was never requested (never charged) from one
+   * whose request was abandoned in flight (possibly charged). The Bridge
+   * never sends it, so a Bridge slot stays valid unchanged.
    */
   error: z.union([
     z.strictObject({
       code: z.string(),
       message: z.string(),
       retryable: z.boolean(),
+      details: z.record(z.string(), z.unknown()).optional(),
     }),
     z.null(),
   ]),
@@ -1560,3 +1567,117 @@ export const EbayApiSellerOutput = z.strictObject({
   requestIds: z.array(z.string()),
 });
 export type EbayApiSellerOutputType = z.infer<typeof EbayApiSellerOutput>;
+
+// --- ebay_api_status (§3.4) --------------------------------------------------
+
+/**
+ * The account probe behind the credit budget. It takes no arguments: the
+ * tool always asks the vendor's free account endpoint, because a stale
+ * figure is exactly what a run must not plan against. The root stays a
+ * strict object, like every other tool on this server.
+ */
+export const EbayApiStatusInput = z.strictObject({});
+export type EbayApiStatusInputType = z.infer<typeof EbayApiStatusInput>;
+
+/**
+ * What the credit reserve was computed from. 'absolute' is a configured
+ * credit count; 'plan_limit' is a configured percentage applied to the
+ * plan's credits_limit learned from the account; 'unknown_limit' is a
+ * percentage whose limit no probe has yet supplied, in which state the gate
+ * applies a reserve of 0 and every charged result carries
+ * CREDIT_RESERVE_UNRESOLVED.
+ */
+export const EbayApiReserveBasisSchema = z.enum(['absolute', 'plan_limit', 'unknown_limit']);
+export type EbayApiReserveBasis = z.infer<typeof EbayApiReserveBasisSchema>;
+
+/**
+ * Why the gate is shut, or why it is open only by fallback; null when it is
+ * open on the arithmetic. 'below_reserve' and 'reserve_not_below_plan_limit'
+ * are the two refusals ebay_api_search and ebay_api_items answer with
+ * (SOURCE_CREDITS_EXHAUSTED, details.reason of the same name).
+ * 'account_suspended' shuts every tool, seller lookups included: the vendor
+ * answered a 402 whose message says the account is suspended (2026-09-03,
+ * the trial account mid-fire), which no top-up can lift, and the gateway
+ * refuses without contacting the vendor for five minutes (SOURCE_REJECTED,
+ * details.reason 'account_suspended'). 'balance_unknown' and
+ * 'reserve_unresolved' are open states: the probe failed and nothing (or,
+ * under a percent reserve, no plan limit) is known, so the gate admits and
+ * the vendor's own 402 is the backstop.
+ */
+export const EbayApiGateReasonSchema = z.enum([
+  'below_reserve',
+  'reserve_not_below_plan_limit',
+  'account_suspended',
+  'balance_unknown',
+  'reserve_unresolved',
+]);
+export type EbayApiGateReason = z.infer<typeof EbayApiGateReasonSchema>;
+
+/**
+ * The budget a run plans a fire against, in one call that spends nothing.
+ * `credits.used` is the account's month-to-date total (not any call's
+ * spend); `credits.remaining` is the figure for the completion report;
+ * `gate.spendable` is what the reserve gate will admit from here:
+ * max(0, remaining − reserve.effective), with an unresolved reserve
+ * counting as 0 exactly as the gate counts it, and null while the balance
+ * is unknown. When the probe fails, `probe.ok` is false and the plan and
+ * credit figures are the last remembered ones; when nothing is remembered
+ * at all the tool fails with SOURCE_UNAVAILABLE instead of inventing a
+ * balance.
+ */
+export const EbayApiStatusOutput = z.strictObject({
+  source: z.literal('countdown'),
+  siteProfile: z.literal('ebay.api.v1'),
+  /** When this call's account probe was issued. */
+  probedAt: z.iso.datetime({ offset: true }),
+  probe: z.strictObject({
+    ok: z.boolean(),
+    httpStatus: z.union([z.int(), z.null()]),
+    error: z.union([z.strictObject({ code: z.string(), message: z.string() }), z.null()]),
+  }),
+  plan: z.strictObject({
+    /** The vendor's plan name, e.g. "free", "hobbyist", "starter"; null until a probe has said. */
+    name: z.union([z.string(), z.null()]),
+    /** credits_limit: the trial's one-time 100, or a paid plan's monthly allowance. */
+    creditsLimit: z.union([z.int(), z.null()]),
+    /** credits_reset_at as the vendor sent it; null on the one-time trial or until a probe has said. */
+    creditsResetAt: z.union([z.string(), z.null()]),
+  }),
+  account: z.strictObject({
+    /**
+     * True while the gateway remembers a vendor 402 that said the account is
+     * suspended (five minutes from the last such answer): every tool is
+     * refused with SOURCE_REJECTED until then, and no top-up helps — the
+     * vendor lifts the suspension when a plan is subscribed.
+     */
+    suspended: z.boolean(),
+    /** The vendor's own wording of the suspension; null when not suspended. */
+    vendorMessage: z.union([z.string(), z.null()]),
+  }),
+  credits: z.strictObject({
+    /** The account's month-to-date total, as on every charged result: never a per-call figure. */
+    used: z.union([z.int(), z.null()]),
+    /** The balance for the completion report. */
+    remaining: z.union([z.int(), z.null()]),
+  }),
+  reserve: z.strictObject({
+    /** COUNTDOWN_CREDIT_RESERVE as configured, normalised: "5%" or "500". */
+    configured: z.string(),
+    /** The credit count the gate holds back; null while a percent reserve's plan limit is unknown. */
+    effective: z.union([z.int().min(0), z.null()]),
+    basis: EbayApiReserveBasisSchema,
+  }),
+  gate: z.strictObject({
+    /** Whether a search or item call would be admitted right now. */
+    open: z.boolean(),
+    reason: z.union([EbayApiGateReasonSchema, z.null()]),
+    /** Credits a run may spend before the gate shuts: max(0, remaining − effective reserve); null while the balance is unknown. */
+    spendable: z.union([z.int().min(0), z.null()]),
+  }),
+  build: z.strictObject({
+    /** GATEWAY_BUILD_SHA of the serving gateway, or "unknown". */
+    gateway: z.string(),
+  }),
+  warnings: z.array(z.string()),
+});
+export type EbayApiStatusOutputType = z.infer<typeof EbayApiStatusOutput>;

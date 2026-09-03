@@ -5,6 +5,7 @@ export * from './broker.js';
 export * from './countdown/source.js';
 export * from './countdown/tools.js';
 export * from './dashboards/client.js';
+export * from './devices/offline.js';
 export * from './devices/registry.js';
 export * from './devices/wsHandler.js';
 export * from './auth/verifier.js';

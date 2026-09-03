@@ -73,12 +73,39 @@ proves them against `tests/fixtures/countdown/`.
   every time; the client retries 5xx, network errors and timeouts twice
   (2 s, 6 s) before `SOURCE_UNAVAILABLE`.
 
+## The account endpoint, budgets and the 402s (2026-09-03)
+
+- **`GET /account` is free** and returns `account_info {plan, credits_used,
+  credits_limit, credits_remaining, credits_reset_at, …}` — plus the
+  account's `api_key` and `email`, which `account()` strips from the body
+  before returning it; `result.account` is the typed, key-free reading. The
+  trial is a one-time 100 requests; paid plans are monthly (Hobbyist 500,
+  Starter 10,000, Production 250,000).
+- **Every call takes a budget** (`CountdownCallOptions.budget`): the
+  attempt's timeout is capped to what the tool call has left, a retry is
+  skipped when fewer than `COUNTDOWN_RETRY_MIN_BUDGET_MS` (10 s) would remain
+  after its backoff (the error then carries `retrySkippedForBudget`), and the
+  budget's `signal` aborts an in-flight fetch at the deadline — the error is
+  then `SOURCE_UNAVAILABLE` with `reason: 'deadline'` and `possiblyCharged`
+  true, because the vendor may still serve and charge a request the gateway
+  stopped waiting for. `timeoutMs` and `retry: false` on a call override the
+  configured terms: the gateway's account probe runs on 8 s and no retry.
+  The default request timeout is 45 s (the MCP client allows a tool 60 s).
+- **A 402 means one of two things.** Out of credits is
+  `SOURCE_CREDITS_EXHAUSTED`. A 402 whose message (in `request_info.message`
+  or the body's `message`) says the account is suspended — seen on the trial
+  mid-fire: "temporarily suspended … removed when you subscribe to a Plan" —
+  is `SOURCE_REJECTED` with `reason: 'account_suspended'`, `httpStatus: 402`
+  and the vendor's wording in `vendorMessage`: no top-up lifts it, and the
+  gateway remembers it for five minutes.
+
 ## Exports
 
 `CountdownClient` (`search`, `product`, `sellerProfile`, `account`),
 `mapSearchRows`, `mergeSplitSearch`, `readPagination`, `mapItem`,
 `mapSellerProfile`, the response schemas, `parseCountdownBody`,
 `parseSellerLink`, `normalizeCondition`, `domainCurrency`, `mergeWarnings`,
+`summarizeAccount`, `stripAccountSecrets`, `COUNTDOWN_RETRY_MIN_BUDGET_MS`,
 and the `COUNTDOWN_WARNING` code table. Records carry
 `siteProfile: 'ebay.api.v1'`, `profileRevision: EBAY_API_PROFILE_REVISION`
 and `pageRevision: 0`.

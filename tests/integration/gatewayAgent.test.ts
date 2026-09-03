@@ -5,10 +5,16 @@
  */
 import { pino } from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { BridgeError } from '@browser-bridge/protocol';
-import { CommandBroker } from '@browser-bridge/gateway';
+import { BridgeError, ERROR_CATALOG } from '@browser-bridge/protocol';
+import { CommandBroker, type DeviceOfflineDetails } from '@browser-bridge/gateway';
 import { buildGatewayHarness, type GatewayHarness } from '../helpers/gatewayHarness.js';
-import { connectAgent, registerTestDevice, stubSessionHost, type ConnectedAgent } from '../helpers/agentHarness.js';
+import {
+  connectAgent,
+  registerTestDevice,
+  stubSessionHost,
+  type ConnectedAgent,
+  type TestDevice,
+} from '../helpers/agentHarness.js';
 import { ModernMcpClient } from '../helpers/mcpClient.js';
 
 async function waitFor<T>(fn: () => Promise<T>, predicate: (value: T) => boolean, timeoutMs = 5000): Promise<T> {
@@ -76,7 +82,12 @@ describe('device channel lifecycle (§11, §12)', () => {
   it('commands to unknown devices fail with DEVICE_OFFLINE', async () => {
     const response = await client.callTool('browser_session_open', { deviceId: 'dev_ghost' });
     const text = response.body.result?.content?.[0]?.text ?? '{}';
-    expect(JSON.parse(text).error.code).toBe('DEVICE_OFFLINE');
+    const { error } = JSON.parse(text) as { error: { code: string; details: DeviceOfflineDetails } };
+    expect(error.code).toBe('DEVICE_OFFLINE');
+    // The payload echoes the id as passed and lists the paired devices, so
+    // a wrong id is distinguishable from a down PC (exact shapes below).
+    expect(error.details).toMatchObject({ deviceId: 'dev_ghost', resolvedDeviceId: 'dev_ghost' });
+    expect(error.details.knownDevices.map((device) => device.deviceId)).toContain(deviceId);
   });
 
   it('writes a linked command audit event alongside the tool event (§26, F-03)', async () => {
@@ -298,4 +309,125 @@ describe('reconnect and reconciliation (§12.5)', () => {
     });
     expect(recovered.status).toBe('ok');
   });
+});
+
+/**
+ * The deals routine's 2026-09-03T07:13Z fire saw DEVICE_OFFLINE with
+ * details {deviceId:"default"} four times and could not tell "the one PC
+ * is down" from "the wrong id was passed": there is no device-listing tool
+ * on the MCP side. The payload now says which PC, when it was last seen and
+ * whether another one is up. Own harness so the shared agent's 20 s
+ * heartbeat (the gateway here drops a silent device after 3 s) cannot
+ * flap under these timing-sensitive checks.
+ */
+describe('DEVICE_OFFLINE names what the gateway knows (2026-09-03 deals-routine report)', () => {
+  const pairedLastSeenAt = new Date('2026-09-03T02:41:12Z');
+  let offline: GatewayHarness;
+  let offlineUrls: { httpUrl: string; wsUrl: string };
+  let offlineClient: ModernMcpClient;
+  let pc: TestDevice;
+  let pcId: string;
+  let pcAgent: ConnectedAgent | null = null;
+
+  type OfflineError = { code: string; message: string; retryable: boolean; details: DeviceOfflineDetails };
+
+  beforeAll(async () => {
+    offline = buildGatewayHarness({ heartbeatSeconds: 1 });
+    offlineUrls = await offline.listen();
+    pc = await registerTestDevice(offline, 'PC-ETHAN');
+    pcId = pc.identity.deviceId!;
+    await offline.store.devices.touchLastSeen(pcId, pairedLastSeenAt);
+    offlineClient = new ModernMcpClient('https://browser-mcp.test.example/mcp', offline.fetch);
+  });
+
+  afterAll(async () => {
+    await pcAgent?.stop();
+    await offline.close();
+  });
+
+  it('one paired PC and no agent connected: "default" reports the PC and when it was last seen', async () => {
+    const response = await offlineClient.callTool('browser_session_open', { deviceId: 'default' });
+    expect(response.body.result?.isError).toBe(true);
+    const { error } = JSON.parse(response.body.result?.content?.[0]?.text ?? '{}') as { error: OfflineError };
+    expect(error).toMatchObject({ code: 'DEVICE_OFFLINE', retryable: true });
+    expect(error.details).toEqual({
+      deviceId: 'default',
+      resolvedDeviceId: null,
+      onlineDeviceIds: [],
+      knownDevices: [
+        { deviceId: pcId, name: 'PC-ETHAN', status: 'active', lastSeenAt: '2026-09-03T02:41:12.000Z', online: false },
+      ],
+      hint: `No Windows agent is connected; PC-ETHAN (${pcId}) was last seen 2026-09-03T02:41:12.000Z.`,
+    });
+    expect(error.message).toBe(`${ERROR_CATALOG.DEVICE_OFFLINE.message} ${error.details.hint}`);
+  });
+
+  it('a wrong id while the PC is online: the payload names the device that is up', async () => {
+    pcAgent = connectAgent(offlineUrls, pc.identity, stubSessionHost(), { heartbeatSeconds: 1 });
+    pcAgent.connection.start();
+    await pcAgent.waitReady();
+
+    const response = await offlineClient.callTool('browser_session_open', { deviceId: 'dev_ghost' });
+    const { error } = JSON.parse(response.body.result?.content?.[0]?.text ?? '{}') as { error: OfflineError };
+    expect(error.code).toBe('DEVICE_OFFLINE');
+    expect(error.details).toMatchObject({ deviceId: 'dev_ghost', resolvedDeviceId: 'dev_ghost', onlineDeviceIds: [pcId] });
+    expect(error.details.knownDevices).toEqual([
+      expect.objectContaining({ deviceId: pcId, name: 'PC-ETHAN', status: 'active', online: true }),
+    ]);
+    // hello re-stamped last_seen_at past the value the row was paired with.
+    const seen = error.details.knownDevices[0]!.lastSeenAt;
+    expect(seen).not.toBeNull();
+    expect(Date.parse(seen!)).toBeGreaterThan(pairedLastSeenAt.getTime());
+    expect(error.details.hint).toBe(`deviceId "dev_ghost" is not a paired device; connected: PC-ETHAN (${pcId}).`);
+    expect(error.message).toBe(`${ERROR_CATALOG.DEVICE_OFFLINE.message} ${error.details.hint}`);
+  });
+
+  it('stamps devices.last_seen_at on every agent heartbeat, not only at hello', async () => {
+    const hello = (await offline.store.devices.get(pcId))?.lastSeenAt ?? null;
+    expect(hello).not.toBeNull();
+    const advanced = await waitFor(
+      () => offline.store.devices.get(pcId),
+      (row) => (row?.lastSeenAt?.getTime() ?? 0) > hello!.getTime(),
+    );
+    expect(advanced?.lastSeenAt?.getTime() ?? 0).toBeGreaterThan(hello!.getTime());
+  });
+
+  it('a device dropping mid-command surfaces DEVICE_OFFLINE dated to the drop, through the broker', async () => {
+    const drop = await registerTestDevice(offline, 'drop-device');
+    const dropId = drop.identity.deviceId!;
+    const dropAgent = connectAgent(
+      offlineUrls,
+      drop.identity,
+      stubSessionHost('bs_drop_session_000000000001', { openDelayMs: 4000 }),
+      { heartbeatSeconds: 1 },
+    );
+    dropAgent.connection.start();
+    await dropAgent.waitReady();
+    try {
+      const before = Date.now();
+      const pending = offline.broker.call('browser_session_open', { deviceId: dropId }, { subject: null, traceparent: null });
+      // Let the command reach the agent, then drop the socket from the
+      // gateway side: unregister settles the pending request with the
+      // registry's bare DEVICE_OFFLINE (unchanged), the close handler
+      // stamps last_seen_at, and the broker adds what it knows.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      offline.registry.get(dropId)!.socket.terminate();
+      const err = await pending.then(
+        () => null,
+        (e: unknown) => BridgeError.from(e),
+      );
+      expect(err?.code).toBe('DEVICE_OFFLINE');
+      expect(err?.retryable).toBe(true);
+      const details = err!.details as unknown as DeviceOfflineDetails;
+      expect(details).toMatchObject({ deviceId: dropId, resolvedDeviceId: dropId, onlineDeviceIds: [pcId] });
+      const dropped = details.knownDevices.find((device) => device.deviceId === dropId);
+      expect(dropped).toMatchObject({ name: 'drop-device', status: 'active', online: false });
+      expect(Date.parse(dropped!.lastSeenAt!)).toBeGreaterThanOrEqual(before);
+      expect(details.hint).toBe(
+        `drop-device (${dropId}) is not connected (was last seen ${dropped!.lastSeenAt}); connected: PC-ETHAN (${pcId}).`,
+      );
+    } finally {
+      await dropAgent.stop();
+    }
+  }, 20_000);
 });

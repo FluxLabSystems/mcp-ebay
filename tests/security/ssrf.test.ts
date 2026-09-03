@@ -156,7 +156,7 @@ describe('Countdown source tools never hand the vendor an off-policy URL (plan Â
     const config: CountdownConfig = {
       apiKey: 'cd-ssrf-direct-key',
       baseUrl: 'https://api.countdownapi.com',
-      creditReserve: 0,
+      creditReserve: { kind: 'absolute', credits: 0, configured: '0' },
       maxConcurrency: 2,
       timeoutMs: 5_000,
       destinations: {
@@ -194,6 +194,12 @@ describe('Countdown source tools forward the parsed URL, never the raw string (p
   const forwarded: string[] = [];
   const recordingVendor: typeof fetch = (async (input: RequestInfo | URL) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url);
+    // The reserve gate reads the free account endpoint before the first
+    // charged request; it forwards no URL and is not what this test records.
+    if (url.pathname === '/account') {
+      const body = { request_info: { success: true }, account_info: { plan: 'starter', credits_used: 10, credits_limit: 10_000, credits_remaining: 9_990 } };
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
     forwarded.push(url.searchParams.get('url') ?? '(none)');
     const type = url.searchParams.get('type');
     const body =
