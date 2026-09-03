@@ -564,6 +564,10 @@ updated where needed. Commit as `P0:`-prefixed commits on the branch.
 
 ## 6. Phase 1: mcp-ebay implementation (one PR)
 
+**Status: executed 2026-09-02** in mcp-ebay PR #36 (eight commits, one per work
+package, plus the fixes from an adversarial review of the combined diff) and
+PR #37 (per-call credit accounting after the live check).
+
 Work on `claude/countdown-api-deals-routine-1cm3of`. Keep the compaction move
 as its own commit so it is reviewable as a no-behaviour-change refactor.
 
@@ -685,6 +689,11 @@ fixture-backed answers from Phase 0 and any §1 correction. Open the PR against
 
 ## 7. Phase 2: FluxLab deploy config and operator rollout (one PR + operator steps)
 
+**Status: executed 2026-09-02.** Repository side in FluxLab PR #121 (merged);
+the operator rotated the key, put it in `vps/bridge/.env` and redeployed with
+`make bridge`; the live check in `docs/live-checks/2026-09-02-countdown-live-check.md`
+(mcp-ebay PR #37, merged) confirmed all three tools on the connector.
+
 Claude Code, on `claude/countdown-api-deals-routine-1cm3of` in FluxLab:
 
 1. `vps/bridge/.env.example`: add a `# ---- eBay API source (Countdown) ----`
@@ -718,6 +727,10 @@ one live call verified.
 ---
 
 ## 8. Phase 3: skill and routine integration (fluxlab-boards, one PR)
+
+**Status: implemented 2026-09-03** in fluxlab-boards PR #25 (skill bullet, prompt
+step 4 and 9, README rules 1 and 4, queue-contract component); the operator's
+re-save of the routine prompt and the FluxLab submodule bump follow the merge.
 
 Claude Code, on `claude/countdown-api-deals-routine-1cm3of` in fluxlab-boards.
 Gate: Phase 2 acceptance holds; the skill must never reference tools the
