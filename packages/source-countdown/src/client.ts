@@ -349,6 +349,16 @@ export class CountdownClient {
     // attempt is awaited, and a property narrowed before the await would
     // read as still false after it.
     const deadlinePassed = (): boolean => budget?.signal?.aborted === true;
+    // The per-attempt timeout is capped to what remains ONLY when the budget
+    // has no signal to enforce the deadline itself. When it does (the normal
+    // path — the gateway aborts this signal at the tool deadline), that signal
+    // already cancels the in-flight fetch at the deadline, so capping the
+    // attempt timeout to the remaining budget is redundant. Worse, floored a
+    // millisecond below the deadline it fires just before the signal and
+    // rejects with a "timeout" error, masking the deadline error the deadline
+    // was about to raise. Leaving the cap off here lets the signal be the sole
+    // cutoff, so the deadline path is reached deterministically.
+    const attemptTimeoutCap = (): number => (budget?.signal === undefined ? remainingMs() : Number.POSITIVE_INFINITY);
     for (let attempt = 0; ; attempt += 1) {
       const attempts = attempt + 1;
       const base: Record<string, unknown> = { requestType, endpoint: path, attempts };
@@ -356,10 +366,12 @@ export class CountdownClient {
       // attempt was sent, so the vendor may still have charged it.
       if (deadlinePassed()) throw this.abandoned(requestType, base, attempt > 0);
 
-      // The attempt's timeout is the configured one (or the call's own
-      // cap), capped to what the tool call has left, so the request always
-      // fails on its own terms before the tool deadline fails it.
-      const timeoutMs = Math.max(1, Math.min(this.timeoutMs, options.timeoutMs ?? this.timeoutMs, remainingMs()));
+      // The attempt's timeout is the configured one (or the call's own cap).
+      // It is further capped to the remaining budget only when no signal
+      // enforces the deadline (see attemptTimeoutCap); when a signal is
+      // present the signal is the deadline and the attempt fails on the
+      // deadline's terms, not a hair before it.
+      const timeoutMs = Math.max(1, Math.min(this.timeoutMs, options.timeoutMs ?? this.timeoutMs, attemptTimeoutCap()));
       const outcome = await this.attempt(url, timeoutMs, budget?.signal);
       if (deadlinePassed()) throw this.abandoned(requestType, base, true);
 
