@@ -7,6 +7,7 @@ import { buildAuditEvent } from '@browser-bridge/audit';
 import {
   BridgeError,
   BROWSER_SESSION_HANDLE_PATTERN,
+  DEFAULT_PROFILE_NAME,
   isAllowedArtifactMime,
   isBridgeErrorCode,
   EXTRACT_FAMILY_COMMANDS,
@@ -204,7 +205,7 @@ export class CommandBroker {
       await this.deps.store.browserSessions.upsert({
         browserSessionHandle: handle,
         deviceId,
-        profileName: String(structured.profileName ?? 'ebay-research'),
+        profileName: String(structured.profileName ?? DEFAULT_PROFILE_NAME),
         status: structured.status === 'degraded' ? 'degraded' : 'ready',
         openedAt: now,
         lastSeenAt: now,

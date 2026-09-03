@@ -157,7 +157,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'reversible',
     timeoutMs: DEFAULT_TIMEOUT_MS,
     description:
-      'Launch or reuse the dedicated persistent Google Chrome automation browser context on the paired Windows device. Returns an opaque browserSessionHandle used by every other browser tool.',
+      'Launch or reuse the persistent Google Chrome automation browser context that profileName names on the paired Windows device. The default profile (ebay-research) is the logged-in eBay research context; any other profileName (letters, digits, ".", "_", "-") gets its own isolated Chrome instance, cookies, handle and tabs, so concurrently scheduled routines never share a tab — open one profile per routine (for example wardrobe-research, office-research) and re-open the same name to reuse it. Returns an opaque browserSessionHandle used by every other browser tool.',
     inputSchema: SessionOpenInput,
     outputSchema: SessionOpenOutput,
   },
@@ -189,7 +189,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'read',
     timeoutMs: SNAPSHOT_TIMEOUT_MS,
     description:
-      'Semantic page snapshot with stable elementRef values scoped to the returned pageRevision. Secret field values are redacted.',
+      'Semantic page snapshot with stable elementRef values scoped to the returned pageRevision. Link-like nodes carry their resolved absolute href (null on everything else), so a listing grid on a host with no extractor can be traversed by browser_navigate instead of by clicking. Secret field values are redacted.',
     inputSchema: SnapshotInput,
     outputSchema: SnapshotOutput,
   },

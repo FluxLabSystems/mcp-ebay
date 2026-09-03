@@ -154,7 +154,7 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\install-logon-task.ps1 
   -GatewayUrl wss://browser-mcp.example.com/agent/ws       # per-user logon task, no Windows service
 ```
 
-The dedicated automation profile lives at `%LOCALAPPDATA%\Fluxology\BrowserBridge\profiles\ebay-research` — never Chrome's normal `User Data` directory. Log into eBay once in that profile and set the delivery destination to M6H 2W9 (SDD §32.1 step 11). The device private key is DPAPI-protected (CurrentUser); only the public key leaves the PC.
+The dedicated automation profile lives at `%LOCALAPPDATA%\Fluxology\BrowserBridge\profiles\ebay-research` — never Chrome's normal `User Data` directory. Log into eBay once in that profile and set the delivery destination to M6H 2W9 (SDD §32.1 step 11). That directory is the default `profileName` (`ebay-research`); `browser_session_open` with any other `profileName` (letters, digits, `.`, `_`, `-`) launches its own isolated Chrome instance in the sibling directory `profiles\ebay-research.<profileName>`, with its own cookies, handle and tabs, so two routines that fire at the same time never drive one tab. Routines that do not need the eBay login should open their own profile (the wardrobe and office skills name theirs). The device private key is DPAPI-protected (CurrentUser); only the public key leaves the PC.
 
 ## Agent console dashboard
 

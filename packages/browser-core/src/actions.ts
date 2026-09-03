@@ -3,7 +3,7 @@
  * Every interaction re-inspects the live element and consults the policy
  * hooks before acting; stale refs fail deterministically (§14).
  */
-import type { Locator } from 'playwright';
+import type { Locator, Page } from 'playwright';
 import type { ActionContext, FieldContext } from '@browser-bridge/policy';
 import { BridgeError, parseElementRef, ALLOWED_KEYS } from '@browser-bridge/protocol';
 import type { BrowserSessionRuntime, TabState } from './session.js';
@@ -103,14 +103,27 @@ export interface ClickResult {
 }
 
 /**
- * How long a click waits for a popup to surface. A control announcing
- * target=_blank gets the longer window; anything else gets a short grace
- * so an in-place click is not taxed for a popup it never opens.
+ * How long a click waits for a popup to surface, measured from the moment
+ * the click itself has completed (see below). A control that announces a
+ * new tab gets the longer window; anything else gets a short grace so an
+ * in-place click is not taxed for a popup it never opens.
  */
 const POPUP_WAIT_ANNOUNCED_MS = 2500;
-const POPUP_WAIT_GRACE_MS = 400;
+const POPUP_WAIT_GRACE_MS = 1000;
 /** How long to wait for the context handler's adopt/deny decision once a popup exists. */
 const POPUP_DECISION_MS = 5000;
+
+/**
+ * A control announces a popup through target=_blank or through its
+ * accessible name — Zazzle's "Personalize this design. (opens in new tab)"
+ * is a <button> whose handler calls window.open, and the name is the only
+ * announcement it makes (2026-09-03 wardrobe re-file).
+ */
+const ANNOUNCES_NEW_TAB_RE = /opens?\s+(?:in\s+)?(?:a\s+)?new\s+(?:tab|window)/i;
+
+function announcesPopup(info: LiveElementInfo): boolean {
+  return info.target === '_blank' || ANNOUNCES_NEW_TAB_RE.test(info.accessibleName) || ANNOUNCES_NEW_TAB_RE.test(info.text);
+}
 
 export async function click(
   session: BrowserSessionRuntime,
@@ -127,23 +140,56 @@ export async function click(
   }
   const beforeRevision = tab.revision;
   const beforeUrl = tab.page.url();
+  const knownTabIds = new Set(session.tabIds());
   // Listen for the popup BEFORE clicking: Playwright emits 'popup' on the
   // opener page as soon as the new page exists, and a listener attached
   // afterwards misses it. The 2026-09-02 wardrobe fire lost a "(opens in
   // new tab)" click exactly that way — nothing reported the popup at all.
-  const popupWait = info.target === '_blank' ? POPUP_WAIT_ANNOUNCED_MS : POPUP_WAIT_GRACE_MS;
-  const popupPromise = tab.page.waitForEvent('popup', { timeout: popupWait }).catch(() => null);
-  await locator.first().click({ timeout: timeoutMs });
-  await tab.page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => undefined);
+  //
+  // But the WAIT starts after the click: before 2026-09-03 the grace timer
+  // ran from listener registration, so the click's own actionability work
+  // (scroll into view, stability, hit-target checks on a heavy page) and a
+  // handler that calls window.open after doing its own work both consumed
+  // the window, and Zazzle's Personalize button came back with neither
+  // openedTab nor popupDenied even on the rebuilt agent.
+  let detachPopupListener = (): void => undefined;
+  const popupEvent = new Promise<Page | null>((resolve) => {
+    const onPopup = (page: Page): void => resolve(page);
+    tab.page.once('popup', onPopup);
+    detachPopupListener = () => {
+      tab.page.off('popup', onPopup);
+      resolve(null);
+    };
+  });
+  let popup: Page | null = null;
+  try {
+    await locator.first().click({ timeout: timeoutMs });
+    await tab.page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => undefined);
+    const popupWait = announcesPopup(info) ? POPUP_WAIT_ANNOUNCED_MS : POPUP_WAIT_GRACE_MS;
+    popup = await Promise.race([
+      popupEvent,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), popupWait)),
+    ]);
+  } finally {
+    detachPopupListener();
+  }
   const changed = tab.revision !== beforeRevision || tab.page.url() !== beforeUrl;
   if (!changed) tab.dirty = true;
-  const popup = await popupPromise;
   let openedTab: ClickResult['openedTab'] = null;
   let popupDenied: string | null = null;
   if (popup !== null) {
     const outcome = await session.popupOutcome(popup, POPUP_DECISION_MS);
     if (outcome?.kind === 'adopted') openedTab = { tabId: outcome.tabId, url: outcome.url };
     else if (outcome?.kind === 'denied') popupDenied = outcome.url;
+  } else {
+    // Belt and braces: a page the context adopted during the click (the
+    // context-level 'page' event fires for every new page whether or not
+    // Playwright attributed it to this opener) is still this click's popup.
+    const adopted = session.tabIds().find((id) => !knownTabIds.has(id));
+    if (adopted !== undefined) {
+      openedTab = { tabId: adopted, url: session.getTab(adopted).page.url() };
+      session.getTab(tabId);
+    }
   }
   return { pageRevision: tab.revision, url: tab.page.url(), changed, openedTab, popupDenied };
 }
