@@ -47,6 +47,13 @@ export interface HarnessOptions {
   countdownFetch?: typeof fetch;
   /** Sets COUNTDOWN_API_KEY, which is what registers the ebay_api_* tools; unset by default. */
   countdownApiKey?: string;
+  /**
+   * COUNTDOWN_ROLE for the harness gateway. Defaults to 'primary' when a
+   * key is given, because every pre-2026-09-03 source test exercises the
+   * credit gate and the URL policy on their own terms; the secondary-role
+   * tests set it explicitly. (The production default is 'secondary'.)
+   */
+  countdownRole?: 'primary' | 'secondary' | 'off';
 }
 
 export function buildGatewayHarness(options: HarnessOptions = {}): GatewayHarness {
@@ -61,7 +68,9 @@ export function buildGatewayHarness(options: HarnessOptions = {}): GatewayHarnes
     OAUTH_JWKS_URI: 'https://idp.test.example/.well-known/jwks.json',
     ARTIFACT_DIR: artifactDir,
     EXTRA_ALLOWED_HOSTS: 'browser-mcp.test.example',
-    ...(options.countdownApiKey === undefined ? {} : { COUNTDOWN_API_KEY: options.countdownApiKey }),
+    ...(options.countdownApiKey === undefined
+      ? {}
+      : { COUNTDOWN_API_KEY: options.countdownApiKey, COUNTDOWN_ROLE: options.countdownRole ?? 'primary' }),
     ...(options.env ?? {}),
   });
   const logger = pino({ level: 'silent' });

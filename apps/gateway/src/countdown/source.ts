@@ -21,6 +21,7 @@ import type { CountdownConfig } from '@browser-bridge/config';
 import {
   BridgeError,
   EBAY_API_DEFAULT_SEARCH_COMPACTION,
+  EbayApiFallbackReasonSchema,
   EBAY_API_SELLER_DESCRIPTION_MAX_CHARS,
   ebayDomainOfUrl,
   screenEbayUrl,
@@ -29,6 +30,7 @@ import {
   type EbayApiDestination,
   type EbayApiDomain,
   type EbayApiExpectedFormat,
+  type EbayApiFallbackReason,
   type EbayApiGateReason,
   type EbayApiItemsInputType,
   type EbayApiItemsOutputType,
@@ -147,6 +149,17 @@ export const EBAY_API_DEFAULT_CANDIDATE_FIELDS: readonly string[] = [
   'itemLocationText',
   'sellerName',
 ];
+
+/**
+ * What a charged call declares about why it is not a Bridge read (§2.1).
+ * Under the secondary role a call without a reason is refused before any
+ * probe or credit; under either role the declaration rides on the audit
+ * row, so the ledger shows why the vendor was asked.
+ */
+export interface FallbackDeclaration {
+  reason?: EbayApiFallbackReason | undefined;
+  note?: string | undefined;
+}
 
 /** The kinds of call the reserve gate tells apart; seller lookups are exempt. */
 export type SourceCallKind = 'search' | 'items' | 'seller';
@@ -502,6 +515,19 @@ function deadlineSlot(ref: ItemRef, deadlineMs: number, inFlight: boolean): Batc
 }
 
 /** The client options a call passes so its vendor requests fit the tool deadline. */
+/** The fallback declaration a tool input carries, in the gate's shape. */
+function fallbackOf(input: { fallbackReason?: EbayApiFallbackReason | undefined; fallbackNote?: string | undefined }): FallbackDeclaration {
+  return { reason: input.fallbackReason, note: input.fallbackNote };
+}
+
+/** The declaration as audit-row metadata; absent fields stay absent so an undeclared call reads as such. */
+function auditFallback(fallback: FallbackDeclaration): Record<string, unknown> {
+  return {
+    ...(fallback.reason === undefined ? {} : { fallbackReason: fallback.reason }),
+    ...(fallback.note === undefined ? {} : { fallbackNote: fallback.note }),
+  };
+}
+
 function budgetOptions(deadline: SourceDeadline | undefined): CountdownCallOptions | undefined {
   return deadline === undefined ? undefined : { budget: deadline };
 }
@@ -626,7 +652,8 @@ export class CountdownSource {
    * never probe once per slot. A gate must answer in seconds whatever the
    * account endpoint is doing.
    */
-  async assertCredits(kind: SourceCallKind, caller?: SourceCaller, deadline?: SourceDeadline): Promise<GateVerdict> {
+  async assertCredits(kind: SourceCallKind, caller?: SourceCaller, deadline?: SourceDeadline, fallback: FallbackDeclaration = {}): Promise<GateVerdict> {
+    this.assertRoleAdmits(kind, fallback);
     this.assertNotSuspended(kind);
     if (kind === 'seller') return { warnings: [] };
     const toolName = kind === 'search' ? SEARCH_TOOL_NAME : ITEMS_TOOL_NAME;
@@ -641,6 +668,24 @@ export class CountdownSource {
       if (this.belowReserve()) throw this.refusal('below_reserve', kind);
     }
     return { warnings: this.unresolvedWarnings(true) };
+  }
+
+  /**
+   * The role gate (§2.1), ahead of everything else because it costs nothing
+   * and decides on configuration alone: while the source is secondary, a
+   * charged call — seller lookups included — is admitted only with a
+   * declared fallback reason. The refusal is SOURCE_REJECTED with
+   * details.reason 'secondary_role', which the deals skill already routes
+   * to the Bridge, and it names the reasons that would have been accepted.
+   */
+  private assertRoleAdmits(kind: SourceCallKind, fallback: FallbackDeclaration): void {
+    if (this.config.role !== 'secondary' || fallback.reason !== undefined) return;
+    const accepted = EbayApiFallbackReasonSchema.options;
+    throw new BridgeError(
+      'SOURCE_REJECTED',
+      `The Countdown API source is a SECONDARY pathway on this gateway (COUNTDOWN_ROLE=secondary): read the page through the Browser Bridge first, and re-issue this ${kind} call with fallbackReason (${accepted.join(', ')}) only when the Bridge could not do the step. No credit was spent and the vendor was not contacted.`,
+      { reason: 'secondary_role', role: 'secondary', kind, acceptedFallbackReasons: [...accepted], gate: true },
+    );
   }
 
   /** A probe on the gate's behalf; a suspension it learns of refuses the call at once. */
@@ -892,6 +937,7 @@ export class CountdownSource {
     const gate = this.gateView();
     return {
       build: this.buildSha,
+      role: this.config.role,
       plan: this.plan,
       creditsLimit: this.limit,
       creditsUsed: this.lastUsed,
@@ -999,6 +1045,11 @@ export class CountdownSource {
       );
     }
     warnings.push(...this.unresolvedWarnings(false));
+    if (this.config.role === 'secondary') {
+      warnings.push(
+        `SECONDARY_ROLE: this gateway runs the Countdown API as a secondary pathway (COUNTDOWN_ROLE=secondary). The Browser Bridge is the first route for every Track A step; a charged ebay_api_* call is admitted only with a fallbackReason (${EbayApiFallbackReasonSchema.options.join(', ')}) and is otherwise refused with SOURCE_REJECTED details.reason 'secondary_role' at no cost. gate.spendable is what a declared fallback could spend, not a budget to plan the fire against`,
+      );
+    }
     return {
       source: 'countdown',
       siteProfile: EBAY_API_SITE_PROFILE_ID,
@@ -1009,6 +1060,11 @@ export class CountdownSource {
       credits: { used: this.lastUsed, remaining: this.remaining },
       reserve: { configured: this.config.creditReserve.configured, effective: reserve.effective, basis: reserve.basis },
       gate,
+      role: {
+        name: this.config.role,
+        chargedCallsRequireFallbackReason: this.config.role === 'secondary',
+        acceptedFallbackReasons: [...EbayApiFallbackReasonSchema.options],
+      },
       build: { gateway: this.buildSha },
       warnings,
     };
@@ -1020,11 +1076,12 @@ export class CountdownSource {
     // The url is screened before the gate: refusing a bad URL is free and
     // local, and must not cost even the probe.
     const screened = input.url === undefined ? null : this.screenedUrl(input.url, ['search']);
-    const gate = await this.assertCredits('search', caller, deadline);
+    const fallback = fallbackOf(input);
+    const gate = await this.assertCredits('search', caller, deadline, fallback);
     const domain = screened === null ? input.domain : screened.domain;
     const location = this.locationFor(input.destination, 'search');
     const plans = buildSearchPlans(input, domain, location, screened === null ? null : screened.href);
-    const auditBase = { domain, destination: input.destination, ...location, page: input.page, maxPage: input.maxPage };
+    const auditBase = { domain, destination: input.destination, ...location, page: input.page, maxPage: input.maxPage, ...auditFallback(fallback) };
     const options = budgetOptions(deadline);
 
     // Both halves of a split search go out together: a page can take most
@@ -1139,7 +1196,8 @@ export class CountdownSource {
       const url = `https://www.${input.domain}/itm/${ref.itemId}`;
       return { url, vendorUrl: url, domain: input.domain, expectedFormat: ref.expectedFormat };
     });
-    const gate = await this.assertCredits('items', caller, deadline);
+    const fallback = fallbackOf(input);
+    const gate = await this.assertCredits('items', caller, deadline, fallback);
     const observedAt = this.now().toISOString();
     const slots: Array<ItemSlot | undefined> = refs.map(() => undefined);
     const launched = new Set<number>();
@@ -1227,12 +1285,12 @@ export class CountdownSource {
       // starts above the reserve can cross it part-way, and the reserve is
       // meant to stop the next request, not the next call. The refusal
       // lands in this slot; every slot already read stays intact.
-      await this.assertCredits('items', caller, deadline);
+      await this.assertCredits('items', caller, deadline, fallbackOf(input));
       const result = await this.upstream(
         ITEMS_TOOL_NAME,
         'product',
         caller,
-        { domain: ref.domain, destination: input.destination, ...location },
+        { domain: ref.domain, destination: input.destination, ...location, ...auditFallback(fallbackOf(input)) },
         () => this.client.product({ url: ref.vendorUrl, ...location }, budgetOptions(deadline)),
       );
       const mapped = mapItem({
@@ -1284,9 +1342,11 @@ export class CountdownSource {
 
   async seller(input: EbayApiSellerInputType, caller?: SourceCaller, deadline?: SourceDeadline): Promise<EbayApiSellerOutputType> {
     const url = this.sellerUrl(input);
-    // Exempt from the credit reserve, not from a remembered suspension.
-    await this.assertCredits('seller', caller, deadline);
-    const result = await this.upstream(SELLER_TOOL_NAME, 'seller_profile', caller, { domain: ebayDomainOfUrl(url) }, () =>
+    // Exempt from the credit reserve, not from a remembered suspension or
+    // from the role gate.
+    const fallback = fallbackOf(input);
+    await this.assertCredits('seller', caller, deadline, fallback);
+    const result = await this.upstream(SELLER_TOOL_NAME, 'seller_profile', caller, { domain: ebayDomainOfUrl(url), ...auditFallback(fallback) }, () =>
       this.client.sellerProfile({ url }, budgetOptions(deadline)),
     );
     const mapped = mapSellerProfile({ body: result.body, requestedUrl: url });

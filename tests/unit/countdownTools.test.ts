@@ -198,6 +198,9 @@ const PERCENT_5: CountdownConfig['creditReserve'] = { kind: 'percent', percent: 
 function config(overrides: Partial<CountdownConfig> = {}): CountdownConfig {
   return {
     apiKey: API_KEY,
+    // The pre-2026-09-03 behaviour every gate test below was written
+    // against; the role gate has its own describe block.
+    role: 'primary',
     baseUrl: 'https://api.countdownapi.com',
     creditReserve: ABSOLUTE_50,
     maxConcurrency: 4,
@@ -636,6 +639,11 @@ describe('ebay_api_status (§3.4)', () => {
       credits: { used: 18, remaining: 82 },
       reserve: { configured: '5%', effective: 5, basis: 'plan_limit' },
       gate: { open: true, reason: null, spendable: 77 },
+      role: {
+        name: 'primary',
+        chargedCallsRequireFallbackReason: false,
+        acceptedFallbackReasons: ['device_offline', 'bridge_unreachable', 'challenge_blocked', 'extractor_gap', 'operator_request'],
+      },
       build: { gateway: 'abc1234' },
       warnings: [],
     });
@@ -1627,5 +1635,85 @@ describe('input pre-screen (§2 URL policy at the tool layer)', () => {
     const itemDefaults = items({ items: [{ itemId: '123456789012' }] });
     await expect(source.items({ ...itemDefaults, items: [{ itemId: '123456789012' }, { url: 'https://10.0.0.5/itm/123456789012' }] })).rejects.toMatchObject({ code: 'ORIGIN_DENIED' });
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('role gate (§2.1): the source is a secondary pathway unless configured otherwise', () => {
+  it('refuses every charged kind without a fallbackReason, before any probe or credit', async () => {
+    const { source, calls } = build(routed(), { role: 'secondary' });
+    for (const [kind, call] of [
+      ['search', () => source.search(search({ searchTerm: 'lego', listingType: 'auction' }))],
+      ['items', () => source.items(items({ items: [{ itemId: '111111111111' }] }))],
+      ['seller', () => source.seller(seller({ loginId: 'tweedsidesales' }))],
+    ] as const) {
+      const refused = await failure(call());
+      expect(refused.code, kind).toBe('SOURCE_REJECTED');
+      expect(refused.retryable, kind).toBe(false);
+      expect(refused.details).toMatchObject({ reason: 'secondary_role', role: 'secondary', kind, gate: true });
+      expect(refused.details.acceptedFallbackReasons).toEqual([
+        'device_offline',
+        'bridge_unreachable',
+        'challenge_blocked',
+        'extractor_gap',
+        'operator_request',
+      ]);
+      expect(refused.message).toMatch(/Browser Bridge first/);
+    }
+    // Nothing reached the vendor: not the account probe, not a request.
+    expect(calls).toHaveLength(0);
+  });
+
+  it('admits a charged call that declares its fallback and records the declaration on the audit row', async () => {
+    const { source, store, calls } = build(routed({ remaining: 900 }), { role: 'secondary' });
+    const result = await source.search(search({ searchTerm: 'lego', listingType: 'auction', fallbackReason: 'device_offline', fallbackNote: 'DEVICE_OFFLINE desktop last seen 15:08Z' }));
+    expect(result.candidateCount).toBe(1);
+    expect(requests(calls)).toHaveLength(1);
+    const row = JSON.stringify(store.audit.events.at(-1));
+    expect(row).toContain('"fallbackReason":"device_offline"');
+    expect(row).toContain('DEVICE_OFFLINE desktop last seen 15:08Z');
+
+    const profile = await source.seller(seller({ loginId: 'tweedsidesales', fallbackReason: 'challenge_blocked' }));
+    expect(profile.resolved).toBe(true);
+    expect(JSON.stringify(store.audit.events.at(-1))).toContain('"fallbackReason":"challenge_blocked"');
+  });
+
+  it('under the primary role a declaration is optional and still audited when given', async () => {
+    const { source, store } = build(routed({ remaining: 900 }), { role: 'primary' });
+    await source.search(search({ searchTerm: 'lego', listingType: 'auction' }));
+    expect(JSON.stringify(store.audit.events.at(-1))).not.toContain('fallbackReason');
+    await source.search(search({ searchTerm: 'lego', listingType: 'auction', fallbackReason: 'operator_request' }));
+    expect(JSON.stringify(store.audit.events.at(-1))).toContain('"fallbackReason":"operator_request"');
+  });
+
+  it('the status tool reports the role and warns that spendable is a fallback budget under secondary', async () => {
+    const secondary = build(routed(), { role: 'secondary' });
+    const status = EbayApiStatusOutput.parse(await secondary.source.status());
+    expect(status.role).toEqual({
+      name: 'secondary',
+      chargedCallsRequireFallbackReason: true,
+      acceptedFallbackReasons: ['device_offline', 'bridge_unreachable', 'challenge_blocked', 'extractor_gap', 'operator_request'],
+    });
+    expect(status.warnings.some((warning) => warning.startsWith('SECONDARY_ROLE'))).toBe(true);
+    // The credit arithmetic is still reported: a declared fallback plans against it.
+    expect(status.gate.open).toBe(true);
+
+    const primary = build(routed(), { role: 'primary' });
+    const primaryStatus = EbayApiStatusOutput.parse(await primary.source.status());
+    expect(primaryStatus.role.name).toBe('primary');
+    expect(primaryStatus.role.chargedCallsRequireFallbackReason).toBe(false);
+    expect(primaryStatus.warnings.some((warning) => warning.startsWith('SECONDARY_ROLE'))).toBe(false);
+  });
+
+  it('the MCP handler answers the role refusal as an error result with the reason intact', async () => {
+    const { source } = build(routed(), { role: 'secondary' });
+    const { server, tools } = fakeServer();
+    registerSourceTools(server, source, { scopes: ['browser:read'], clientId: 'test' });
+    const result = await tools.get('ebay_api_search')!({ searchTerm: 'lego', listingType: 'auction' });
+    expect(result.isError).toBe(true);
+    const payload = errorPayload(result);
+    expect(payload.code).toBe('SOURCE_REJECTED');
+    expect(payload.details.reason).toBe('secondary_role');
+    const admitted = await tools.get('ebay_api_search')!({ searchTerm: 'lego', listingType: 'auction', fallbackReason: 'bridge_unreachable' });
+    expect(admitted.isError).toBeUndefined();
   });
 });

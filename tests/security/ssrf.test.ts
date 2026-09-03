@@ -155,6 +155,7 @@ describe('Countdown source tools never hand the vendor an off-policy URL (plan Â
     let directCalls = 0;
     const config: CountdownConfig = {
       apiKey: 'cd-ssrf-direct-key',
+      role: 'primary',
       baseUrl: 'https://api.countdownapi.com',
       creditReserve: { kind: 'absolute', credits: 0, configured: '0' },
       maxConcurrency: 2,

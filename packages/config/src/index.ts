@@ -140,6 +140,33 @@ export const GatewayEnvSchema = z
         return key === undefined || key === '' ? undefined : key;
       }),
     /**
+     * How the ebay_api_* source is offered to a run (docs/COUNTDOWN-API-PLAN.md
+     * §2.1). 'secondary' (the default, and the operator's standing
+     * instruction of 2026-09-03 until they say otherwise): the tools are
+     * registered and ebay_api_status is free, but every charged call must
+     * declare a fallbackReason naming why the Browser Bridge could not do
+     * the step — the source is a fallback pathway, never the first route.
+     * 'primary': the pre-2026-09-03 behaviour, charged calls admitted on
+     * the credit gate alone. 'off': the tools are not registered at all,
+     * whatever the key says (the key stays in place for a later flip).
+     * Blank reads as the default so FluxLab's deploy script can add the
+     * line verbatim; any other spelling fails validation.
+     */
+    COUNTDOWN_ROLE: z
+      .string()
+      .optional()
+      .transform((value, ctx) => {
+        const text = (value ?? '').trim().toLowerCase();
+        if (text === '') return 'secondary' as const;
+        if (text === 'primary' || text === 'secondary' || text === 'off') return text;
+        ctx.addIssue({
+          code: 'custom',
+          message: `COUNTDOWN_ROLE must be primary, secondary or off, got ${JSON.stringify(value)}`,
+          input: value,
+        });
+        return z.NEVER;
+      }),
+    /**
      * Vendor root; overridable for the integration stub only. https only:
      * the key rides in every request's query string, so a plain-http root
      * would send it in cleartext (the test stubs inject fetch and never
@@ -285,8 +312,17 @@ export const GatewayEnvSchema = z
  * (docs/COUNTDOWN-API-PLAN.md §2). Present only when COUNTDOWN_API_KEY is
  * set and non-empty.
  */
+/**
+ * The source's standing in a run. 'secondary' admits a charged call only
+ * with a declared fallback reason; 'primary' admits it on the credit gate
+ * alone. The third COUNTDOWN_ROLE value, 'off', never reaches this type:
+ * it leaves GatewayConfig.countdown null.
+ */
+export type CountdownRole = 'primary' | 'secondary';
+
 export interface CountdownConfig {
   apiKey: string;
+  role: CountdownRole;
   /** Vendor root with trailing slashes stripped, e.g. https://api.countdownapi.com. */
   baseUrl: string;
   /**
@@ -399,10 +435,11 @@ export function loadGatewayConfig(env: Record<string, string | undefined> = proc
             },
           },
     countdown:
-      parsed.COUNTDOWN_API_KEY === undefined
+      parsed.COUNTDOWN_API_KEY === undefined || parsed.COUNTDOWN_ROLE === 'off'
         ? null
         : {
             apiKey: parsed.COUNTDOWN_API_KEY,
+            role: parsed.COUNTDOWN_ROLE,
             baseUrl: parsed.COUNTDOWN_API_BASE_URL.replace(/\/+$/, ''),
             creditReserve: parsed.COUNTDOWN_CREDIT_RESERVE,
             maxConcurrency: parsed.COUNTDOWN_MAX_CONCURRENCY,
