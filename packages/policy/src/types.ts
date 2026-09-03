@@ -31,6 +31,17 @@ export interface SitePolicyProfile {
    */
   transactionEndpointPatterns: readonly string[];
   /**
+   * Regex sources over full request URLs of endpoints whose MUTATING
+   * requests change account state without being a transaction: the
+   * watch-list and follow APIs. The network layer aborts every request to
+   * them except a GET or HEAD, so the signed-in watch-list page can load
+   * the list it renders while an add/remove call from the same page is
+   * still aborted; protected-action evaluation blocks a click or submit
+   * whose target matches, whatever the method. A request whose method is
+   * unknown is treated as mutating.
+   */
+  mutationEndpointPatterns?: readonly string[];
+  /**
    * Auth-surface deny rules: case-insensitive regex sources over full URLs
    * naming the profile's sign-in/registration/credential pages. Blocked by
    * default for navigation, redirect, popup, and frame targets — and because

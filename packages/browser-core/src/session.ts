@@ -262,7 +262,7 @@ export class BrowserSessionRuntime {
       // popup's main-frame navigation; validate it as one.
       const frame = frameOf(request);
 
-      if (this.policy.isProtectedEndpoint(url)) {
+      if (this.policy.isProtectedEndpoint(url, request.method())) {
         this.events.onRequestAborted?.(url, 'protected-endpoint');
         const tab = frame === null ? undefined : this.pageToTab.get(frame.page());
         if (tab) tab.lastBlock = { url, code: 'ACTION_BLOCKED' };

@@ -523,6 +523,138 @@ describe('search compaction', () => {
   });
 });
 
+describe('My eBay candidate pages compact with their own default projection', () => {
+  function watchlistRecord() {
+    return {
+      siteProfile: 'ebay.ca.v1',
+      pageKind: 'watchlist',
+      pageUrl: 'https://www.ebay.ca/mye/myebay/watchlist',
+      pageTitle: 'Watch list | My eBay',
+      signedIn: true,
+      currentPage: 1,
+      totalResults: 312,
+      totalCountSource: 'All (312)',
+      hasNextPage: true,
+      nextPageUrl: 'https://www.ebay.ca/mye/myebay/watchlist?page=2',
+      candidateCount: 2,
+      candidates: [
+        {
+          itemId: '198589141532',
+          url: trackingUrl('198589141532', 'Arista switch'),
+          title: 'Arista DCS-7050QX-32S-F',
+          snippetPrice: { value: 412, currency: 'CAD' },
+          sellingFormat: 'auction',
+          bidCount: 7,
+          shippingSnippetText: '+C $38.20 shipping',
+          itemLocationText: null,
+          isNewListing: false,
+          order: 0,
+          timeLeftText: '1d 04h 12m left',
+          endsAt: '2026-09-05T02:12:00.000Z',
+          watchlistStatus: 'active',
+          seller: 'netgear_liquidators',
+          sellerText: 'netgear_liquidators (4,812) 99.6%',
+          sellerOffer: null,
+          priceDropText: null,
+          conditionText: 'Pre-Owned',
+        },
+        {
+          itemId: '127905836341',
+          url: 'https://www.ebay.com/itm/127905836341',
+          title: 'Mellanox SX1012',
+          snippetPrice: { value: 189, currency: 'USD' },
+          sellingFormat: 'fixed_price',
+          bidCount: null,
+          shippingSnippetText: '+US $63.25 shipping',
+          itemLocationText: null,
+          isNewListing: false,
+          order: 1,
+          timeLeftText: null,
+          endsAt: null,
+          watchlistStatus: 'active',
+          seller: 'serverpartsdepot',
+          sellerText: null,
+          sellerOffer: { text: 'Seller sent you an offer: US $165.00', price: { value: 165, currency: 'USD' } },
+          priceDropText: null,
+          conditionText: 'Used',
+        },
+      ],
+    };
+  }
+
+  it('keeps the watch-list row fields and the page-level session facts by default', () => {
+    const { record } = compactSearchPage(watchlistRecord(), DEFAULTS);
+    expect(record.pageKind).toBe('watchlist');
+    expect(record.signedIn).toBe(true);
+    expect(record.currentPage).toBe(1);
+    expect(record.totalResults).toBe(312);
+    expect(record.totalCountSource).toBe('All (312)');
+    expect(record.nextPageUrl).toBe('https://www.ebay.ca/mye/myebay/watchlist?page=2');
+    const rows = record.candidates as Array<Record<string, unknown>>;
+    expect(rows[0]!.url).toBe('https://www.ebay.ca/itm/198589141532');
+    expect(rows[0]!.timeLeftText).toBe('1d 04h 12m left');
+    expect(rows[0]!.endsAt).toBe('2026-09-05T02:12:00.000Z');
+    expect(rows[0]!.watchlistStatus).toBe('active');
+    expect(rows[0]!.seller).toBe('netgear_liquidators');
+    expect(rows[1]!.sellerOffer).toEqual({ text: 'Seller sent you an offer: US $165.00', price: { value: 165, currency: 'USD' } });
+    // Fields outside the projection are gone; a caller names them to get them back.
+    expect(rows[0]!.conditionText).toBeUndefined();
+    expect(rows[0]!.isNewListing).toBeUndefined();
+  });
+
+  it('applies include filters to watch-list rows exactly as to search rows', () => {
+    const { record } = compactSearchPage(watchlistRecord(), SearchCompactionInput.parse({ include: { formats: ['auction'] } }));
+    expect((record.candidates as unknown[]).length).toBe(1);
+    expect(record.matchedCount).toBe(1);
+  });
+
+  it('a watch-list page through browser_extract_many stays a watch-list page', () => {
+    const compact = compactItemRecord('ebay.ca.v1', watchlistRecord());
+    expect(compact.pageKind).toBe('watchlist');
+    expect(compact.signedIn).toBe(true);
+    expect((compact.candidates as unknown[]).length).toBe(2);
+  });
+
+  it('an offers page projects the offer fields', () => {
+    const { record } = compactSearchPage(
+      {
+        siteProfile: 'ebay.ca.v1',
+        pageKind: 'offers',
+        pageUrl: 'https://www.ebay.ca/mye/myebay/bidsoffers',
+        signedIn: true,
+        hasNextPage: false,
+        nextPageUrl: null,
+        candidateCount: 1,
+        candidates: [
+          {
+            itemId: '127905836341',
+            url: 'https://www.ebay.com/itm/127905836341?x=1',
+            title: 'Mellanox SX1012',
+            offerPrice: { value: 165, currency: 'USD' },
+            listPrice: { value: 189, currency: 'USD' },
+            direction: 'from_seller',
+            offerStatus: 'open',
+            expiresText: 'Expires in 1d 22h',
+            expiresAt: '2026-09-05T20:00:00.000Z',
+            seller: 'serverpartsdepot',
+            sellerText: null,
+            snippet: 'Seller sent you an offer: US $165.00 Pending',
+            order: 0,
+          },
+        ],
+      },
+      DEFAULTS,
+    );
+    const row = (record.candidates as Array<Record<string, unknown>>)[0]!;
+    expect(row.url).toBe('https://www.ebay.com/itm/127905836341');
+    expect(row.offerPrice).toEqual({ value: 165, currency: 'USD' });
+    expect(row.direction).toBe('from_seller');
+    expect(row.offerStatus).toBe('open');
+    expect(row.expiresAt).toBe('2026-09-05T20:00:00.000Z');
+    expect(row.snippet).toBeUndefined();
+  });
+});
+
 describe('search response byte budget', () => {
   /**
    * The guarantee, pinned. 20 KiB is the ceiling the Phase 2 brief set for a

@@ -63,8 +63,25 @@ export const EBAY_TRANSACTION_ENDPOINT_PATTERNS: readonly string[] = [
   'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*)?(?:acctsec|account/security|changepassword)',
   'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*/)?(?:change-password|reset)(?:/|\\?|#|$)',
   'https?://signin\\.ebay\\.(?:ca|com)/(?:.*)?(?:SignInSubmit|password)',
-  // Watch/follow state mutation (low-consequence state, blocked in MVP)
-  'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*)?(?:watchlist/api|AddToWatchList|watch/add|follow/api)',
+  // Watch/follow state mutation through the legacy any-method endpoints
+  // (an ISAPI GET can mutate). The JSON watch-list/follow APIs live in
+  // EBAY_MUTATION_ENDPOINT_PATTERNS below, where a GET read is exempt.
+  'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*)?(?:AddToWatchList|watch/add|RemoveFromWatchList|watch/remove)',
+];
+
+/**
+ * Endpoints whose non-GET requests mutate account state (§19.2, extended
+ * 2026-09-03 for the My eBay watch-list walk). The signed-in
+ * /mye/myebay/watchlist page reads the operator's list through the same
+ * API family its add/remove controls post to; aborting every method there
+ * would abort the read the deals routine exists to make. So GET and HEAD
+ * pass and every other method is aborted (see isProtectedEndpoint), and a
+ * click or submit targeting one of these is blocked whatever its method.
+ * NEEDS-LIVE-VERIFICATION: the exact watch-list data endpoint has not
+ * been captured; the pattern is the family name, deliberately wide.
+ */
+export const EBAY_MUTATION_ENDPOINT_PATTERNS: readonly string[] = [
+  'https?://(?:[a-z0-9-]+\\.)*ebay\\.(?:ca|com)/(?:.*)?(?:watchlist/api|watchlist/v\\d+|watch/api|follow/api|myebay/api/watch|mye/api/watch)',
 ];
 
 /** Appendix C blockedActionPatterns plus MVP low-consequence blocks (§19.2 table). */
@@ -136,6 +153,7 @@ export const ebaySiteProfile: SitePolicyProfile = {
   blockedActionPatterns: EBAY_BLOCKED_ACTION_PATTERNS,
   blockedFieldAutocomplete: EBAY_BLOCKED_FIELD_AUTOCOMPLETE,
   transactionEndpointPatterns: EBAY_TRANSACTION_ENDPOINT_PATTERNS,
+  mutationEndpointPatterns: EBAY_MUTATION_ENDPOINT_PATTERNS,
   authPathPatterns: EBAY_AUTH_PATH_PATTERNS,
   destinationPostalCode: EBAY_DESTINATION_POSTAL_CODE,
 };

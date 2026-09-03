@@ -46,8 +46,8 @@ export function createPagePolicy(profile: SitePolicyProfile, urlOptions: UrlPoli
         throw new BridgeError('SECRET_FIELD_BLOCKED', decision.reason, {});
       }
     },
-    isProtectedEndpoint(url: string): boolean {
-      return isProtectedEndpoint(url, profile);
+    isProtectedEndpoint(url: string, method?: string): boolean {
+      return isProtectedEndpoint(url, profile, method);
     },
     isSecretField(field: FieldContext): boolean {
       return evaluateSecretField(field, profile).blocked;

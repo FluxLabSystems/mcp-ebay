@@ -140,6 +140,84 @@ describe('browser_extract dispatches by page kind instead of refusing', () => {
     expect(parsed.warnings.some((warning) => warning.startsWith('NO_LISTING_CANDIDATES'))).toBe(false);
   });
 
+  // Track W / Track O: the deals routine walks the operator's own watch list
+  // and offers page in the signed-in research profile. Both are candidate
+  // pages with extra per-row fields; both must go through the same
+  // compaction the search pages use so search.include/fields/limit apply.
+  it('the My eBay watch list returns pageKind watchlist with countdowns, offers and pagination', async () => {
+    const outcome = await runExtract(
+      'https://www.ebay.ca/mye/myebay/watchlist',
+      fixture('ebay', 'watchlist-page.html'),
+      'ebay.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as {
+      pageKind: string;
+      pageTitle: string;
+      signedIn: boolean | null;
+      totalResults: number | null;
+      totalCountSource: string | null;
+      candidateCount: number;
+      hasNextPage: boolean;
+      nextPageUrl: string | null;
+      candidates: Array<Record<string, unknown>>;
+    };
+    expect(record.pageKind).toBe('watchlist');
+    expect(record.pageTitle).toBe('Watch list | My eBay');
+    expect(record.signedIn).toBe(true);
+    expect(record.totalResults).toBe(312);
+    expect(record.totalCountSource).toBe('All (312)');
+    expect(record.candidateCount).toBe(5);
+    expect(record.hasNextPage).toBe(true);
+    expect(record.nextPageUrl).toBe('https://www.ebay.ca/mye/myebay/watchlist?page=2');
+    // The watch-list default projection carries the row fields the walk reads.
+    const withOffer = record.candidates.find((row) => row.itemId === '127905836341')!;
+    expect(withOffer.url).toBe('https://www.ebay.com/itm/127905836341');
+    // The offer sentence stops at the card's separator; the expiry is its own field on the offers page.
+    expect(withOffer.sellerOffer).toEqual({ text: 'Seller sent you an offer: US $165.00', price: { value: 165, currency: 'USD' } });
+    expect(withOffer.watchlistStatus).toBe('active');
+    const auction = record.candidates.find((row) => row.itemId === '198589141532')!;
+    expect(auction.timeLeftText).toBe('1d 04h 12m left');
+    expect(typeof auction.endsAt).toBe('string');
+    expect(auction.seller).toBe('netgear_liquidators');
+    expect(parsed.warnings.some((warning) => warning.startsWith('UNCLASSIFIED_PAGE'))).toBe(false);
+  });
+
+  it('a watch-list sign-in wall is SIGN_IN_REQUIRED, not an empty list', async () => {
+    const outcome = await runExtract(
+      'https://www.ebay.ca/mye/myebay/watchlist',
+      fixture('ebay', 'watchlist-signin.html'),
+      'ebay.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as { pageKind: string; signedIn: boolean | null; candidateCount: number };
+    expect(record.pageKind).toBe('watchlist');
+    expect(record.signedIn).toBe(false);
+    expect(record.candidateCount).toBe(0);
+    expect(parsed.warnings.some((warning) => warning.startsWith('SIGN_IN_REQUIRED'))).toBe(true);
+    expect(parsed.warnings.some((warning) => warning.startsWith('NO_LISTING_CANDIDATES'))).toBe(false);
+  });
+
+  it('the bids/offers page returns pageKind offers with one classified row per offer', async () => {
+    const outcome = await runExtract(
+      'https://www.ebay.ca/mye/myebay/bidsoffers',
+      fixture('ebay', 'offers-page.html'),
+      'ebay.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as { pageKind: string; signedIn: boolean | null; candidateCount: number; candidates: Array<Record<string, unknown>> };
+    expect(record.pageKind).toBe('offers');
+    expect(record.signedIn).toBe(true);
+    expect(record.candidateCount).toBe(3);
+    expect(record.candidates.map((row) => [row.direction, row.offerStatus])).toEqual([
+      ['from_seller', 'open'],
+      ['from_you', 'declined'],
+      ['from_seller', 'expired'],
+    ]);
+    expect(record.candidates[0]!.offerPrice).toEqual({ value: 165, currency: 'USD' });
+    expect(record.candidates[0]!.expiresText).toBe('Expires in 1d 22h');
+  });
+
   it('an unclassified eBay page still extracts, scanning it for /itm/ links', async () => {
     // The eBay homepage classifies as 'other'. It is not a refusal: the same
     // scan the search pages use runs, and it finds whatever item links exist.
