@@ -14,10 +14,13 @@ import {
   EBAY_API_ITEMS_MAX,
   EBAY_API_MAX_PAGE,
   EbayApiItemsOutput,
+  EbayApiStatusInput,
+  EbayApiStatusOutput,
   EXTRACT_MANY_MAX_URLS,
   ExtractManyOutput,
   getSourceToolEntry,
   ImageCandidateSchema,
+  MCP_CLIENT_TOOL_TIMEOUT_MS,
   RUN_CHECKPOINT_MAX_IDS,
   RUN_CHECKPOINT_MAX_SEARCHED,
   RUN_CHECKPOINT_NOTES_MAX_CHARS,
@@ -27,6 +30,11 @@ import {
   runToolDashboardAction,
   SEARCH_TITLE_REGEX_MAX_LENGTH,
   SemanticNodeSchema,
+  SOURCE_ITEMS_TIMEOUT_MS,
+  SOURCE_REQUEST_TIMEOUT_MAX_MS,
+  SOURCE_SEARCH_TIMEOUT_MS,
+  SOURCE_SELLER_TIMEOUT_MS,
+  SOURCE_STATUS_TIMEOUT_MS,
   SOURCE_TOOL_CATALOG,
   TabSchema,
   TOOL_CATALOG,
@@ -499,11 +507,12 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
   const SELLER_URL = 'https://www.ebay.com/usr/brickseller';
   const searchSchema = () => getSourceToolEntry('ebay_api_search')!.inputSchema;
 
-  it('exposes exactly the three ebay_api tools, all browser:read, outside the browser catalog', () => {
+  it('exposes exactly the four ebay_api tools, all browser:read, outside the browser catalog', () => {
     expect(SOURCE_TOOL_CATALOG.map((entry) => entry.name)).toEqual([
       'ebay_api_search',
       'ebay_api_items',
       'ebay_api_seller',
+      'ebay_api_status',
     ]);
     for (const entry of SOURCE_TOOL_CATALOG) {
       expect(entry.scope, entry.name).toBe(SCOPE_READ);
@@ -514,8 +523,32 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
       expect(getToolEntry(entry.name), entry.name).toBeUndefined();
       expect(getSourceToolEntry(entry.name)).toBe(entry);
     }
+    // The account probe is the one source tool that spends nothing.
+    expect(SOURCE_TOOL_CATALOG.map((entry) => entry.spendsCredits)).toEqual([true, true, true, false]);
     expect(TOOL_CATALOG).toHaveLength(18);
     expect(getSourceToolEntry('browser_extract')).toBeUndefined();
+  });
+
+  it('every source tool answers inside the MCP client\'s 60 s tool timeout, and the request timeout fits under the deadline', () => {
+    // Observed 2026-09-03: the client reported `tool "ebay_api_search" timed
+    // out after 60s` while the catalog promised 120 s and the request
+    // timeout was 90 s; a call that outlives the client loses its result
+    // while the vendor may still charge it.
+    expect(MCP_CLIENT_TOOL_TIMEOUT_MS).toBe(60_000);
+    expect(SOURCE_SEARCH_TIMEOUT_MS).toBe(50_000);
+    expect(SOURCE_ITEMS_TIMEOUT_MS).toBe(50_000);
+    expect(SOURCE_SELLER_TIMEOUT_MS).toBe(25_000);
+    expect(SOURCE_STATUS_TIMEOUT_MS).toBe(30_000);
+    expect(SOURCE_REQUEST_TIMEOUT_MAX_MS).toBe(48_000);
+    const byName = new Map(SOURCE_TOOL_CATALOG.map((entry) => [entry.name, entry.timeoutMs]));
+    expect(byName.get('ebay_api_search')).toBe(SOURCE_SEARCH_TIMEOUT_MS);
+    expect(byName.get('ebay_api_items')).toBe(SOURCE_ITEMS_TIMEOUT_MS);
+    expect(byName.get('ebay_api_seller')).toBe(SOURCE_SELLER_TIMEOUT_MS);
+    expect(byName.get('ebay_api_status')).toBe(SOURCE_STATUS_TIMEOUT_MS);
+    for (const entry of SOURCE_TOOL_CATALOG) {
+      expect(entry.timeoutMs, entry.name).toBeLessThan(MCP_CLIENT_TOOL_TIMEOUT_MS);
+    }
+    expect(SOURCE_REQUEST_TIMEOUT_MAX_MS).toBeLessThan(Math.min(SOURCE_SEARCH_TIMEOUT_MS, SOURCE_ITEMS_TIMEOUT_MS));
   });
 
   it('ebay_api_search accepts a term or a url and applies the documented defaults', () => {
@@ -689,6 +722,21 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
     expect(EbayApiItemsOutput.safeParse({ ...output, credits: { used: 16, remaining: 9_998, usedThisRequest: -1 } }).success).toBe(false);
     expect(EbayApiItemsOutput.safeParse({ ...output, credits: { used: 16, remaining: 9_998, usedThisRequest: 1.5 } }).success).toBe(false);
     expect(EbayApiItemsOutput.safeParse({ ...output, credits: { used: null, remaining: null, usedThisRequest: null } }).success).toBe(true);
+    // A slot the deadline cut off carries error.details so a run can tell
+    // never-sent (never charged) from abandoned in flight (possibly
+    // charged); the Bridge never sends details, and both shapes are one
+    // BatchExtractItem.
+    const truncated = {
+      ...slot,
+      ok: false,
+      finalUrl: null,
+      record: null,
+      warnings: [],
+      error: { code: 'SOURCE_UNAVAILABLE', message: 'Not requested', retryable: true, details: { reason: 'deadline', requested: false, possiblyCharged: false } },
+    };
+    expect(EbayApiItemsOutput.safeParse({ ...output, results: [truncated] }).success).toBe(true);
+    expect(ExtractManyOutput.safeParse({ ...bridgeShaped, results: [truncated] }).success).toBe(true);
+    expect(EbayApiItemsOutput.safeParse({ ...output, results: [{ ...truncated, error: { ...truncated.error, details: 'deadline' } }] }).success).toBe(false);
   });
 
   it('ebay_api_seller takes a loginId or a /usr/ or /str/ url, never both', () => {
@@ -776,7 +824,9 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
   it('every source tool advertises a root object schema with additionalProperties: false', () => {
     // The reason the seller input is a strict object with an exactly-one
     // check rather than a root-level union: the MCP tool schema must be an
-    // object with properties, like every other tool on this server.
+    // object with properties, like every other tool on this server. The
+    // status tool is the one exception: it takes no arguments at all, and
+    // its root is still a closed object rather than a union.
     for (const entry of SOURCE_TOOL_CATALOG) {
       const json = z.toJSONSchema(entry.inputSchema as z.ZodType, { io: 'input' }) as {
         type?: string;
@@ -785,21 +835,84 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
       };
       expect(json.type, entry.name).toBe('object');
       expect(json.additionalProperties, entry.name).toBe(false);
-      expect(Object.keys(json.properties ?? {}).length, entry.name).toBeGreaterThan(0);
+      if (entry.name === 'ebay_api_status') expect(Object.keys(json.properties ?? {})).toEqual([]);
+      else expect(Object.keys(json.properties ?? {}).length, entry.name).toBeGreaterThan(0);
     }
+  });
+
+  it('ebay_api_status takes no arguments and answers the budget in one strict shape', () => {
+    expect(EbayApiStatusInput.parse({})).toEqual({});
+    expect(EbayApiStatusInput.safeParse({ refresh: true }).success).toBe(false);
+    const output = {
+      source: 'countdown',
+      siteProfile: 'ebay.api.v1',
+      probedAt: '2026-09-03T12:00:00.000Z',
+      probe: { ok: true, httpStatus: 200, error: null },
+      plan: { name: 'free', creditsLimit: 100, creditsResetAt: null },
+      account: { suspended: false, vendorMessage: null },
+      credits: { used: 18, remaining: 82 },
+      reserve: { configured: '5%', effective: 5, basis: 'plan_limit' },
+      gate: { open: true, reason: null, spendable: 77 },
+      build: { gateway: '03acf1d' },
+      warnings: [],
+    };
+    const schema = getSourceToolEntry('ebay_api_status')!.outputSchema;
+    expect(schema).toBe(EbayApiStatusOutput);
+    expect(schema.safeParse(output).success).toBe(true);
+    // A failed probe with remembered figures, and one with nothing known but a configured reserve.
+    expect(
+      schema.safeParse({
+        ...output,
+        probe: { ok: false, httpStatus: 503, error: { code: 'SOURCE_UNAVAILABLE', message: 'Parsing incident' } },
+        warnings: ['ACCOUNT_PROBE_FAILED: SOURCE_UNAVAILABLE: Parsing incident; the plan and credit figures are the last remembered ones'],
+      }).success,
+    ).toBe(true);
+    expect(
+      schema.safeParse({
+        ...output,
+        plan: { name: null, creditsLimit: null, creditsResetAt: null },
+        credits: { used: null, remaining: 40 },
+        reserve: { configured: '5%', effective: null, basis: 'unknown_limit' },
+        gate: { open: true, reason: 'reserve_unresolved', spendable: 40 },
+      }).success,
+    ).toBe(true);
+    for (const reason of ['below_reserve', 'reserve_not_below_plan_limit', 'account_suspended', 'balance_unknown', 'reserve_unresolved']) {
+      expect(schema.safeParse({ ...output, gate: { open: false, reason, spendable: 0 } }).success, reason).toBe(true);
+    }
+    // A remembered suspension carries the vendor's wording; the block is never optional.
+    expect(
+      schema.safeParse({
+        ...output,
+        account: { suspended: true, vendorMessage: 'Your account has been temporarily suspended … removed when you subscribe to a Plan.' },
+        gate: { open: false, reason: 'account_suspended', spendable: 0 },
+      }).success,
+    ).toBe(true);
+    const { account: _account, ...withoutAccount } = output;
+    expect(schema.safeParse(withoutAccount).success).toBe(false);
+    expect(schema.safeParse({ ...output, gate: { open: false, reason: 'closed', spendable: 0 } }).success).toBe(false);
+    expect(schema.safeParse({ ...output, gate: { ...output.gate, spendable: -1 } }).success).toBe(false);
+    expect(schema.safeParse({ ...output, reserve: { ...output.reserve, basis: 'guess' } }).success).toBe(false);
+    expect(schema.safeParse({ ...output, source: 'bridge' }).success).toBe(false);
+    expect(schema.safeParse({ ...output, probedAt: 'today' }).success).toBe(false);
+    expect(schema.safeParse({ ...output, extra: 1 }).success).toBe(false);
+    const { build: _build, ...withoutBuild } = output;
+    expect(schema.safeParse(withoutBuild).success).toBe(false);
   });
 
   it('descriptions state the cost and the caveats in plain words', () => {
     const byName = new Map(SOURCE_TOOL_CATALOG.map((entry) => [entry.name, entry.description]));
     for (const [name, description] of byName) {
       expect(description, name).toMatch(/credit/);
+      expect(description, name).toMatch(/credits\.used is the account's month-to-date total/);
+      expect(description, name).not.toMatch(/credits\.used reports/);
+      if (name === 'ebay_api_status') continue;
       // The 2026-09-02 live check: three parallel one-credit calls all
       // reported used 15, and no response carried a request id.
       expect(description, name).toMatch(/what this call spent is credits\.usedThisRequest/i);
-      expect(description, name).toMatch(/credits\.used is the account's month-to-date total/);
       expect(description, name).toMatch(/credits\.remaining is the balance to put in the completion report/);
       expect(description, name).toMatch(/requestIds is empty when the vendor omits request ids, which it did on every observed response/);
-      expect(description, name).not.toMatch(/credits\.used reports/);
+      // Every charged tool names its deadline, in seconds, under the client's 60 s.
+      expect(description, name).toMatch(/answers inside its \d+ s tool deadline/);
     }
     expect(byName.get('ebay_api_search')).toMatch(/two vendor requests/);
     expect(byName.get('ebay_api_search')).toMatch(/Bridge item page/);
@@ -808,5 +921,37 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
     expect(byName.get('ebay_api_items')).toMatch(/never resolved to a postal code/);
     expect(byName.get('ebay_api_items')).toMatch(/not a Canadian figure/);
     expect(byName.get('ebay_api_items')).toMatch(/auction prices come only from the Bridge/);
+
+    // The 2026-09-03 findings: the gate, the budget tool, and the client's 60 s.
+    for (const name of ['ebay_api_search', 'ebay_api_items']) {
+      const description = byName.get(name)!;
+      expect(description, name).toMatch(/Call ebay_api_status first and plan against its gate\.spendable/);
+      expect(description, name).toMatch(/never spends while the balance is unknown/);
+      expect(description, name).toMatch(/'below_reserve' or 'reserve_not_below_plan_limit'/);
+      expect(description, name).toMatch(/50 s tool deadline \(the MCP client allows 60 s\)/);
+    }
+    expect(byName.get('ebay_api_search')).toMatch(/possiblyCharged true/);
+    expect(byName.get('ebay_api_search')).toMatch(/re-issue it after details\.retryAfterMs/);
+    expect(byName.get('ebay_api_items')).toMatch(/BATCH_TRUNCATED_BY_DEADLINE/);
+    expect(byName.get('ebay_api_items')).toMatch(/requested:false means the item was never sent and never charged/);
+    expect(byName.get('ebay_api_items')).toMatch(/credits\.usedThisRequest counts answered items only/);
+    expect(byName.get('ebay_api_seller')).toMatch(/never refused by the credit reserve gate/);
+
+    const status = byName.get('ebay_api_status')!;
+    expect(status).toMatch(/spends no credit/);
+    expect(status).toMatch(/Call it first/);
+    expect(status).toMatch(/plan the fire against gate\.spendable/);
+    expect(status).toMatch(/credits\.remaining is the balance that goes in the completion report/);
+    expect(status).toMatch(/one-time 100 requests/);
+    expect(status).toMatch(/Hobbyist 500, Starter 10,000, Production 250,000/);
+    expect(status).toMatch(/reserve_not_below_plan_limit/);
+    expect(status).toMatch(/probed fresh on every call/);
+    expect(status).toMatch(/SOURCE_UNAVAILABLE/);
+    expect(status).toMatch(/GATEWAY_BUILD_SHA/);
+    expect(status).toMatch(/account_suspended/);
+    expect(status).toMatch(/8 s timeout and no retry/);
+    for (const name of ['ebay_api_search', 'ebay_api_items', 'ebay_api_seller']) {
+      expect(byName.get(name), name).toMatch(/details\.reason 'account_suspended'/);
+    }
   });
 });

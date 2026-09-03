@@ -244,19 +244,71 @@ export const SellerProfileResponseSchema = z.looseObject({
 });
 export type SellerProfileResponse = z.infer<typeof SellerProfileResponseSchema>;
 
-/** The free account endpoint; the shape is not pinned beyond request_info. */
+/**
+ * The free account endpoint (`GET /account?api_key=…`). The vendor's
+ * `account_info` also carries the account's `api_key`, `name` and `email`;
+ * the key is deliberately not modelled and `CountdownClient.account()`
+ * strips it (and the email) from the body it returns, so no consumer can
+ * echo it into a result, an audit row or a log. `credits_limit` is the
+ * plan's allowance — the trial's one-time 100, a paid plan's monthly figure —
+ * and `credits_reset_at` is when a paid plan's counters roll over.
+ */
 export const AccountResponseSchema = z.looseObject({
   request_info: opt(RequestInfoSchema),
   account_info: opt(
     z.looseObject({
-      credits_used: optNumber(),
-      credits_remaining: optNumber(),
-      credits_limit: optNumber(),
+      name: optString(),
       plan: optString(),
+      credits_used: optNumber(),
+      credits_limit: optNumber(),
+      credits_remaining: optNumber(),
+      credits_reset_at: optString(),
     }),
   ),
 });
 export type AccountResponse = z.infer<typeof AccountResponseSchema>;
+
+/** The key-free, typed reading of an account response the gateway keeps and reports. */
+export interface CountdownAccountInfo {
+  /** The vendor's plan name as sent ("free", "hobbyist", "starter", …); null when omitted. */
+  plan: string | null;
+  creditsUsed: number | null;
+  creditsLimit: number | null;
+  creditsRemaining: number | null;
+  /** `credits_reset_at` verbatim; null on the one-time trial or when omitted. */
+  creditsResetAt: string | null;
+}
+
+function finiteOrNull(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function textOrNull(value: string | null | undefined): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+/** Read the plan and credit figures out of an account body; every field null when the block is absent. */
+export function summarizeAccount(body: AccountResponse): CountdownAccountInfo {
+  const info = body.account_info ?? null;
+  return {
+    plan: textOrNull(info?.plan),
+    creditsUsed: finiteOrNull(info?.credits_used),
+    creditsLimit: finiteOrNull(info?.credits_limit),
+    creditsRemaining: finiteOrNull(info?.credits_remaining),
+    creditsResetAt: textOrNull(info?.credits_reset_at),
+  };
+}
+
+/** The account_info fields that identify the account rather than describe its plan; never returned past the client. */
+const ACCOUNT_SECRET_FIELDS = ['api_key', 'email'] as const;
+
+/** The same body with the account's key and email removed from `account_info`. */
+export function stripAccountSecrets(body: AccountResponse): AccountResponse {
+  if (body.account_info === undefined || body.account_info === null) return body;
+  const info: Record<string, unknown> = { ...body.account_info };
+  for (const field of ACCOUNT_SECRET_FIELDS) delete info[field];
+  return { ...body, account_info: info as AccountResponse['account_info'] };
+}
 
 export interface ParsedIssue {
   path: string;

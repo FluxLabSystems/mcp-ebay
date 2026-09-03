@@ -14,6 +14,7 @@ import {
   EbayApiItemsInput,
   EbayApiSearchInput,
   EbayApiSellerInput,
+  EbayApiStatusInput,
   SCOPE_READ,
   SOURCE_TOOL_CATALOG,
   scopeSatisfies,
@@ -25,6 +26,8 @@ import {
   ITEMS_TOOL_NAME,
   SEARCH_TOOL_NAME,
   SELLER_TOOL_NAME,
+  STATUS_TOOL_NAME,
+  startDeadline,
   type CountdownSource,
   type SourceCaller,
   type SourceDeadline,
@@ -39,7 +42,7 @@ export interface SourceAuthInfo {
 
 /** Registration knobs; only tests set any of them. */
 export interface SourceToolRegistrationOptions {
-  /** Replaces every entry's catalog timeoutMs, so a deadline test does not have to wait two minutes. */
+  /** Replaces every entry's catalog timeoutMs, so a deadline test does not have to wait most of a minute. */
   timeoutMs?: number;
 }
 
@@ -87,7 +90,9 @@ function registerSourceTool(
       // boundary only screens browser tools, so the scope rule is enforced
       // here, exactly as the dashboard tools do it.
       assertReadScope(authInfo, entry);
-      const payload = await withDeadline(deadlineMs, (deadline) => runSourceTool(source, entry.name, args, callerOf(authInfo), deadline));
+      const payload = await withDeadline(entry, deadlineMs, source, (deadline) =>
+        runSourceTool(source, entry.name, args, callerOf(authInfo), deadline),
+      );
       const checked = entry.outputSchema.safeParse(payload);
       if (!checked.success) {
         // A payload that drifts from the contract is a gateway bug, and the
@@ -115,8 +120,9 @@ function registerSourceTool(
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
-        // Every call spends vendor credits, so repeating one is not free.
-        idempotentHint: false,
+        // A charged call spends vendor credits, so repeating one is not
+        // free; the account probe behind ebay_api_status is.
+        idempotentHint: !entry.spendsCredits,
         openWorldHint: true,
       },
     } as never,
@@ -125,30 +131,52 @@ function registerSourceTool(
 }
 
 /**
- * Race a call against its catalog deadline. The catalog has always named
- * one per tool (SOURCE_*_TIMEOUT_MS) and nothing enforced it: a vendor page
- * that hangs for its whole per-request timeout, times the retries, times
- * the pages of a split search, held the MCP call open far past what the
- * caller was promised. On expiry the caller gets SOURCE_UNAVAILABLE at once,
- * and the shared flag tells the item pool to issue no further vendor
- * request for a result nobody will receive. A call that finishes first
- * clears the timer, so the expiry promise never settles and never rejects
- * unobserved.
+ * Race a call against its catalog deadline, which every entry keeps under
+ * the MCP client's own 60 s tool timeout (MCP_CLIENT_TOOL_TIMEOUT_MS). The
+ * deadline object goes to the handler and on to the vendor client, so
+ * per-attempt timeouts and retries fit what remains and an in-flight fetch
+ * is aborted the moment the call is over — nothing outlives the call it
+ * was made for. ebay_api_items answers by itself shortly before expiry
+ * with the partial batch (BATCH_RETURN_GUARD_MS), so this race is its
+ * safety net; a single-request tool that is still waiting at expiry gets
+ * SOURCE_UNAVAILABLE at once, saying that the abandoned request may still
+ * be charged.
  */
-async function withDeadline<T>(deadlineMs: number, run: (deadline: SourceDeadline) => Promise<T>): Promise<T> {
-  const deadline: SourceDeadline = { deadlineMs, expired: false };
-  let timer: ReturnType<typeof setTimeout> | undefined;
+async function withDeadline<T>(
+  entry: SourceToolCatalogEntry,
+  deadlineMs: number,
+  source: CountdownSource,
+  run: (deadline: SourceDeadline) => Promise<T>,
+): Promise<T> {
+  const deadline = startDeadline(deadlineMs);
   const expiry = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      deadline.expired = true;
-      reject(new BridgeError('SOURCE_UNAVAILABLE', `tool deadline of ${deadlineMs} ms exceeded`, { deadlineMs }));
-    }, deadlineMs);
+    deadline.signal.addEventListener('abort', () => reject(deadlineError(entry, deadlineMs, source)), { once: true });
   });
   try {
     return await Promise.race([run(deadline), expiry]);
   } finally {
-    clearTimeout(timer);
+    deadline.dispose();
   }
+}
+
+function deadlineError(entry: SourceToolCatalogEntry, deadlineMs: number, source: CountdownSource): BridgeError {
+  if (!entry.spendsCredits) {
+    return new BridgeError('SOURCE_UNAVAILABLE', `tool deadline of ${deadlineMs} ms exceeded`, {
+      deadlineMs,
+      reason: 'deadline',
+      possiblyCharged: false,
+    });
+  }
+  // The vendor may still be serving the request the gateway stopped waiting
+  // for, up to its own request timeout, and may charge it; a re-issue
+  // before then risks paying twice.
+  const retryAfterMs = source.requestTimeoutMs;
+  const hint = entry.name === SEARCH_TOOL_NAME ? ' (a smaller num finishes sooner)' : '';
+  return new BridgeError(
+    'SOURCE_UNAVAILABLE',
+    `tool deadline of ${deadlineMs} ms exceeded; the vendor may still have served and charged the abandoned request, so re-issue it after ${retryAfterMs} ms${hint}`,
+    { deadlineMs, reason: 'deadline', possiblyCharged: true, retryAfterMs },
+  );
 }
 
 /**
@@ -166,11 +194,14 @@ export async function runSourceTool(
   prescreenUrls(name, args);
   switch (name) {
     case SEARCH_TOOL_NAME:
-      return (await source.search(parseInput(name, EbayApiSearchInput.safeParse(args)), caller)) as unknown as Record<string, unknown>;
+      return (await source.search(parseInput(name, EbayApiSearchInput.safeParse(args)), caller, deadline)) as unknown as Record<string, unknown>;
     case ITEMS_TOOL_NAME:
       return (await source.items(parseInput(name, EbayApiItemsInput.safeParse(args)), caller, deadline)) as unknown as Record<string, unknown>;
     case SELLER_TOOL_NAME:
-      return (await source.seller(parseInput(name, EbayApiSellerInput.safeParse(args)), caller)) as unknown as Record<string, unknown>;
+      return (await source.seller(parseInput(name, EbayApiSellerInput.safeParse(args)), caller, deadline)) as unknown as Record<string, unknown>;
+    case STATUS_TOOL_NAME:
+      parseInput(name, EbayApiStatusInput.safeParse(args));
+      return (await source.status(caller, deadline)) as unknown as Record<string, unknown>;
     default:
       throw new BridgeError('INTERNAL_ERROR', `${name} is not a source tool.`, { tool: name });
   }

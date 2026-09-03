@@ -60,6 +60,12 @@ export interface GatewayApp {
   app: Hono;
   mcpHandler: McpHttpHandler;
   markReady: () => void;
+  /**
+   * The Countdown API source, for boot-time work the process owner runs
+   * (server.ts: the best-effort startup account probe); null when the
+   * ebay_api_* tools are unconfigured.
+   */
+  countdown: CountdownSource | null;
 }
 
 const DEV_AUTH_INFO: AuthInfo = {
@@ -123,6 +129,7 @@ export function buildGatewayApp(deps: GatewayAppDeps): GatewayApp {
           config: config.countdown,
           store: deps.store,
           logger,
+          buildSha: config.buildSha,
           ...(deps.countdownFetch === undefined ? {} : { fetchImpl: deps.countdownFetch }),
         });
 
@@ -307,5 +314,6 @@ export function buildGatewayApp(deps: GatewayAppDeps): GatewayApp {
     markReady: () => {
       ready = true;
     },
+    countdown,
   };
 }

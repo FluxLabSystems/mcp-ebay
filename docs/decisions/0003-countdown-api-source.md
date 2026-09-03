@@ -149,3 +149,58 @@ Non-goals, recorded to bound the surface: the Bridge is not replaced; Kijiji
 already records what was searched); the vendor's Collections batch runner
 only if a supervised fire shows wall-clock or credit pressure; and no change
 to the deals dashboard schema.
+
+## Addendum 2026-09-03 — plan-relative reserve, the status tool, and the client's 60 s
+
+The first fire on this source (2026-09-03T07:13Z) had zero coverage: the
+reserve gate refused every search and item call, because
+`COUNTDOWN_CREDIT_RESERVE` defaulted to 500 while the account was the
+vendor's one-time 100-request free trial with 83 credits left. The routine
+also read `credits.used` (the account's month-to-date total) as the cost of
+one seller lookup, and had no way to learn the budget before planning
+instead of from a refusal. Three decisions follow, implemented together:
+
+1. **The reserve is plan-relative by default.** `COUNTDOWN_CREDIT_RESERVE`
+   accepts a percentage of the plan's `credits_limit` (`5%`, the default,
+   an integer 0–50%) or an absolute count. The limit comes from the vendor's
+   free account endpoint and is remembered with the plan name and reset
+   date; the gate reads the account before it can refuse anything under a
+   percent reserve, and an absolute reserve at or above the known limit —
+   which can never be satisfied — is refused as such, naming the fix. A
+   "soft floor" (admitting calls below the reserve with a warning) was
+   considered and rejected: the reserve exists to keep the last credits for
+   seller confirmations and re-validation, a floor that bends is not a
+   reserve, and the percentage form removes the reason a floor would have
+   been wanted.
+2. **`ebay_api_status`** is a fourth, credit-free tool the routine calls
+   first: the account probe as a tool, returning the plan, the credits, the
+   configured and effective reserve, the gate's verdict with
+   `gate.spendable`, the account's suspension state and the gateway build
+   (`GATEWAY_BUILD_SHA`). And nothing is spent on an unknown balance any
+   more: the gate reads the account before the first charged request of a
+   process — the 2026-09-03 restart had sent a search straight upstream
+   against 82 credits and a 500 reserve because an empty memory was not
+   "below reserve".
+3. **Every source tool answers inside the MCP client's 60 s.** The client
+   (Claude Code in the cloud, the routine's runtime) reported
+   `tool "ebay_api_search" timed out after 60s` against 120 s catalog
+   deadlines and a 90 s per-request timeout, losing the result while the
+   vendor may still have charged it. Deadlines are now 50 s (search, items),
+   25 s (seller) and 30 s (status); `COUNTDOWN_TIMEOUT_MS` defaults to 45 s
+   and may not exceed the deadline less 2 s; a retry needs 10 s of budget;
+   an item batch launches nothing the remaining budget cannot hold, returns
+   what it has at the deadline and names the ids to re-request (never-sent
+   slots were never charged, in-flight ones possibly were); a search
+   abandoned at the deadline says the credit may have been charged.
+
+Two vendor behaviours seen on the 2026-09-03T11:27Z manual fire are handled
+alongside. A 402 whose message says the account is suspended — the trial was
+suspended mid-fire, "removed when you subscribe to a Plan" — maps to
+`SOURCE_REJECTED` (`reason: account_suspended`) rather than "out of
+credits", is never counted as a charge, is remembered for five minutes
+during which every tool including seller lookups is refused without a round
+trip, and is reported by the status tool. And the gate's account probe runs
+on its own terms — 8 s, no retry, one in flight shared by concurrent
+callers, and the account never asked more than once a minute — because
+awaiting a probe on the charged request's 90 s terms and retry ladder is
+what held three consecutive searches past the client's 60 s.

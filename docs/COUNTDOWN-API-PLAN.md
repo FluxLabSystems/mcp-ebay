@@ -220,10 +220,13 @@ image, description, top_rated_seller}`. The `url` form returns the fuller set.
 |---|---|
 | Real-time `max_page` | 5 |
 | Collections | ≤ 15,000 requests each, `max_page` ≤ 100, result sets kept 14 days, daily/weekly/monthly schedules with `schedule_hours`, webhook on completion, management API free |
-| Response codes | 200; 400 invalid params; 401 bad key; 402 out of credits; 429 rate limit (plan-dependent, not published); 500 retry after delay; 503 parsing incident, uncharged, carries `retry_after`; opt out with `skip_on_incident` |
+| Response codes | 200; 400 invalid params; 401 bad key; 402 out of credits — or, with a message saying the account is suspended (seen 2026-09-03 on the trial mid-fire), a suspension that only subscribing to a plan lifts; 429 rate limit (plan-dependent, not published); 500 retry after delay; 503 parsing incident, uncharged, carries `retry_after`; opt out with `skip_on_incident` |
 | Zip codes | per-plan cap on distinct `customer_zipcode` values (10 on the demo account); this routine needs two |
 | Pricing | free trial 100 requests, no card; $18/500; **Starter $66/10,000** (+$0.0118 per extra); Production $375/250,000; annual billing up to 20 % off |
 | Cache | GTIN→epid mapping only; searches and products are real-time |
+| MCP client tool timeout | 60 s (Claude Code in the cloud, the routine's runtime; observed 2026-09-03 as `tool "ebay_api_search" timed out after 60s`). Every gateway source tool answers inside it: search and items 50 s, seller 25 s, status 30 s |
+| Vendor latency | up to and past 120 s observed in Phase 0 on a 240-row auction search (two 120-second timeouts, then 60 s); the per-request timeout is 45 s by default and at most 48 s, so a slow request fails on its own before the tool deadline does |
+| Account endpoint | `GET /account?api_key=…` is free and returns `account_info {plan, credits_used, credits_limit, credits_remaining, credits_reset_at, …}` (plus the key and email, which the client strips). The trial is a one-time 100 requests; paid plans are monthly: Hobbyist 500, Starter 10,000, Production 250,000 |
 
 Plan sizing: modelled spend is roughly 100 to 130 requests per fire at two fires
 a day, so 6,000 to 8,000 a month. Starter is the right tier. See §11.
@@ -267,7 +270,7 @@ server, and the routine's stored connector list is unchanged).
 - `packages/protocol`: schemas, catalog entries, error codes.
 - `packages/site-ebay`: additive record-schema changes (see §4.2).
 
-**Scope.** All three tools require `browser:read` (`SCOPE_READ`), the scope
+**Scope.** All four tools require `browser:read` (`SCOPE_READ`), the scope
 that already gates `browser_extract`. They are marketplace reads of the same
 sensitivity, they are not browser actions, and reusing the scope avoids a
 Keycloak realm change. Record this in the ADR.
@@ -279,10 +282,11 @@ Keycloak realm change. Record this in the ADR.
 |---|---|---|
 | `COUNTDOWN_API_KEY` | unset | When unset or empty the `ebay_api_*` tools are not registered (same behaviour as `DASHBOARD_API_BASE_URL`). Empty string must parse as unset: FluxLab's `ensure_env_keys` copies `.env.example` lines verbatim and refuses `CHANGE_ME` placeholders, so the example line is `COUNTDOWN_API_KEY=`. |
 | `COUNTDOWN_API_BASE_URL` | `https://api.countdownapi.com` | Overridable for the integration stub only |
-| `COUNTDOWN_CREDIT_RESERVE` | `500` | Search and item calls are refused with `SOURCE_CREDITS_EXHAUSTED` once the last observed `credits_remaining` is below this; seller-profile calls (one credit, rare) are still allowed |
+| `COUNTDOWN_CREDIT_RESERVE` | `5%` | The credits the gate holds back: a percentage of the plan's `credits_limit` (`N%`, an integer 0–50, resolved from the free account endpoint: 5 on the 100-request trial, 25 on Hobbyist, 500 on Starter) or an absolute count (`500`). Search and item calls are refused with `SOURCE_CREDITS_EXHAUSTED` (`details.reason` `below_reserve`) once the last observed `credits_remaining` is below it; seller-profile calls (one credit, rare) are still allowed. An absolute reserve at or above the plan's limit can never be satisfied and is refused as such (`reserve_not_below_plan_limit`, the 2026-09-03 zero-coverage fire). Blank is the default; any other spelling fails validation naming the two forms |
 | `COUNTDOWN_MAX_CONCURRENCY` | `4` | Parallel product requests inside one `ebay_api_items` call |
-| `COUNTDOWN_TIMEOUT_MS` | `90000` | Per upstream request; a five-page search can take most of a minute |
+| `COUNTDOWN_TIMEOUT_MS` | `45000` | Per vendor request, at most 48000: the 50 s search/items deadline less 2 s, so a request times out on its own before the tool does (§1.4: the MCP client allows 60 s) |
 | `EBAY_FORWARDER_ZIPCODE` | `34249` | The MyUS Sarasota suite from `data/deals/multi-path-shipping-policy.json`; paired with `EBAY_DESTINATION_POSTAL_CODE` (`M6H 2W9`) as the only two zip codes the gateway will ever send |
+| `GATEWAY_BUILD_SHA` | `unknown` | The commit the gateway image was built from, set by the Dockerfile from a build argument and reported by `ebay_api_status` as `build.gateway`; never an active line in an env file (it would override the image's value) |
 
 **Destinations are named, never free text.** Tool inputs take
 `destination: 'toronto' | 'forwarder' | 'domain_default'`, mapped in the
@@ -328,6 +332,21 @@ request id, credits used, HTTP status), using `store.audit.insert` as
 `broker.ts` does. Extend the pino `redact` list in `apps/gateway/src/server.ts`
 with `api_key`, `*.api_key`, `apiKey`, `*.apiKey`.
 
+**The gate (2026-09-03).** Nothing is spent on an unknown balance: before the
+first charged request of a process — and under a percent reserve before the
+plan limit is known — the gate reads the free account endpoint, then decides.
+The probe runs on its own terms (8 s, no retry, one in flight shared by every
+concurrent caller, the account never asked more than once a minute), so the
+gate answers in seconds whatever the account endpoint is doing; a shut gate
+re-reads the account at most once a minute so a top-up or a plan upgrade
+reopens it. What a probe cannot resolve does not block: the reserve counts
+as 0, the call carries `CREDIT_RESERVE_UNRESOLVED`, and the vendor's own 402
+is the backstop. A 402 whose message says the account is suspended is
+`SOURCE_REJECTED` (`reason: account_suspended`), never a charge, and is
+remembered for five minutes during which every tool, seller lookups
+included, is refused without a round trip. `ebay_api_status` (§3.4) is the
+same probe as a tool.
+
 **Security.** The key never appears in tool input, output, audit rows or logs.
 The only outbound host is the configured base URL. `tests/security/ssrf.test.ts`
 gains cases proving a non-eBay or private-network `url` is refused before any
@@ -338,9 +357,10 @@ outbound call is made.
 ## 3. Tool contracts
 
 Names are dot-free (the 2026-09-02 rename made dotted names unusable for
-permission matching). All three return `structuredContent` like the dashboard
-tools do, and all three carry `credits`, `requestId` (the vendor's
-`request_metadata.id`) and `warnings[]`.
+permission matching). All four return `structuredContent` like the dashboard
+tools do; the three charged tools carry `credits`, `requestIds` (the vendor's
+`request_metadata.id` per request) and `warnings[]`, and every tool answers
+inside a deadline under the MCP client's 60 s (§1.4).
 
 ### 3.1 `ebay_api_search`
 
@@ -437,6 +457,37 @@ This is the `/usr/` confirmation step in `data/deals/README.md` rules 1 and 4.
 What the vendor returns for a suspended or nonexistent profile is a Phase 0
 question; until answered, `resolved:false` plus the vendor message in
 `warnings` is the honest output.
+
+### 3.4 `ebay_api_status`
+
+Input: `{}` (a strict, empty object). No credit is spent: the tool is the
+free account probe, made fresh on every call (8 s, no retry) because a stale
+figure is what a run must not plan against.
+
+Output (`EbayApiStatusOutput`, strict):
+
+```
+source: 'countdown', siteProfile: 'ebay.api.v1', probedAt (ISO),
+probe:   { ok, httpStatus | null, error: {code, message} | null }
+plan:    { name | null, creditsLimit | null, creditsResetAt | null }
+account: { suspended, vendorMessage | null }
+credits: { used | null, remaining | null }          used is the month-to-date total
+reserve: { configured ("5%" | "500"), effective | null, basis: 'absolute' | 'plan_limit' | 'unknown_limit' }
+gate:    { open, reason: 'below_reserve' | 'reserve_not_below_plan_limit' | 'account_suspended'
+                         | 'balance_unknown' | 'reserve_unresolved' | null,
+           spendable: max(0, remaining − effective) | null }
+build:   { gateway: GATEWAY_BUILD_SHA | 'unknown' }
+warnings[]
+```
+
+`gate.spendable` is what the reserve gate will admit from here, with an
+unresolved reserve counting as 0 exactly as the gate counts it, and null
+while the balance is unknown. When the probe fails, `probe.ok` is false and
+the figures are the last remembered ones (`ACCOUNT_PROBE_FAILED` in
+warnings); when nothing is remembered at all the call fails with
+`SOURCE_UNAVAILABLE` — except a suspension answer, which is returned as
+status. The routine calls it first, plans the fire against `gate.spendable`,
+and puts `credits.remaining` in the completion report.
 
 ---
 
@@ -812,6 +863,23 @@ Acceptance: two consecutive fires with a first write by call 8 or earlier, no
 Bridge fallback on the sweep phase, and monthly credit projection under the
 plan's cap.
 
+**Phase 4 status (2026-09-03).** The first fire on the eBay API path
+(2026-09-03T07:13Z) was zero-coverage: the Windows device was offline for the
+whole fire, so the Bridge fallback had nothing either; the reserve gate
+refused every `ebay_api_search` and `ebay_api_items` call because the 500
+reserve was above the trial balance of 83; one `ebay_api_seller` lookup
+spent one credit, leaving 82. The manual fire at 11:27Z then met the
+vendor's suspension of the trial account after one seller lookup (80 left),
+and three searches hung past the client's 60 s on the gate's account probe.
+What this change ships: the plan-relative reserve (`5%` default, the
+unsatisfiable-absolute refusal), the credit-free `ebay_api_status` tool and
+the never-spend-on-unknown rule, deadlines under the client's 60 s with
+partial item batches, the suspension mapping and memory, and the probe on
+its own 8 s terms. Acceptance still needs two consecutive fires. On the
+budget: the trial's one-time 100 requests cannot fund a single fire at the
+§11 model (120–150 requests); Hobbyist's 500 a month funds about three
+fires; Starter (10,000) is the plan for two fires a day.
+
 ## 10. Phase 5 (optional): Collections pre-run
 
 Only if Phase 4 shows wall-clock pressure (a five-page search near the tool
@@ -847,6 +915,9 @@ schema bound, the 25-item batch bound, and the completion-report credits line.
 Sweeping sellers once a day instead of every fire saves roughly 1,400 requests
 a month if the cap is ever in reach.
 
+Measured: none yet — the 2026-09-03 fires spent one credit each before the
+gate and then the suspension stopped them (§9).
+
 ---
 
 ## 12. Risks and mitigations
@@ -868,6 +939,8 @@ a month if the cap is ever in reach.
 | Zip-code cap on the plan | only two zips are ever sent, both from config |
 | Credit exhaustion mid-run | reserve gate plus explicit error; the routine's NO-SILENCE rule reports it |
 | Skill references tools that are not deployed | Phase 3 gated on Phase 2 acceptance; skill keeps the Bridge fallback |
+| Vendor slower than the client budget (60 s; §1.4) | every tool answers inside its deadline: an item batch returns partial with the ids to re-request, a search fails naming `possiblyCharged` and may need a narrower `num`; per-request timeout ≤ 48 s so a slow request fails on its own terms first |
+| Reserve unsatisfiable by the plan, or the vendor suspends the account | percent reserve by default and an explicit `reserve_not_below_plan_limit` refusal naming the fix; a suspension 402 is `SOURCE_REJECTED` (`account_suspended`), remembered five minutes, reported by `ebay_api_status` — never "top up" |
 
 ---
 

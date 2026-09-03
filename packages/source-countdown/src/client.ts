@@ -17,16 +17,54 @@ import {
   SearchResponseSchema,
   SellerProfileResponseSchema,
   parseCountdownBody,
+  stripAccountSecrets,
+  summarizeAccount,
   type AccountResponse,
+  type CountdownAccountInfo,
   type ProductResponse,
   type SearchResponse,
   type SellerProfileResponse,
 } from './schemas.js';
 
 export const COUNTDOWN_DEFAULT_BASE_URL = 'https://api.countdownapi.com';
-export const COUNTDOWN_DEFAULT_TIMEOUT_MS = 90_000;
+/**
+ * Per-request default when no timeout is configured. The gateway passes
+ * COUNTDOWN_TIMEOUT_MS (default 45 s, at most the 50 s tool deadline less
+ * 2 s): a request has to time out on its own before the tool deadline cuts
+ * the call off, because the MCP client allows a tool 60 s in all.
+ */
+export const COUNTDOWN_DEFAULT_TIMEOUT_MS = 45_000;
 /** 2 s then 6 s: two retries, per §6.2. */
 export const COUNTDOWN_DEFAULT_RETRY_DELAYS_MS: readonly number[] = [2000, 6000];
+/**
+ * A retry is attempted only when, after its backoff, at least this much of
+ * the tool's budget remains: a vendor request given less than 10 s is a
+ * second timeout rather than a second chance, and the tool deadline would
+ * cut it off with the credit possibly charged.
+ */
+export const COUNTDOWN_RETRY_MIN_BUDGET_MS = 10_000;
+
+/**
+ * The tool-call budget a request runs under (docs/COUNTDOWN-API-PLAN.md
+ * §1.4: the MCP client allows a tool 60 s). Every attempt's timeout is
+ * capped to what remains, a retry is skipped when the remainder could not
+ * hold one, and `signal` — which the gateway aborts at the deadline and
+ * when the call is over — cancels an in-flight fetch so no vendor request
+ * outlives the tool call it was made for.
+ */
+export interface CountdownRequestBudget {
+  /** Milliseconds left in the tool call; never negative. */
+  remainingMs(): number;
+  signal?: AbortSignal;
+}
+
+export interface CountdownCallOptions {
+  budget?: CountdownRequestBudget;
+  /** A per-call cap on the request timeout (the account probe runs on 8 s, not the configured 45 s). */
+  timeoutMs?: number;
+  /** False disables the retry ladder for this call: a probe that cannot answer once is not answered by asking thrice. */
+  retry?: boolean;
+}
 
 export interface CountdownClientOptions {
   apiKey: string;
@@ -109,6 +147,11 @@ export interface CountdownResult<T> {
   attempts: number;
 }
 
+/** `account()`: the response plus the plan and credit figures read out of it, typed and key-free. */
+export interface CountdownAccountResult extends CountdownResult<AccountResponse> {
+  account: CountdownAccountInfo;
+}
+
 export type CountdownRequestType = 'search' | 'product' | 'seller_profile' | 'account';
 
 type QueryValue = string | number | boolean | undefined | null;
@@ -169,6 +212,9 @@ function readRetryAfter(parsed: unknown, headers: Headers | null): number | null
 /** A query string (anything after `?` up to whitespace or a quote) that names api_key. */
 const QUERY_WITH_KEY_RE = /\?[^\s"'<>]*api_key=[^\s"'<>]*/g;
 
+/** The vendor's suspension wording on a 402, wherever it puts the message (request_info.message or the body's message). */
+const SUSPENDED_RE = /suspend/i;
+
 function snippet(text: string, max = 200): string {
   const collapsed = text.replace(/\s+/g, ' ').trim();
   return collapsed.length > max ? `${collapsed.slice(0, max)}…` : collapsed;
@@ -198,7 +244,7 @@ export class CountdownClient {
   }
 
   /** `type=search`; one credit per page (`maxPage` pages). */
-  async search(params: CountdownSearchParams): Promise<CountdownResult<SearchResponse>> {
+  async search(params: CountdownSearchParams, options?: CountdownCallOptions): Promise<CountdownResult<SearchResponse>> {
     const query = this.query({
       type: 'search',
       ebay_domain: params.ebayDomain,
@@ -216,11 +262,11 @@ export class CountdownClient {
       allow_rewritten_results: params.allowRewrittenResults,
       include_html: params.includeHtml,
     });
-    return this.call('/request', query, SearchResponseSchema, 'search');
+    return this.call('/request', query, SearchResponseSchema, 'search', options);
   }
 
   /** `type=product`; one credit. Never sends customer_zipcode (rejected by the vendor). */
-  async product(params: CountdownProductParams): Promise<CountdownResult<ProductResponse>> {
+  async product(params: CountdownProductParams, options?: CountdownCallOptions): Promise<CountdownResult<ProductResponse>> {
     const query = this.query({
       type: 'product',
       ebay_domain: params.ebayDomain,
@@ -229,23 +275,29 @@ export class CountdownClient {
       customer_location: params.customerLocation,
       include_html: params.includeHtml,
     });
-    return this.call('/request', query, ProductResponseSchema, 'product');
+    return this.call('/request', query, ProductResponseSchema, 'product', options);
   }
 
   /** `type=seller_profile`; one credit. The `url` form returns the fuller set (§1.3). */
-  async sellerProfile(params: CountdownSellerProfileParams): Promise<CountdownResult<SellerProfileResponse>> {
+  async sellerProfile(params: CountdownSellerProfileParams, options?: CountdownCallOptions): Promise<CountdownResult<SellerProfileResponse>> {
     const query = this.query({
       type: 'seller_profile',
       ebay_domain: params.ebayDomain,
       url: params.url,
       seller_name: params.sellerName,
     });
-    return this.call('/request', query, SellerProfileResponseSchema, 'seller_profile');
+    return this.call('/request', query, SellerProfileResponseSchema, 'seller_profile', options);
   }
 
-  /** `GET /account`; free, no credits. */
-  async account(): Promise<CountdownResult<AccountResponse>> {
-    return this.call('/account', this.query({}), AccountResponseSchema, 'account');
+  /**
+   * `GET /account`; free, no credits. The vendor echoes the account's own
+   * api_key (and email) in `account_info`; both are removed from the body
+   * before it leaves the client, and `account` is the typed reading of what
+   * remains.
+   */
+  async account(options?: CountdownCallOptions): Promise<CountdownAccountResult> {
+    const result = await this.call('/account', this.query({}), AccountResponseSchema, 'account', options);
+    return { ...result, body: stripAccountSecrets(result.body), account: summarizeAccount(result.body) };
   }
 
   private query(entries: Record<string, QueryValue>): URLSearchParams {
@@ -258,13 +310,16 @@ export class CountdownClient {
     return query;
   }
 
-  private async attempt(url: string): Promise<Attempt> {
+  /** One fetch, bounded by `timeoutMs` and, when the call has a budget, cancelled by its signal. */
+  private async attempt(url: string, timeoutMs: number, external: AbortSignal | undefined): Promise<Attempt> {
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const signal = external === undefined ? timeout : AbortSignal.any([timeout, external]);
     let response: Response;
     try {
       response = await this.fetchImpl(url, {
         method: 'GET',
         headers: { accept: 'application/json' },
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -285,30 +340,54 @@ export class CountdownClient {
     query: URLSearchParams,
     schema: S,
     requestType: CountdownRequestType,
+    options: CountdownCallOptions = {},
   ): Promise<CountdownResult<z.output<S>>> {
     const url = `${this.baseUrl}${path}?${query.toString()}`;
+    const budget = options.budget;
+    const remainingMs = (): number => (budget === undefined ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(budget.remainingMs())));
+    // A function, not a narrowed property read: the signal flips while the
+    // attempt is awaited, and a property narrowed before the await would
+    // read as still false after it.
+    const deadlinePassed = (): boolean => budget?.signal?.aborted === true;
     for (let attempt = 0; ; attempt += 1) {
       const attempts = attempt + 1;
-      const canRetry = attempt < this.retryDelaysMs.length;
-      const outcome = await this.attempt(url);
       const base: Record<string, unknown> = { requestType, endpoint: path, attempts };
+      // On a retry the deadline passed during the backoff: an earlier
+      // attempt was sent, so the vendor may still have charged it.
+      if (deadlinePassed()) throw this.abandoned(requestType, base, attempt > 0);
+
+      // The attempt's timeout is the configured one (or the call's own
+      // cap), capped to what the tool call has left, so the request always
+      // fails on its own terms before the tool deadline fails it.
+      const timeoutMs = Math.max(1, Math.min(this.timeoutMs, options.timeoutMs ?? this.timeoutMs, remainingMs()));
+      const outcome = await this.attempt(url, timeoutMs, budget?.signal);
+      if (deadlinePassed()) throw this.abandoned(requestType, base, true);
+
+      // A retry needs its backoff plus a real request to fit the budget;
+      // one skipped for want of budget says so on the error.
+      const delay = this.retryDelaysMs[attempt] ?? 0;
+      const retryAllowed = options.retry !== false && attempt < this.retryDelaysMs.length;
+      const retryFits = remainingMs() - delay >= COUNTDOWN_RETRY_MIN_BUDGET_MS;
+      const canRetry = retryAllowed && retryFits;
+      const budgetNote = retryAllowed && !retryFits ? { retrySkippedForBudget: true, remainingBudgetMs: remainingMs() } : {};
 
       if (outcome.kind !== 'response') {
         if (canRetry) {
-          await this.sleep(this.retryDelaysMs[attempt] ?? 0);
+          await this.sleep(delay);
           continue;
         }
         if (outcome.kind === 'timeout') {
           throw this.fail(
             'SOURCE_UNAVAILABLE',
-            `Countdown API ${requestType} request timed out after ${this.timeoutMs} ms (${attempts} attempt(s))`,
-            { ...base, reason: 'timeout', timeoutMs: this.timeoutMs },
+            `Countdown API ${requestType} request timed out after ${timeoutMs} ms (${attempts} attempt(s))`,
+            { ...base, reason: 'timeout', timeoutMs, ...budgetNote },
           );
         }
         throw this.fail('SOURCE_UNAVAILABLE', `Countdown API ${requestType} request failed: ${outcome.message}`, {
           ...base,
           reason: 'network',
           cause: outcome.message,
+          ...budgetNote,
         });
       }
 
@@ -319,7 +398,7 @@ export class CountdownClient {
 
       if (status >= 500) {
         if (canRetry) {
-          await this.sleep(this.retryDelaysMs[attempt] ?? 0);
+          await this.sleep(delay);
           continue;
         }
         const retryAfter = readRetryAfter(parsed, headers);
@@ -329,12 +408,25 @@ export class CountdownClient {
           reason: status === 503 ? 'incident' : 'server_error',
           vendorMessage,
           ...(retryAfter !== null ? { retryAfter } : {}),
+          ...budgetNote,
         });
       }
 
       if (status >= 400) {
         const details: Record<string, unknown> = { ...base, status, vendorMessage };
         if (status === 402) {
+          // The vendor answers 402 for two different things. Out of credits
+          // is the reserve gate's business. A suspended account (2026-09-03:
+          // "temporarily suspended as our systems detected multiple Free
+          // Trial accounts … removed when you subscribe to a Plan") is not:
+          // no top-up lifts it, so it is a rejection, never a charge.
+          if (vendorMessage !== null && SUSPENDED_RE.test(vendorMessage)) {
+            throw this.fail('SOURCE_REJECTED', `Countdown API account suspended (HTTP 402)${suffix}`, {
+              ...details,
+              httpStatus: status,
+              reason: 'account_suspended',
+            });
+          }
           throw this.fail('SOURCE_CREDITS_EXHAUSTED', `Countdown API credits exhausted (HTTP 402)${suffix}`, details);
         }
         if (status === 429) {
@@ -393,6 +485,21 @@ export class CountdownClient {
         attempts,
       };
     }
+  }
+
+  /**
+   * The tool deadline passed: before the request went out (nothing sent,
+   * nothing charged) or while it was in flight, in which case the vendor may
+   * still serve and charge the request the gateway stopped waiting for.
+   */
+  private abandoned(requestType: CountdownRequestType, base: Record<string, unknown>, inFlight: boolean): BridgeError {
+    return this.fail(
+      'SOURCE_UNAVAILABLE',
+      inFlight
+        ? `Countdown API ${requestType} request abandoned at the tool deadline while in flight; the vendor may still have served and charged it`
+        : `Countdown API ${requestType} request not sent: the tool deadline had already passed`,
+      { ...base, reason: 'deadline', requested: inFlight, possiblyCharged: inFlight },
+    );
   }
 
   private fail(code: BridgeErrorCode, message: string, details: Record<string, unknown>): BridgeError {

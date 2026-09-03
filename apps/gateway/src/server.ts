@@ -96,6 +96,13 @@ async function main(): Promise<void> {
     gatewayApp.markReady();
   });
 
+  // Best-effort and non-blocking: the Countdown account's plan, its credit
+  // limit and the effective reserve appear in the startup log, and a
+  // percent reserve is resolved before the first call rather than by it.
+  // Fired here at boot rather than inside buildGatewayApp so the in-process
+  // test harness never issues a vendor request nobody asked for.
+  void gatewayApp.countdown?.startupProbe();
+
   // WSS device channel (§12): single outbound WebSocket per agent.
   const wss = new WebSocketServer({ noServer: true });
   server.on('upgrade', (request, socket, head) => {

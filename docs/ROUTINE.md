@@ -48,15 +48,18 @@ plan above stands at 12.
 
 ## The budget with the eBay API tools
 
-When the gateway serves `ebay_api_search`, `ebay_api_items` and
-`ebay_api_seller` — they exist only while `COUNTDOWN_API_KEY` is set, so
-probe for them; an unloaded schema is not absence — Track A's sweeps and its
-first validation pass leave the browser entirely. The table above stays the
-plan for a run without them and for Kijiji. Target: **first write by call
-6**, with the browser session opened only for the shipping pass.
+When the gateway serves `ebay_api_search`, `ebay_api_items`,
+`ebay_api_seller` and `ebay_api_status` — they exist only while
+`COUNTDOWN_API_KEY` is set, so probe for them; an unloaded schema is not
+absence — Track A's sweeps and its first validation pass leave the browser
+entirely. The table above stays the plan for a run without them and for
+Kijiji. Target: **first write by call 6**, with the browser session opened
+only for the shipping pass. Every API call answers within 50 s (the client
+allows 60) or names what to re-request.
 
 | # | Call | Purpose |
 |---|---|---|
+| 0 | `ebay_api_status` | **Free; not in the count.** Read the budget before asking for a credit: `gate.spendable` is what the reserve gate will admit this fire (`credits.remaining` minus the reserve it holds back), and `gate.open:false` names why nothing will be admitted — `below_reserve`, `reserve_not_below_plan_limit`, `account_suspended` — so a shut gate costs one free call, not a zero-coverage fire. Plan calls 2–5 against `gate.spendable`. |
 | 1 | `dashboard_feed` `{dashboard:"deals", mode:"ids", filter:{active:true}}` | The diff set, as above. |
 | 2–3 | `ebay_api_search` — broad sweeps, one call per domain, with `search.include` | Up to 240 rows a page and `maxPage` up to 5 in one call: no scan window, no challenge page. `listingType:"all"` is **two vendor requests** (`buy_it_now` and `auction`, merged by item id) but **one tool call**; an unfiltered vendor search is never issued. |
 | 4 | `ebay_api_search` — watched-seller sweeps | The roster's `_ssn=` search URLs pass through the `url` argument, `_sop=10&_ipg=240` and all; a second call when the roster spans both domains. Two to four searches in all. |
@@ -93,7 +96,18 @@ What the API never provides, so no call above waits for it:
 Every API response carries `credits {used, remaining, usedThisRequest}`:
 `usedThisRequest` is what that call spent, `used` is the account's
 month-to-date total (not the call's spend), and the last `credits.remaining`
-of the run goes into the completion report next to the call count.
+of the run goes into the completion report next to the call count. Plan the
+fire against `ebay_api_status`'s `gate.spendable`, never against `remaining`
+alone: the gate holds back `COUNTDOWN_CREDIT_RESERVE` (5% of the plan's
+credit limit by default) and refuses search and item calls below it, and it
+reads the account before the first charged call of a process, so nothing is
+spent on an unknown balance. A search the vendor has not answered inside the
+50 s deadline fails with `SOURCE_UNAVAILABLE` and `details.possiblyCharged`;
+an item batch returns the slots it has with a `BATCH_TRUNCATED_BY_DEADLINE`
+warning naming the ids to re-request (`requested:false` slots were never
+charged). A `SOURCE_REJECTED` whose `details.reason` is `account_suspended`
+means the vendor suspended the account: no top-up helps, every API call is
+refused for five minutes, so report it and take the Bridge path.
 
 ## Why each call is one call
 

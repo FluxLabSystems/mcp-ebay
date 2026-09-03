@@ -2,17 +2,18 @@
  * Countdown API source — docs/COUNTDOWN-API-PLAN.md §2, §3 and §6.5.
  *
  * One instance per gateway process, built from GatewayConfig.countdown. It
- * owns the vendor client, the last-known credit balance and the reserve
- * gate in front of it, the named-destination mapping (the only two postal
- * codes the gateway ever sends), and the audit row every upstream call
- * leaves behind. The three handlers answer the ebay_api_* tools in their
- * catalogued output shapes; registerSourceTools in ./tools.ts is the MCP
- * face over them.
+ * owns the vendor client, the account memory (balance, plan, credit limit)
+ * and the reserve gate in front of it, the named-destination mapping (the
+ * only two postal codes the gateway ever sends), and the audit row every
+ * upstream call leaves behind. The four handlers answer the ebay_api_*
+ * tools in their catalogued output shapes; registerSourceTools in ./tools.ts
+ * is the MCP face over them.
  *
  * Nothing here fetches a caller-supplied URL: a url input is screened
  * against the §2 policy and then handed to the vendor as its `url`
  * parameter. The vendor key lives in the client and never reaches a
- * result, an error, an audit row or a log line.
+ * result, an error, an audit row or a log line; the account endpoint's echo
+ * of it is stripped inside the client.
  */
 import { buildAuditEvent, type AuditOutcome } from '@browser-bridge/audit';
 import { compactItemRecord, compactSearchPage } from '@browser-bridge/compact';
@@ -28,13 +29,16 @@ import {
   type EbayApiDestination,
   type EbayApiDomain,
   type EbayApiExpectedFormat,
+  type EbayApiGateReason,
   type EbayApiItemsInputType,
   type EbayApiItemsOutputType,
+  type EbayApiReserveBasis,
   type EbayApiRetrievedUnder,
   type EbayApiSearchInputType,
   type EbayApiSearchOutputType,
   type EbayApiSellerInputType,
   type EbayApiSellerOutputType,
+  type EbayApiStatusOutputType,
   type EbayUrlKind,
 } from '@browser-bridge/protocol';
 import { EBAY_API_SITE_PROFILE_ID } from '@browser-bridge/site-ebay';
@@ -47,7 +51,9 @@ import {
   mergeWarnings,
   readPagination,
   type ApiListingCandidate,
+  type CountdownCallOptions,
   type CountdownCredits,
+  type CountdownRequestBudget,
   type CountdownRequestType,
   type CountdownResult,
   type CountdownSearchParams,
@@ -59,15 +65,64 @@ import type { Store } from '../store/types.js';
 export const SEARCH_TOOL_NAME = 'ebay_api_search';
 export const ITEMS_TOOL_NAME = 'ebay_api_items';
 export const SELLER_TOOL_NAME = 'ebay_api_seller';
+export const STATUS_TOOL_NAME = 'ebay_api_status';
 
 /** The audit action class every upstream Countdown call is filed under. */
 export const SOURCE_AUDIT_ACTION_CLASS = 'source';
 
 /**
- * How long a refused search or item call trusts the remembered balance
- * before asking the vendor's free account endpoint again (assertCredits).
+ * How long a shut gate trusts the remembered figures before asking the
+ * vendor's free account endpoint again (assertCredits): a top-up or a plan
+ * upgrade is noticed within a minute, and a refused batch does not probe
+ * once per slot. The same interval is the cooldown after a probe that
+ * failed or timed out: the gate decides on the last-known figures without
+ * asking again until it has passed.
  */
 export const CREDIT_PROBE_MIN_INTERVAL_MS = 60_000;
+
+/**
+ * The account probe's own timeout, with no retry. A probe is a free,
+ * normally sub-second request, and the 2026-09-03 fire showed what happens
+ * when the gate awaits one on a charged request's terms: the account
+ * endpoint hung against the suspended account, the probe ran the 90 s
+ * request timeout and the retry ladder, every search that arrived meanwhile
+ * joined the one in flight, and each timed out at the client's 60 s. A
+ * probe that cannot answer in 8 s is a failed probe, remembered for
+ * CREDIT_PROBE_MIN_INTERVAL_MS; the status tool's probe runs on the same
+ * terms so an operator asking about the budget is answered promptly too.
+ */
+export const CREDIT_PROBE_TIMEOUT_MS = 8_000;
+
+/**
+ * How long a vendor 402 that said the account is suspended is remembered:
+ * every tool, seller lookups included, is refused without contacting the
+ * vendor until it expires. No top-up lifts a suspension (the vendor
+ * removes it when a plan is subscribed), so a refused call must be told
+ * that and not "top up", and a suspended account must not be polled on
+ * every call.
+ */
+export const SUSPENSION_COOLDOWN_MS = 5 * 60_000;
+
+/**
+ * ebay_api_items launches no further vendor request once the tool budget
+ * left is under one request's worth of headroom — the configured request
+ * timeout or this, whichever is smaller — because a request that cannot
+ * finish inside the deadline spends a credit on a result nobody receives.
+ */
+export const ITEM_LAUNCH_HEADROOM_MS = 15_000;
+
+/**
+ * ebay_api_items stops waiting for in-flight requests this long before the
+ * tool deadline (or a tenth of a shorter deadline) and answers with what it
+ * has, so the partial batch reaches the caller instead of the deadline
+ * error the MCP layer would raise.
+ */
+export const BATCH_RETURN_GUARD_MS = 500;
+
+/** The guard for a given deadline: BATCH_RETURN_GUARD_MS, or a tenth of a deadline too short to spare that much. */
+export function batchReturnGuardMs(deadlineMs: number): number {
+  return Math.min(BATCH_RETURN_GUARD_MS, Math.floor(deadlineMs / 10));
+}
 
 /**
  * Candidate keys kept when the caller names no `search.fields`. The
@@ -104,16 +159,82 @@ export interface SourceCaller {
 
 /**
  * The catalog deadline a call runs under, shared with the MCP layer that
- * enforces it: registerSourceTools (./tools.ts) races each handler against
- * its entry's timeoutMs and flips `expired` when the race is lost. The item
- * pool reads the flag before every vendor request, because once the caller
- * has been answered with SOURCE_UNAVAILABLE a request issued after that
- * spends a credit on a result nobody receives.
+ * enforces it (registerSourceTools in ./tools.ts) and with the vendor
+ * client, whose per-attempt timeouts and retries fit inside what remains.
+ * `signal` aborts when the budget is spent or the call is over, so a vendor
+ * fetch never outlives the tool call it was made for. It satisfies the
+ * client's CountdownRequestBudget directly.
  */
-export interface SourceDeadline {
+export interface SourceDeadline extends CountdownRequestBudget {
   readonly deadlineMs: number;
-  expired: boolean;
+  /** Milliseconds left, never negative. */
+  remainingMs(): number;
+  readonly expired: boolean;
+  readonly signal: AbortSignal;
+  /**
+   * Resolves once `remainingMs()` is at or under `guardMs` (at once when it
+   * already is); `cancel` clears the timer for a caller that finished first.
+   */
+  whenRemaining(guardMs: number): { promise: Promise<void>; cancel: () => void };
 }
+
+export interface StartedDeadline extends SourceDeadline {
+  /** Stop the clock and abort anything still in flight; idempotent. */
+  dispose(): void;
+}
+
+/** Start a deadline clock now. `now` is injectable for tests; the abort timer is real. */
+export function startDeadline(deadlineMs: number, now: () => number = Date.now): StartedDeadline {
+  const startedAt = now();
+  const controller = new AbortController();
+  const remainingMs = (): number => Math.max(0, deadlineMs - (now() - startedAt));
+  const timer = setTimeout(() => controller.abort(new Error(`tool deadline of ${deadlineMs} ms exceeded`)), deadlineMs);
+  return {
+    deadlineMs,
+    remainingMs,
+    get expired(): boolean {
+      return controller.signal.aborted || remainingMs() <= 0;
+    },
+    signal: controller.signal,
+    whenRemaining(guardMs: number) {
+      let handle: ReturnType<typeof setTimeout> | undefined;
+      const promise = new Promise<void>((resolve) => {
+        const wait = remainingMs() - guardMs;
+        if (wait <= 0) {
+          resolve();
+          return;
+        }
+        handle = setTimeout(resolve, wait);
+      });
+      return { promise, cancel: () => clearTimeout(handle) };
+    },
+    dispose() {
+      clearTimeout(timer);
+      if (!controller.signal.aborted) controller.abort(new Error('tool call finished'));
+    },
+  };
+}
+
+/** What the gate lets a charged call know once it has admitted it. */
+export interface GateVerdict {
+  /** CREDIT_RESERVE_UNRESOLVED when the call was admitted by fallback rather than arithmetic. */
+  warnings: string[];
+}
+
+/** Why the gate refuses; each is `details.reason` on the SOURCE_CREDITS_EXHAUSTED it throws. */
+export type GateRefusalReason = 'below_reserve' | 'reserve_not_below_plan_limit';
+
+/** What one account probe came back with. */
+export interface ProbeOutcome {
+  ok: boolean;
+  httpStatus: number | null;
+  error: { code: string; message: string } | null;
+  /** When the probe was issued, ISO. */
+  at: string;
+}
+
+/** Who asked for an account probe; filed on its audit row. */
+export type ProbeTrigger = 'startup' | 'gate' | 'status';
 
 export interface CountdownSourceOptions {
   config: CountdownConfig;
@@ -127,6 +248,12 @@ export interface CountdownSourceOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Clock for observedAt stamps, audit rows and the account-probe throttle; defaults to the wall clock. */
   now?: () => Date;
+  /** GATEWAY_BUILD_SHA, reported by ebay_api_status; 'unknown' when absent. */
+  buildSha?: string;
+  /** Tests only: replaces batchReturnGuardMs(deadline) for ebay_api_items. */
+  batchReturnGuardMs?: number;
+  /** Tests only: replaces CREDIT_PROBE_TIMEOUT_MS. */
+  probeTimeoutMs?: number;
 }
 
 interface LocationParams {
@@ -148,20 +275,24 @@ interface ItemRef {
   expectedFormat: EbayApiExpectedFormat | undefined;
 }
 
+/** One answered item: the vendor replied, or refused, or the gate refused the slot. */
 interface ItemSlot {
   slot: BatchExtractItem;
   requestId: string | null;
   credits: CountdownCredits | null;
   /** True when the reserve gate, not the vendor, refused this slot. */
   refusedByReserve: boolean;
-  /** True when the tool deadline passed before the pool reached this slot; no vendor request was made. */
-  unattempted: boolean;
 }
 
 interface ScreenedUrl {
   domain: EbayApiDomain;
   /** The parsed, normalised form — what the vendor is given. */
   href: string;
+}
+
+interface ReserveState {
+  effective: number | null;
+  basis: EbayApiReserveBasis;
 }
 
 /** eBay's own query-string spelling of each listing filter. */
@@ -302,15 +433,21 @@ function buildSearchPlans(
   }));
 }
 
-/** Run `task(0..count-1)` through at most `concurrency` workers; results are the caller's to place by index. */
-async function runPool(count: number, concurrency: number, task: (index: number) => Promise<void>): Promise<void> {
+/**
+ * Run `task(0..count-1)` through at most `concurrency` workers; results are
+ * the caller's to place by index. A task that returns false tells every
+ * worker to hand out no further index.
+ */
+async function runPool(count: number, concurrency: number, task: (index: number) => Promise<boolean>): Promise<void> {
   let next = 0;
+  let stopped = false;
   const workers = Array.from({ length: Math.max(1, Math.min(concurrency, count)) }, async () => {
     for (;;) {
+      if (stopped) return;
       const index = next;
       next += 1;
       if (index >= count) return;
-      await task(index);
+      if (!(await task(index))) stopped = true;
     }
   });
   await Promise.all(workers);
@@ -327,38 +464,58 @@ function truncate(text: string | null, max: number): string | null {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-/** The slot for an item the pool never requested because the tool deadline had passed. */
-function unattemptedSlot(ref: ItemRef, deadline: SourceDeadline): ItemSlot {
+/** Whole seconds for the catalog deadlines; one decimal for a sub-second test deadline. */
+function formatSeconds(ms: number): string {
+  return ms % 1000 === 0 ? String(ms / 1000) : (ms / 1000).toFixed(1);
+}
+
+/** The item number when the reference carries one, else the URL as given: what a re-request names. */
+function itemLabel(ref: ItemRef): string {
+  return /\/itm\/(\d{10,14})(?:[/?#]|$)/.exec(ref.vendorUrl)?.[1] ?? ref.url;
+}
+
+/**
+ * The slot for an item the tool deadline cut off. Never launched: nothing
+ * was sent, nothing charged. In flight: the request was abandoned at the
+ * deadline and the vendor may still serve and charge it. Both carry
+ * error.details so a run can tell the two apart and re-request either.
+ */
+function deadlineSlot(ref: ItemRef, deadlineMs: number, inFlight: boolean): BatchExtractItem {
+  const seconds = formatSeconds(deadlineMs);
   return {
-    slot: {
-      url: ref.url,
-      finalUrl: null,
-      ok: false,
-      siteProfile: EBAY_API_SITE_PROFILE_ID,
-      pageRevision: 0,
-      record: null,
-      warnings: [],
-      error: {
-        code: 'SOURCE_UNAVAILABLE',
-        message: `Not requested: the tool deadline of ${deadline.deadlineMs} ms passed before the pool reached this item; re-issue it.`,
-        retryable: true,
-      },
+    url: ref.url,
+    finalUrl: null,
+    ok: false,
+    siteProfile: EBAY_API_SITE_PROFILE_ID,
+    pageRevision: 0,
+    record: null,
+    warnings: [],
+    error: {
+      code: 'SOURCE_UNAVAILABLE',
+      message: inFlight
+        ? `Not answered: the request was still in flight at the ${seconds} s tool deadline and was abandoned; the vendor may still have served and charged it. Re-request this item.`
+        : `Not requested: the ${seconds} s tool deadline left no room for another vendor request, so nothing was sent and nothing was charged. Re-request this item.`,
+      retryable: true,
+      details: { reason: 'deadline', requested: inFlight, possiblyCharged: inFlight },
     },
-    requestId: null,
-    credits: null,
-    refusedByReserve: false,
-    unattempted: true,
   };
 }
 
+/** The client options a call passes so its vendor requests fit the tool deadline. */
+function budgetOptions(deadline: SourceDeadline | undefined): CountdownCallOptions | undefined {
+  return deadline === undefined ? undefined : { budget: deadline };
+}
+
 export class CountdownSource {
-  readonly creditReserve: number;
   readonly maxConcurrency: number;
   private readonly client: CountdownClient;
   private readonly config: CountdownConfig;
   private readonly store: Pick<Store, 'audit'>;
   private readonly logger: Logger | null;
   private readonly now: () => Date;
+  private readonly buildSha: string;
+  private readonly batchGuardMs: number | null;
+  private readonly probeTimeoutMs: number;
   /** The last accepted credits_remaining; null until a response says. */
   private remaining: number | null = null;
   /**
@@ -368,17 +525,33 @@ export class CountdownSource {
    * then 499 left the memory at 501 whenever the 501 arrived last.
    */
   private lastUsed: number | null = null;
-  /** When the account endpoint was last asked for the balance, on the injected clock; null until it was. */
+  /** The plan's credits_limit, plan name and reset date from the last successful account probe; null until one has said. */
+  private limit: number | null = null;
+  private plan: string | null = null;
+  private resetAt: string | null = null;
+  /** When the account endpoint was last asked, on the injected clock; null until it was. */
   private lastProbeAt: number | null = null;
+  /** When it last answered, on the injected clock; null until it has. */
+  private lastGoodProbeAt: number | null = null;
+  /** The last probe's outcome, for the status tool's "figures are remembered" note. */
+  private lastProbe: ProbeOutcome | null = null;
   /** The probe in flight, shared by every call that hits the gate while it runs. */
-  private probeInFlight: Promise<void> | null = null;
+  private probeInFlight: Promise<ProbeOutcome> | null = null;
+  /** Each of these is logged once per process, not once per refused or admitted call. */
+  private unresolvedLogged = false;
+  private unsatisfiableLogged = false;
+  /** A remembered vendor suspension: refused without contact until this instant on the injected clock, with the vendor's wording. */
+  private suspendedUntil: number | null = null;
+  private suspensionMessage: string | null = null;
 
   constructor(options: CountdownSourceOptions) {
     this.config = options.config;
     this.store = options.store;
     this.logger = options.logger ?? null;
     this.now = options.now ?? (() => new Date());
-    this.creditReserve = options.config.creditReserve;
+    this.buildSha = options.buildSha ?? 'unknown';
+    this.batchGuardMs = options.batchReturnGuardMs ?? null;
+    this.probeTimeoutMs = options.probeTimeoutMs ?? CREDIT_PROBE_TIMEOUT_MS;
     this.maxConcurrency = options.config.maxConcurrency;
     this.client = new CountdownClient({
       apiKey: options.config.apiKey,
@@ -395,42 +568,214 @@ export class CountdownSource {
     return this.remaining;
   }
 
+  /** The plan's credits_limit from the last successful account probe; null until one has said. */
+  get creditsLimit(): number | null {
+    return this.limit;
+  }
+
+  /** The plan name from the last successful account probe; null until one has said. */
+  get planName(): string | null {
+    return this.plan;
+  }
+
+  /** COUNTDOWN_CREDIT_RESERVE as configured, normalised ("500" or "5%"). */
+  get creditReserveConfigured(): string {
+    return this.config.creditReserve.configured;
+  }
+
+  /** The credit count the gate holds back right now; null while a percent reserve's limit is unknown. */
+  get effectiveCreditReserve(): number | null {
+    return this.reserveState().effective;
+  }
+
+  /** The per-vendor-request timeout (COUNTDOWN_TIMEOUT_MS): how long an abandoned request may still run at the vendor. */
+  get requestTimeoutMs(): number {
+    return this.config.timeoutMs;
+  }
+
+  // ---- the reserve gate (§2 Credits) ---------------------------------------
+
   /**
-   * The reserve gate (§2, Credits). Search and item calls are refused once
-   * the last observed balance is below the reserve; seller lookups (one
-   * credit, rare, and the confirmation step of the deals rules) still run.
-   * An unknown balance never blocks: the first call of a process is how the
-   * balance becomes known.
+   * Every call passes here before any credit is spent. A remembered account
+   * suspension refuses all three kinds; the credit reserve itself never
+   * refuses a seller lookup (one credit, rare, and the confirmation step of
+   * the deals rules).
    *
-   * A shut gate would never reopen on its own — nothing charged runs while
-   * it is shut, so nothing would ever report the topped-up balance — so a
-   * call about to be refused first re-reads the balance from the vendor's
-   * free account endpoint, at most once a minute, and is refused only if
-   * the fresh figure is still below the reserve.
+   * 1. Nothing is decided on nothing. While the balance — or, under a
+   *    percent reserve, the plan's credit limit — is unknown, the vendor's
+   *    free account endpoint is read first. The 2026-09-03 restart showed
+   *    why: with an empty memory the old gate admitted the first search
+   *    against 82 credits and a 500 reserve.
+   * 2. An absolute reserve at or above the plan's limit can never be
+   *    satisfied, so the call is refused saying exactly that and naming the
+   *    fix. The limit is re-read at most once a minute first, because a
+   *    plan upgrade is what clears the state.
+   * 3. A balance below the effective reserve refuses the call, after the
+   *    same once-a-minute re-read, because a top-up is what clears it.
+   * 4. What the probe could not resolve does not block: with the balance
+   *    or the limit still unknown the reserve counts as 0, the call is
+   *    admitted with a CREDIT_RESERVE_UNRESOLVED warning, and the vendor's
+   *    own 402 (mapped to SOURCE_CREDITS_EXHAUSTED) is the backstop.
+   *
+   * A probe runs on its own short terms (CREDIT_PROBE_TIMEOUT_MS, no retry,
+   * one in flight shared by every caller that hits the gate meanwhile), and
+   * the account is never asked more than once per CREDIT_PROBE_MIN_INTERVAL_MS
+   * whatever the last probe said: a failed or timed-out one is not repeated
+   * for that long (the gate decides on the last-known figures), and neither
+   * is one that answered without figures, so a batch's per-slot re-checks
+   * never probe once per slot. A gate must answer in seconds whatever the
+   * account endpoint is doing.
    */
-  async assertCredits(kind: SourceCallKind, caller?: SourceCaller): Promise<void> {
-    if (kind === 'seller') return;
-    if (this.belowReserve() && this.probeIsStale()) await this.probeAccount(kind, caller);
-    if (!this.belowReserve()) return;
+  async assertCredits(kind: SourceCallKind, caller?: SourceCaller, deadline?: SourceDeadline): Promise<GateVerdict> {
+    this.assertNotSuspended(kind);
+    if (kind === 'seller') return { warnings: [] };
+    const toolName = kind === 'search' ? SEARCH_TOOL_NAME : ITEMS_TOOL_NAME;
+    const options = this.probeOptions(deadline);
+    if (this.unknownForGate() && this.probeIsStale()) await this.gateProbe(toolName, caller, options, kind);
+    if (this.reserveNotBelowLimit()) {
+      if (this.probeIsStale()) await this.gateProbe(toolName, caller, options, kind);
+      if (this.reserveNotBelowLimit()) throw this.refusal('reserve_not_below_plan_limit', kind);
+    }
+    if (this.belowReserve()) {
+      if (this.probeIsStale()) await this.gateProbe(toolName, caller, options, kind);
+      if (this.belowReserve()) throw this.refusal('below_reserve', kind);
+    }
+    return { warnings: this.unresolvedWarnings(true) };
+  }
+
+  /** A probe on the gate's behalf; a suspension it learns of refuses the call at once. */
+  private async gateProbe(toolName: string, caller: SourceCaller | undefined, options: CountdownCallOptions, kind: SourceCallKind): Promise<void> {
+    await this.probeAccount(toolName, caller, 'gate', options);
+    this.assertNotSuspended(kind);
+  }
+
+  /** The probe's terms: its own short timeout, no retry, inside the call's deadline when there is one. */
+  private probeOptions(deadline: SourceDeadline | undefined): CountdownCallOptions {
+    return { timeoutMs: this.probeTimeoutMs, retry: false, ...(deadline === undefined ? {} : { budget: deadline }) };
+  }
+
+  private isSuspended(): boolean {
+    if (this.suspendedUntil === null) return false;
+    if (this.now().getTime() < this.suspendedUntil) return true;
+    this.suspendedUntil = null;
+    this.suspensionMessage = null;
+    return false;
+  }
+
+  /**
+   * A vendor 402 that said the account is suspended, remembered for
+   * SUSPENSION_COOLDOWN_MS: every kind is refused with the same error the
+   * vendor's answer mapped to, without a round trip, because no top-up
+   * lifts a suspension and a suspended account must not be polled per call.
+   */
+  private assertNotSuspended(kind: SourceCallKind): void {
+    if (!this.isSuspended()) return;
+    const until = new Date(this.suspendedUntil!).toISOString();
     throw new BridgeError(
-      'SOURCE_CREDITS_EXHAUSTED',
-      `Countdown API credit reserve reached: ${this.remaining} credit(s) remain, below the reserve of ${this.creditReserve}; ${kind} calls are refused until the balance is topped up (seller lookups still run).`,
-      { creditsRemaining: this.remaining, creditReserve: this.creditReserve, kind, gate: true },
+      'SOURCE_REJECTED',
+      `Countdown API account is suspended (vendor: ${this.suspensionMessage ?? 'no message'}); ${kind} calls are refused without contacting the vendor until ${until}. No top-up lifts a suspension: the vendor removes it when a plan is subscribed.`,
+      { reason: 'account_suspended', remembered: true, httpStatus: 402, vendorMessage: this.suspensionMessage, suspendedUntil: until, kind },
     );
   }
 
+  /** Remember a suspension the vendor just reported, on a charged request or on the probe. */
+  private noteSuspension(bridgeError: BridgeError): void {
+    if (bridgeError.code !== 'SOURCE_REJECTED' || bridgeError.details.reason !== 'account_suspended') return;
+    const message = bridgeError.details.vendorMessage;
+    this.suspendedUntil = this.now().getTime() + SUSPENSION_COOLDOWN_MS;
+    this.suspensionMessage = typeof message === 'string' && message.length > 0 ? message : null;
+    this.logger?.warn(
+      { ...this.accountLogFields(), suspendedUntil: new Date(this.suspendedUntil).toISOString() },
+      'Countdown API account suspended by the vendor; every ebay_api_* call is refused without contacting the vendor until the cooldown passes',
+    );
+  }
+
+  /** The reserve the gate applies now, and where the figure came from. */
+  private reserveState(): ReserveState {
+    const reserve = this.config.creditReserve;
+    if (reserve.kind === 'absolute') return { effective: reserve.credits, basis: 'absolute' };
+    if (this.limit === null) return { effective: null, basis: 'unknown_limit' };
+    return { effective: Math.floor((this.limit * reserve.percent) / 100), basis: 'plan_limit' };
+  }
+
+  private unknownForGate(): boolean {
+    return this.remaining === null || (this.config.creditReserve.kind === 'percent' && this.limit === null);
+  }
+
   private belowReserve(): boolean {
-    return this.remaining !== null && this.remaining < this.creditReserve;
+    return this.remaining !== null && this.remaining < (this.reserveState().effective ?? 0);
+  }
+
+  private reserveNotBelowLimit(): boolean {
+    const reserve = this.config.creditReserve;
+    return reserve.kind === 'absolute' && this.limit !== null && reserve.credits >= this.limit;
   }
 
   private probeIsStale(): boolean {
     return this.lastProbeAt === null || this.now().getTime() - this.lastProbeAt >= CREDIT_PROBE_MIN_INTERVAL_MS;
   }
 
-  /** One probe at a time: the slots of a batch that all hit the gate together share it. */
-  private probeAccount(kind: SourceCallKind, caller: SourceCaller | undefined): Promise<void> {
+  private refusal(reason: GateRefusalReason, kind: SourceCallKind): BridgeError {
+    const reserve = this.config.creditReserve;
+    const { effective, basis } = this.reserveState();
+    const details = {
+      gate: true,
+      reason,
+      kind,
+      creditsRemaining: this.remaining,
+      creditsLimit: this.limit,
+      plan: this.plan,
+      creditReserve: effective,
+      reserveConfigured: reserve.configured,
+    };
+    if (reason === 'reserve_not_below_plan_limit') {
+      return new BridgeError(
+        'SOURCE_CREDITS_EXHAUSTED',
+        `COUNTDOWN_CREDIT_RESERVE=${reserve.configured} is not below the plan's ${this.limit}-credit limit (plan ${JSON.stringify(this.plan ?? 'unknown')}); set it below the limit or to a percentage such as 5%. ${kind} calls are refused until it is (seller lookups still run).`,
+        details,
+      );
+    }
+    const basisNote = basis === 'plan_limit' ? ` (${reserve.configured} of the plan's ${this.limit}-credit limit)` : '';
+    return new BridgeError(
+      'SOURCE_CREDITS_EXHAUSTED',
+      `Countdown API credit reserve reached: ${this.remaining} credit(s) remain, below the reserve of ${effective}${basisNote}; ${kind} calls are refused until the balance is topped up (seller lookups still run).`,
+      details,
+    );
+  }
+
+  /**
+   * The CREDIT_RESERVE_UNRESOLVED warning for the current memory, empty when
+   * the reserve resolves. `log` says whether this is a charged call being
+   * admitted by fallback, which the gateway logs once per process.
+   */
+  private unresolvedWarnings(log: boolean): string[] {
+    const reserve = this.config.creditReserve;
+    const cause = this.lastProbe?.error === null || this.lastProbe === null ? 'no account read has answered yet' : `account probe failed: ${this.lastProbe.error.code}: ${this.lastProbe.error.message}`;
+    let warning: string | null = null;
+    if (this.remaining === null) {
+      warning = `CREDIT_RESERVE_UNRESOLVED: the credit balance is unknown (${cause}); the ${reserve.configured} reserve cannot be applied to this call and the vendor's own 402 is the backstop`;
+    } else if (reserve.kind === 'percent' && this.limit === null) {
+      warning = `CREDIT_RESERVE_UNRESOLVED: the plan's credit limit is unknown (${cause}), so the ${reserve.configured} reserve resolves to 0 for this call and the vendor's own 402 is the backstop`;
+    }
+    if (warning === null) return [];
+    if (log && !this.unresolvedLogged) {
+      this.unresolvedLogged = true;
+      this.logger?.warn(this.accountLogFields(), warning);
+    }
+    return [warning];
+  }
+
+  // ---- the account probe ---------------------------------------------------
+
+  /** One probe at a time: every caller that hits the gate while one runs — the slots of a batch, two concurrent searches — awaits the same promise. */
+  private probeAccount(
+    toolName: string | null,
+    caller: SourceCaller | undefined,
+    trigger: ProbeTrigger,
+    options: CountdownCallOptions,
+  ): Promise<ProbeOutcome> {
     if (this.probeInFlight === null) {
-      this.probeInFlight = this.readAccount(kind, caller).finally(() => {
+      this.probeInFlight = this.readAccount(toolName, caller, trigger, options).finally(() => {
         this.probeInFlight = null;
       });
     }
@@ -441,40 +786,148 @@ export class CountdownSource {
    * GET /account is free (§1.2) and authoritative, so its figures replace
    * the memory outright instead of passing through remember()'s ordering
    * rule: a renewed plan resets credits_used, which that rule would read as
-   * a stale response. A failed probe changes nothing — the memory stands
-   * and the gate stays shut — and either way the probe leaves an audit row
-   * like every other upstream call.
+   * a stale response. A failed probe changes nothing — the memory stands —
+   * and either way the probe leaves an audit row like every other upstream
+   * call. The body the client returns carries no key; nothing of it is
+   * logged.
    */
-  private async readAccount(kind: SourceCallKind, caller: SourceCaller | undefined): Promise<void> {
-    this.lastProbeAt = this.now().getTime();
-    const toolName = kind === 'search' ? SEARCH_TOOL_NAME : ITEMS_TOOL_NAME;
+  private async readAccount(
+    toolName: string | null,
+    caller: SourceCaller | undefined,
+    trigger: ProbeTrigger,
+    options: CountdownCallOptions,
+  ): Promise<ProbeOutcome> {
+    const at = this.now();
+    this.lastProbeAt = at.getTime();
     const startedAt = Date.now();
+    let outcome: ProbeOutcome;
     try {
-      const result = await this.client.account();
-      this.lastUsed = toInt(result.credits.used);
-      if (result.credits.remaining !== null) this.remaining = toInt(result.credits.remaining);
+      const result = await this.client.account(options);
+      const account = result.account;
+      this.lastUsed = toInt(account.creditsUsed);
+      if (account.creditsRemaining !== null) this.remaining = toInt(account.creditsRemaining);
+      if (account.creditsLimit !== null) this.limit = toInt(account.creditsLimit);
+      if (account.plan !== null) this.plan = account.plan;
+      this.resetAt = account.creditsResetAt;
+      this.lastGoodProbeAt = at.getTime();
+      outcome = { ok: true, httpStatus: result.httpStatus, error: null, at: at.toISOString() };
       await this.audit(toolName, 'account', caller, 'ok', null, result.requestId, {
         probe: true,
+        trigger,
         httpStatus: result.httpStatus,
         attempts: result.attempts,
         creditsUsedThisRequest: null,
-        creditsRemaining: result.credits.remaining,
+        creditsRemaining: this.remaining,
+        creditsLimit: this.limit,
+        plan: this.plan,
         durationMs: Date.now() - startedAt,
       });
+      if (this.reserveNotBelowLimit() && !this.unsatisfiableLogged) {
+        this.unsatisfiableLogged = true;
+        this.logger?.warn(
+          this.accountLogFields(),
+          `COUNTDOWN_CREDIT_RESERVE=${this.config.creditReserve.configured} is not below the plan's ${this.limit}-credit limit; search and item calls will be refused until it is set below the limit or to a percentage such as 5%`,
+        );
+      }
     } catch (err) {
       const bridgeError = BridgeError.from(err);
       if (bridgeError.code === 'SOURCE_CREDITS_EXHAUSTED') this.remaining = 0;
+      this.noteSuspension(bridgeError);
       const status = bridgeError.details.status;
       const attempts = bridgeError.details.attempts;
+      outcome = {
+        ok: false,
+        httpStatus: typeof status === 'number' ? status : null,
+        error: { code: bridgeError.code, message: bridgeError.message },
+        at: at.toISOString(),
+      };
       await this.audit(toolName, 'account', caller, 'error', bridgeError.code, null, {
         probe: true,
-        httpStatus: typeof status === 'number' ? status : null,
+        trigger,
+        httpStatus: outcome.httpStatus,
         attempts: typeof attempts === 'number' ? attempts : null,
         creditsUsedThisRequest: null,
         creditsRemaining: this.remaining,
+        creditsLimit: this.limit,
+        plan: this.plan,
         durationMs: Date.now() - startedAt,
       });
     }
+    this.lastProbe = outcome;
+    return outcome;
+  }
+
+  /**
+   * Boot-time account read, best effort: the plan, its limit and the
+   * effective reserve go to the startup log, and a percent reserve is
+   * resolved before the first call rather than by it. Never throws and
+   * never blocks the caller; a failure is logged and the gate simply reads
+   * the account again on the first call.
+   */
+  async startupProbe(): Promise<void> {
+    try {
+      const outcome = await this.probeAccount(null, undefined, 'startup', this.probeOptions(undefined));
+      const fields = this.accountLogFields();
+      if (!outcome.ok) {
+        this.logger?.warn(
+          { ...fields, probeError: outcome.error },
+          'Countdown API account probe failed at startup; the reserve gate reads the account again on the first call',
+        );
+        return;
+      }
+      const unresolved = this.unresolvedWarnings(false);
+      if (unresolved.length > 0) {
+        this.logger?.warn(fields, unresolved[0]!);
+        return;
+      }
+      this.logger?.info(fields, 'Countdown API account');
+    } catch (err) {
+      this.logger?.warn({ err: String(err) }, 'Countdown API startup probe failed');
+    }
+  }
+
+  /** The account and reserve state, key-free, for every log line about it. */
+  private accountLogFields(): Record<string, unknown> {
+    const reserve = this.reserveState();
+    const gate = this.gateView();
+    return {
+      build: this.buildSha,
+      plan: this.plan,
+      creditsLimit: this.limit,
+      creditsUsed: this.lastUsed,
+      creditsRemaining: this.remaining,
+      creditsResetAt: this.resetAt,
+      reserveConfigured: this.config.creditReserve.configured,
+      reserveEffective: reserve.effective,
+      reserveBasis: reserve.basis,
+      gateOpen: gate.open,
+      gateReason: gate.reason,
+      spendable: gate.spendable,
+      suspended: this.suspendedUntil !== null && this.now().getTime() < this.suspendedUntil,
+    };
+  }
+
+  /** Whether a search or item call would be admitted now, why not or why only by fallback, and what it could spend. */
+  private gateView(): EbayApiStatusOutputType['gate'] {
+    const effective = this.reserveState().effective;
+    const spendable = this.remaining === null ? null : Math.max(0, this.remaining - (effective ?? 0));
+    let reason: EbayApiGateReason | null = null;
+    let open = true;
+    if (this.isSuspended()) {
+      return { open: false, reason: 'account_suspended', spendable: 0 };
+    }
+    if (this.reserveNotBelowLimit()) {
+      open = false;
+      reason = 'reserve_not_below_plan_limit';
+    } else if (this.belowReserve()) {
+      open = false;
+      reason = 'below_reserve';
+    } else if (this.remaining === null) {
+      reason = 'balance_unknown';
+    } else if (this.config.creditReserve.kind === 'percent' && this.limit === null) {
+      reason = 'reserve_unresolved';
+    }
+    return { open, reason, spendable };
   }
 
   /**
@@ -506,15 +959,73 @@ export class CountdownSource {
     return { customerLocation: target.customerLocation, customerZipcode: compactZip(target.customerZipcode) };
   }
 
+  // ---- ebay_api_status (§3.4) --------------------------------------------
+
+  /**
+   * Always a fresh probe — a stale figure is what a run must not plan
+   * against — answered from the memory the probe just refreshed. When the
+   * probe fails the remembered figures are reported with probe.ok false;
+   * when nothing is remembered at all, SOURCE_UNAVAILABLE rather than an
+   * invented balance.
+   */
+  async status(caller?: SourceCaller, deadline?: SourceDeadline): Promise<EbayApiStatusOutputType> {
+    const outcome = await this.probeAccount(STATUS_TOOL_NAME, caller, 'status', this.probeOptions(deadline));
+    const suspended = this.isSuspended();
+    const nothingKnown = this.remaining === null && this.limit === null && this.plan === null;
+    // A suspension is an answer in itself: the status is returned with it
+    // whether or not any figure is known.
+    if (!outcome.ok && nothingKnown && !suspended) {
+      throw new BridgeError(
+        'SOURCE_UNAVAILABLE',
+        `Countdown API account probe failed and no earlier figures are remembered: ${outcome.error?.message ?? 'unknown error'}`,
+        { reason: 'probe_failed', probe: { httpStatus: outcome.httpStatus, error: outcome.error } },
+      );
+    }
+    const reserve = this.reserveState();
+    const gate = this.gateView();
+    const warnings: string[] = [];
+    if (!outcome.ok && outcome.error !== null) {
+      const since = this.lastGoodProbeAt === null ? 'from charged responses; no account read has succeeded yet' : `read from the account at ${new Date(this.lastGoodProbeAt).toISOString()}`;
+      warnings.push(`ACCOUNT_PROBE_FAILED: ${outcome.error.code}: ${outcome.error.message}; the plan and credit figures are the last remembered ones (${since})`);
+    }
+    if (suspended) {
+      warnings.push(
+        `ACCOUNT_SUSPENDED: ${this.suspensionMessage ?? 'the vendor answered 402 with a suspension notice'}; every ebay_api_* call is refused without contacting the vendor until ${new Date(this.suspendedUntil!).toISOString()}. No top-up lifts a suspension: the vendor removes it when a plan is subscribed`,
+      );
+    }
+    if (gate.reason === 'reserve_not_below_plan_limit') {
+      warnings.push(
+        `RESERVE_NOT_BELOW_PLAN_LIMIT: COUNTDOWN_CREDIT_RESERVE=${this.config.creditReserve.configured} is not below the plan's ${this.limit}-credit limit (plan ${JSON.stringify(this.plan ?? 'unknown')}); search and item calls are refused until it is set below the limit or to a percentage such as 5%`,
+      );
+    }
+    warnings.push(...this.unresolvedWarnings(false));
+    return {
+      source: 'countdown',
+      siteProfile: EBAY_API_SITE_PROFILE_ID,
+      probedAt: outcome.at,
+      probe: { ok: outcome.ok, httpStatus: outcome.httpStatus, error: outcome.error },
+      plan: { name: this.plan, creditsLimit: this.limit, creditsResetAt: this.resetAt },
+      account: { suspended, vendorMessage: suspended ? this.suspensionMessage : null },
+      credits: { used: this.lastUsed, remaining: this.remaining },
+      reserve: { configured: this.config.creditReserve.configured, effective: reserve.effective, basis: reserve.basis },
+      gate,
+      build: { gateway: this.buildSha },
+      warnings,
+    };
+  }
+
   // ---- ebay_api_search (§3.1) --------------------------------------------
 
-  async search(input: EbayApiSearchInputType, caller?: SourceCaller): Promise<EbayApiSearchOutputType> {
-    await this.assertCredits('search', caller);
+  async search(input: EbayApiSearchInputType, caller?: SourceCaller, deadline?: SourceDeadline): Promise<EbayApiSearchOutputType> {
+    // The url is screened before the gate: refusing a bad URL is free and
+    // local, and must not cost even the probe.
     const screened = input.url === undefined ? null : this.screenedUrl(input.url, ['search']);
+    const gate = await this.assertCredits('search', caller, deadline);
     const domain = screened === null ? input.domain : screened.domain;
     const location = this.locationFor(input.destination, 'search');
     const plans = buildSearchPlans(input, domain, location, screened === null ? null : screened.href);
     const auditBase = { domain, destination: input.destination, ...location, page: input.page, maxPage: input.maxPage };
+    const options = budgetOptions(deadline);
 
     // Both halves of a split search go out together: a page can take most
     // of a minute at the vendor, and the catalog deadline registerSourceTools
@@ -524,7 +1035,7 @@ export class CountdownSource {
       plans.map(async (plan) => ({
         retrievedUnder: plan.retrievedUnder,
         result: await this.upstream(SEARCH_TOOL_NAME, 'search', caller, { ...auditBase, listingType: plan.retrievedUnder }, () =>
-          this.client.search(plan.params),
+          this.client.search(plan.params, options),
         ),
       })),
     );
@@ -574,7 +1085,7 @@ export class CountdownSource {
     );
     const record = compacted.record;
     const hasMore = record.hasMore === true;
-    const warnings = mergeWarnings(...mapped.map((entry) => entry.rows.warnings), compacted.warnings);
+    const warnings = mergeWarnings(...mapped.map((entry) => entry.rows.warnings), compacted.warnings, gate.warnings);
     if (hasMore) {
       // On the Bridge the next window is one navigate away; here it is the
       // same vendor requests again, which is why the default window is a
@@ -616,10 +1127,10 @@ export class CountdownSource {
   // ---- ebay_api_items (§3.2) ---------------------------------------------
 
   async items(input: EbayApiItemsInputType, caller?: SourceCaller, deadline?: SourceDeadline): Promise<EbayApiItemsOutputType> {
-    await this.assertCredits('items', caller);
     const location = this.locationFor(input.destination, 'product');
-    // Every url is screened before the first request goes out, so a bad
-    // one refuses the whole call rather than costing the good ones credits.
+    // Every url is screened before the gate and before the first request
+    // goes out, so a bad one refuses the whole call rather than costing the
+    // good ones credits — or even the probe.
     const refs: ItemRef[] = input.items.map((ref) => {
       if ('url' in ref) {
         const screened = this.screenedUrl(ref.url, ['item']);
@@ -628,54 +1139,77 @@ export class CountdownSource {
       const url = `https://www.${input.domain}/itm/${ref.itemId}`;
       return { url, vendorUrl: url, domain: input.domain, expectedFormat: ref.expectedFormat };
     });
+    const gate = await this.assertCredits('items', caller, deadline);
     const observedAt = this.now().toISOString();
-    const slots: ItemSlot[] = [];
-    await runPool(refs.length, this.maxConcurrency, async (index) => {
-      const ref = refs[index]!;
-      // Checked before each request, not once per batch: the deadline can
-      // pass while earlier slots are in flight, and a request issued after
-      // the caller has already been answered spends a credit on nothing.
-      slots[index] =
-        deadline?.expired === true ? unattemptedSlot(ref, deadline) : await this.readItem(ref, input, location, observedAt, caller);
-    });
+    const slots: Array<ItemSlot | undefined> = refs.map(() => undefined);
+    const launched = new Set<number>();
+    const launchHeadroomMs = Math.min(this.config.timeoutMs, ITEM_LAUNCH_HEADROOM_MS);
 
-    const results = slots.map((entry) => entry.slot);
-    const attempted = slots.filter((entry) => !entry.unattempted);
-    const succeeded = attempted.filter((entry) => entry.slot.ok).length;
-    const refused = slots.filter((entry) => entry.refusedByReserve).length;
-    const unattempted = slots.length - attempted.length;
-    const warnings: string[] = [];
+    // The pool launches no request the remaining budget could not hold,
+    // and the call stops waiting shortly before the deadline: the answered
+    // slots go back now, the rest are marked for re-request, and whatever
+    // is still in flight is aborted when the MCP layer disposes of the
+    // deadline (nothing leaks; an abandoned request may still be charged).
+    const pool = runPool(refs.length, this.maxConcurrency, async (index) => {
+      if (deadline !== undefined && deadline.remainingMs() < launchHeadroomMs) return false;
+      launched.add(index);
+      slots[index] = await this.readItem(refs[index]!, input, location, observedAt, caller, deadline);
+      return true;
+    });
+    if (deadline === undefined) {
+      await pool;
+    } else {
+      const guard = deadline.whenRemaining(this.batchGuardMs ?? batchReturnGuardMs(deadline.deadlineMs));
+      try {
+        await Promise.race([pool, guard.promise]);
+      } finally {
+        guard.cancel();
+      }
+    }
+
+    const unanswered: string[] = [];
+    const results = refs.map((ref, index) => {
+      const answered = slots[index];
+      if (answered !== undefined) return answered.slot;
+      unanswered.push(itemLabel(ref));
+      return deadlineSlot(ref, deadline?.deadlineMs ?? 0, launched.has(index));
+    });
+    const answeredSlots = slots.filter((entry): entry is ItemSlot => entry !== undefined);
+    const succeeded = answeredSlots.filter((entry) => entry.slot.ok).length;
+    const refused = answeredSlots.filter((entry) => entry.refusedByReserve).length;
+    const warnings: string[] = [...gate.warnings];
     if (refused > 0) {
       warnings.push(
-        `SOURCE_CREDITS_EXHAUSTED: ${refused} item(s) were not requested because the credit balance fell below the reserve of ${this.creditReserve} during the batch; their slots carry the error.`,
+        `SOURCE_CREDITS_EXHAUSTED: ${refused} item(s) were not requested because the credit balance fell below the reserve of ${this.reserveState().effective ?? 0} during the batch; their slots carry the error.`,
       );
     }
-    if (unattempted > 0 && deadline !== undefined) {
+    if (unanswered.length > 0 && deadline !== undefined) {
       warnings.push(
-        `BATCH_DEADLINE_REACHED: ${attempted.length} of ${refs.length} item(s) were requested before the tool deadline of ${deadline.deadlineMs} ms; the rest carry SOURCE_UNAVAILABLE and can be re-issued.`,
+        `BATCH_TRUNCATED_BY_DEADLINE: ${unanswered.length} of ${refs.length} items not answered within the ${formatSeconds(deadline.deadlineMs)} s tool budget; re-request the listed ids: ${unanswered.join(', ')}`,
       );
     }
     // Only slots the vendor answered are charged, one credit each by
-    // contract; a refused, failed or unattempted slot carries no credits.
-    const credits = foldCredits(slots.flatMap((entry) => (entry.credits === null ? [] : [{ credits: entry.credits, contractCost: 1 }])));
+    // contract; a refused, failed, abandoned or unrequested slot carries no
+    // credits.
+    const credits = foldCredits(answeredSlots.flatMap((entry) => (entry.credits === null ? [] : [{ credits: entry.credits, contractCost: 1 }])));
     this.remember(credits);
     return {
       mode: 'inline',
       jobId: null,
-      // 'partial' means what it means on the Bridge: the slots requested are
-      // final, and the rest were never attempted.
-      status: unattempted > 0 ? 'partial' : 'completed',
+      // 'partial' means what it means on the Bridge: the slots answered are
+      // final, and the rest were not answered by this call.
+      status: unanswered.length > 0 ? 'partial' : 'completed',
       requested: refs.length,
-      completed: attempted.length,
+      completed: answeredSlots.length,
       succeeded,
-      failed: attempted.length - succeeded,
+      failed: answeredSlots.length - succeeded,
       compact: input.compact,
       resultsFrom: 0,
       results,
       warnings,
       source: 'countdown',
       credits,
-      requestIds: slots.map((entry) => entry.requestId).filter((id): id is string => id !== null),
+      requestIds: answeredSlots.map((entry) => entry.requestId).filter((id): id is string => id !== null),
     };
   }
 
@@ -685,6 +1219,7 @@ export class CountdownSource {
     location: LocationParams,
     observedAt: string,
     caller: SourceCaller | undefined,
+    deadline: SourceDeadline | undefined,
   ): Promise<ItemSlot> {
     const base = { url: ref.url, siteProfile: EBAY_API_SITE_PROFILE_ID, pageRevision: 0 } as const;
     try {
@@ -692,13 +1227,13 @@ export class CountdownSource {
       // starts above the reserve can cross it part-way, and the reserve is
       // meant to stop the next request, not the next call. The refusal
       // lands in this slot; every slot already read stays intact.
-      await this.assertCredits('items', caller);
+      await this.assertCredits('items', caller, deadline);
       const result = await this.upstream(
         ITEMS_TOOL_NAME,
         'product',
         caller,
         { domain: ref.domain, destination: input.destination, ...location },
-        () => this.client.product({ url: ref.vendorUrl, ...location }),
+        () => this.client.product({ url: ref.vendorUrl, ...location }, budgetOptions(deadline)),
       );
       const mapped = mapItem({
         body: result.body,
@@ -725,7 +1260,6 @@ export class CountdownSource {
         requestId: result.requestId,
         credits: result.credits,
         refusedByReserve: false,
-        unattempted: false,
       };
     } catch (err) {
       // A slot that fails maps its own error and never fails the batch.
@@ -742,17 +1276,18 @@ export class CountdownSource {
         requestId: null,
         credits: null,
         refusedByReserve: bridgeError.code === 'SOURCE_CREDITS_EXHAUSTED' && bridgeError.details.gate === true,
-        unattempted: false,
       };
     }
   }
 
   // ---- ebay_api_seller (§3.3) --------------------------------------------
 
-  async seller(input: EbayApiSellerInputType, caller?: SourceCaller): Promise<EbayApiSellerOutputType> {
+  async seller(input: EbayApiSellerInputType, caller?: SourceCaller, deadline?: SourceDeadline): Promise<EbayApiSellerOutputType> {
     const url = this.sellerUrl(input);
+    // Exempt from the credit reserve, not from a remembered suspension.
+    await this.assertCredits('seller', caller, deadline);
     const result = await this.upstream(SELLER_TOOL_NAME, 'seller_profile', caller, { domain: ebayDomainOfUrl(url) }, () =>
-      this.client.sellerProfile({ url }),
+      this.client.sellerProfile({ url }, budgetOptions(deadline)),
     );
     const mapped = mapSellerProfile({ body: result.body, requestedUrl: url });
     const profile = mapped.seller;
@@ -843,6 +1378,7 @@ export class CountdownSource {
     } catch (err) {
       const bridgeError = BridgeError.from(err);
       if (bridgeError.code === 'SOURCE_CREDITS_EXHAUSTED') this.remaining = 0;
+      this.noteSuspension(bridgeError);
       const status = bridgeError.details.status;
       const attempts = bridgeError.details.attempts;
       await this.audit(toolName, requestType, caller, 'error', bridgeError.code, null, {
@@ -851,6 +1387,7 @@ export class CountdownSource {
         attempts: typeof attempts === 'number' ? attempts : null,
         creditsUsedThisRequest: null,
         creditsRemaining: this.remaining,
+        ...(bridgeError.details.reason === 'deadline' ? { abandoned: true, possiblyCharged: bridgeError.details.possiblyCharged === true } : {}),
         durationMs: Date.now() - startedAt,
       });
       throw bridgeError;
@@ -860,11 +1397,12 @@ export class CountdownSource {
   /**
    * Shaped like the broker's rows so audit_events reads as one ledger: no
    * device, session or tab (nothing is on the device path), the vendor's
-   * request id in requestId, the credit figures in metadata. Never the key
-   * and never the outbound URL; a postal code is fine.
+   * request id in requestId, the credit figures in metadata. toolName is
+   * null for the startup probe, which no tool asked for. Never the key and
+   * never the outbound URL; a postal code is fine.
    */
   private async audit(
-    toolName: string,
+    toolName: string | null,
     requestType: CountdownRequestType,
     caller: SourceCaller | undefined,
     outcome: AuditOutcome,

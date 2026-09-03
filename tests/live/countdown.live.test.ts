@@ -4,9 +4,10 @@
  *   - COUNTDOWN_LIVE=1
  *   - COUNTDOWN_API_KEY=<a real key>
  *
- * Never runs in CI. Three requests, three credits: one auction-filtered
- * search, one item, one seller profile. Shapes only — the marketplace data
- * behind them drifts by the hour.
+ * Never runs in CI. Three charged requests, three credits: one
+ * auction-filtered search, one item, one seller profile, plus the free
+ * account status read. Shapes only — the marketplace data behind them
+ * drifts by the hour.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGatewayConfig } from '@browser-bridge/config';
@@ -18,6 +19,7 @@ import {
   EbayApiSearchOutput,
   EbayApiSellerInput,
   EbayApiSellerOutput,
+  EbayApiStatusOutput,
 } from '@browser-bridge/protocol';
 
 describe.skipIf(!process.env.COUNTDOWN_LIVE || !process.env.COUNTDOWN_API_KEY)('Countdown API live smoke (opt-in)', () => {
@@ -36,6 +38,15 @@ describe.skipIf(!process.env.COUNTDOWN_LIVE || !process.env.COUNTDOWN_API_KEY)('
     });
     source = new CountdownSource({ config: config.countdown!, store: new MemoryStore() });
   });
+
+  it('reads the account status without spending a credit', async () => {
+    const result = await source.status();
+    expect(EbayApiStatusOutput.parse(result)).toBeTruthy();
+    expect(result.probe.ok).toBe(true);
+    expect(result.credits.remaining).not.toBeNull();
+    expect(result.plan.creditsLimit).not.toBeNull();
+    expect(JSON.stringify(result)).not.toContain(process.env.COUNTDOWN_API_KEY ?? '\u0000');
+  }, 60_000);
 
   it('searches ebay.ca under the auction filter with the Toronto destination', async () => {
     const result = await source.search(
