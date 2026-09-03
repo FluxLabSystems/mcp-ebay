@@ -312,6 +312,15 @@ export class BrowserSessionRuntime {
     return tab;
   }
 
+  /** Ids of the live tabs, without touching the active-tab notion. */
+  tabIds(): string[] {
+    const out: string[] = [];
+    for (const tab of this.tabs.values()) {
+      if (!tab.page.isClosed()) out.push(tab.tabId);
+    }
+    return out;
+  }
+
   async listTabs(): Promise<Tab[]> {
     const out: Tab[] = [];
     for (const tab of this.tabs.values()) {

@@ -164,6 +164,47 @@ describe('browser_extract dispatches by page kind instead of refusing', () => {
     expect(parsed.warnings.some((warning) => warning.startsWith('NO_LISTING_CANDIDATES'))).toBe(true);
   });
 
+  // 2026-09-03 wardrobe Lane B fire (site-zazzle+extractor_defect+zazzle-
+  // listing-grids-render-product-free-pdps-unaffected): /c/hats committed
+  // with the real category title, and the shell sentence with NO product
+  // grid, while product pages on the same host extracted normally in the
+  // same session. The warning told the run to go drive the search box —
+  // the route that had already produced the same shell on the Lane A fire.
+  it('a curated /c/ category page rendering the no-results shell is named as a grid-free category page, not a search miss', async () => {
+    const outcome = await runExtract(
+      'https://www.zazzle.ca/c/hats',
+      '<html><head><title>Hats &amp; Caps | Zazzle CA</title></head><body><main><h1>Hats &amp; Caps</h1><p>Sorry, your search did not match any products.</p></main><aside class="RecentlyViewedRail"><a href="https://www.zazzle.ca/custom_logo_hat-256140446817787648">Recently viewed</a></aside></body></html>',
+      'zazzle.com.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as { pageKind: string; candidateCount: number; noResultsShell: boolean };
+    expect(record.pageKind).toBe('search');
+    expect(record.candidateCount).toBe(0);
+    expect(record.noResultsShell).toBe(true);
+    const category = parsed.warnings.find((warning) => warning.startsWith('CATEGORY_EMPTY_SHELL'));
+    expect(category).toBeDefined();
+    // A category page cannot legitimately have zero products: the remedy
+    // must not send the run back to the search box, and must say to record
+    // the grid absence once as a coverage boundary.
+    expect(category).not.toMatch(/drive the search box/);
+    expect(category).toMatch(/once/);
+    expect(parsed.warnings.some((warning) => warning.startsWith('SEARCH_EMPTY_SHELL'))).toBe(false);
+  });
+
+  it('a /s/ search shell no longer prescribes the search-box route as if it were a different one', async () => {
+    const outcome = await runExtract(
+      'https://www.zazzle.ca/s/logo+polo+shirt',
+      '<html><head><title>Logo Polo T-Shirts | Zazzle CA</title></head><body><main><p>Sorry, your search did not match any products.</p></main></body></html>',
+      'zazzle.com.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const shell = parsed.warnings.find((warning) => warning.startsWith('SEARCH_EMPTY_SHELL'));
+    expect(shell).toBeDefined();
+    // Both routes dead-ended identically on 2026-09-03: the remedy has to
+    // say what to do when the search box lands on the same shell.
+    expect(shell).toMatch(/same shell/);
+  });
+
   // wardrobe-vendors.v1 ships no extractor. Before this branch a vendor
   // page fell through to the eBay listing extractor and came back as an
   // all-null eBay record — plausible-looking junk. Now it says so.

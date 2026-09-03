@@ -13,6 +13,8 @@ interface RawSnapshotNode {
   role: string;
   name: string;
   text: string;
+  /** Resolved absolute destination of a link-like element; null otherwise. */
+  href: string | null;
   disabled: boolean;
   checked: boolean | null;
   isField: boolean;
@@ -122,6 +124,26 @@ function collectInPage(args: { revision: number; maxNodes: number }): { nodes: R
     return text.trim().replace(/\s+/g, ' ').slice(0, 120);
   };
 
+  // The destination a link resolves to, absolute, so a listing grid on a
+  // host with no extractor can be traversed by URL (2026-09-03 wardrobe
+  // Lane B fire: roster-host product cards carried names and prices but no
+  // way to reach a product page). javascript: and other non-navigable
+  // schemes are not destinations and stay null.
+  const hrefOf = (el: Element): string | null => {
+    if (el instanceof HTMLAnchorElement || el instanceof HTMLAreaElement) {
+      const resolved = el.href;
+      return /^https?:/i.test(resolved) ? resolved : null;
+    }
+    const raw = el.getAttribute('href');
+    if (!raw) return null;
+    try {
+      const resolved = new URL(raw, document.baseURI).href;
+      return /^https?:/i.test(resolved) ? resolved : null;
+    } catch {
+      return null;
+    }
+  };
+
   const elements = Array.from(document.querySelectorAll(SELECTOR));
   const nodes: RawSnapshotNode[] = [];
   let truncated = false;
@@ -167,6 +189,7 @@ function collectInPage(args: { revision: number; maxNodes: number }): { nodes: R
       role,
       name,
       text,
+      href: hrefOf(el),
       disabled,
       checked,
       isField: isFormField,
@@ -195,6 +218,7 @@ export async function snapshot(
       role: node.role,
       name: node.name,
       text: secret ? '' : node.text,
+      href: node.href,
       disabled: node.disabled,
       checked: node.checked,
       valueRedacted: secret,

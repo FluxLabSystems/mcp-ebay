@@ -28,6 +28,16 @@ export const SemanticNodeSchema = z.strictObject({
   role: z.string(),
   name: z.string(),
   text: z.string(),
+  /**
+   * Resolved absolute http(s) destination of a link-like node (anchor,
+   * area, or any element carrying href); null for everything else. Added
+   * 2026-09-03 (gateway+connector_defect+browser-snapshot-omits-href-on-
+   * links): on the wardrobe-vendors.v1 roster hosts, which have no
+   * extractor by design, a listing grid was a dead end without it.
+   * NOTE: adding this field changed the advertised tool schema — a gateway
+   * redeploy plus a claude.ai connector reconnect applies.
+   */
+  href: z.union([z.string(), z.null()]),
   disabled: z.boolean(),
   checked: z.union([z.boolean(), z.null()]),
   valueRedacted: z.boolean(),
@@ -58,9 +68,25 @@ export type ArtifactDescriptor = z.infer<typeof ArtifactDescriptorSchema>;
 // Tool input/output schemas (Appendix A)
 // ---------------------------------------------------------------------------
 
+/**
+ * The device's default persistent profile: the logged-in eBay research
+ * context at AGENT_PROFILE_DIR. Any other profileName names a sibling
+ * persistent context of its own (§13, one context per device/profile).
+ */
+export const DEFAULT_PROFILE_NAME = 'ebay-research';
+/**
+ * A profileName becomes a directory-name suffix on the agent, so it is
+ * bounded to a filesystem-safe token. The default is the only name that
+ * maps onto the pre-existing profile directory.
+ */
+export const PROFILE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
 export const SessionOpenInput = z.strictObject({
   deviceId: z.string(),
-  profileName: z.string().default('ebay-research'),
+  profileName: z
+    .string()
+    .regex(PROFILE_NAME_RE, 'profileName must be 1-64 characters of letters, digits, ".", "_" or "-", starting with a letter or digit')
+    .default(DEFAULT_PROFILE_NAME),
 });
 export const SessionOpenOutput = z.strictObject({
   browserSessionHandle: z.string(),

@@ -195,6 +195,47 @@ describe('navigation + revisions + snapshot (FR-02/03, §14)', () => {
     expect((await harness.session.listTabs()).length).toBe(before);
   });
 
+  // 2026-09-03 wardrobe re-file (same fingerprint, agent rebuilt, ClickOutput
+  // live): Zazzle's "Personalize this design. (opens in new tab)" control
+  // still came back {openedTab:null, popupDenied:null}. It is a <button>
+  // whose handler calls window.open, not an anchor with target=_blank: the
+  // popup wait was a 400 ms grace that started BEFORE the click, so a popup
+  // that surfaced after the click's own actionability work was never seen.
+  it('a button whose script opens a window after the click still reports the adopted tab', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
+    const snap = await snapshot(harness.session, tabId, 3000);
+    const button = snap.snapshot.find((node) => node.name.includes('Personalize this design'));
+    expect(button?.role).toBe('button');
+    const before = (await harness.session.listTabs()).length;
+    const result = await click(harness.session, tabId, button!.elementRef!, 10_000);
+    expect(result.changed).toBe(false);
+    expect(result.popupDenied).toBeNull();
+    expect(result.openedTab).not.toBeNull();
+    expect(result.openedTab?.url).toBe(`${fixtures.baseUrl}/pages/second.html`);
+    const tabs = await harness.session.listTabs();
+    expect(tabs.length).toBe(before + 1);
+    await harness.session.getTab(result.openedTab!.tabId).page.close();
+  });
+
+  // 2026-09-03 wardrobe Lane B fire (gateway+connector_defect+browser-
+  // snapshot-omits-href-on-links): on roster hosts with no extractor a
+  // rendered listing grid was a dead end — link nodes carried a name and a
+  // price but no destination, so no product page could be reached except
+  // by guessing URLs or clicking through a consent overlay.
+  it('link nodes carry their resolved absolute href; non-links carry null', async () => {
+    const snap = await snapshot(harness.session, tabId, 3000);
+    const link = snap.snapshot.find((node) => node.name === 'Go to second page');
+    expect(link?.role).toBe('link');
+    expect(link?.href).toBe(`${fixtures.baseUrl}/pages/second.html`);
+    const external = snap.snapshot.find((node) => node.name.includes('Open external design tool'));
+    expect(external?.href).toBe('https://example.com/design-tool');
+    const button = snap.snapshot.find((node) => node.name.includes('Increment counter'));
+    expect(button?.href).toBeNull();
+    const checkout = snap.snapshot.find((node) => node.name === 'Proceed to checkout');
+    expect(checkout?.role).toBe('button');
+    expect(checkout?.href).toBe(`${fixtures.baseUrl}/checkout/start`);
+  });
+
   it('an ordinary click reports no popup', async () => {
     const snap = await snapshot(harness.session, tabId, 3000);
     const button = snap.snapshot.find((node) => node.name.includes('Increment counter'));

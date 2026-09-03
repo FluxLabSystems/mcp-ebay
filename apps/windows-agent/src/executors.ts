@@ -160,6 +160,15 @@ type ExtractionSite = 'ebay' | 'kijiji' | 'zazzle' | 'vendor' | 'generic';
  * marketplace page that marketplace was allowed. 'generic' covers test
  * harness profiles and falls through to the historical behavior.
  */
+/** A curated Zazzle category (/c/…) page, as opposed to a keyword search (/s/…). */
+function isZazzleCategoryPath(pageUrl: string): boolean {
+  try {
+    return /^\/c\//.test(new URL(pageUrl).pathname);
+  } catch {
+    return false;
+  }
+}
+
 function siteForUrl(pageUrl: string): ExtractionSite {
   try {
     const host = new URL(pageUrl).hostname.toLowerCase();
@@ -716,13 +725,27 @@ async function executeExtract(
           `UNCLASSIFIED_PAGE: ${pageUrl} is not a Zazzle product (…-<18-digit id>) or search (/s/, /c/) URL; returned a best-effort product-link scan. An empty candidate list here may mean the page has no products, not that extraction failed.`,
         );
       }
-      if (searchPage.noResultsShell) {
+      if (searchPage.noResultsShell && isZazzleCategoryPath(pageUrl)) {
+        // Observed live 2026-09-03 (wardrobe Lane B fire): /c/hats committed
+        // with its real category title and rendered the no-results shell
+        // with no product grid at all, while product pages on the same host
+        // extracted normally in the same session. A curated category cannot
+        // legitimately have zero products, so this is the listing grid not
+        // being served to this browser — a coverage boundary to record once,
+        // not a search miss to retry through another route.
+        warnings.push(
+          'CATEGORY_EMPTY_SHELL: a curated /c/ category page rendered Zazzle\'s no-results shell with no product grid. A category cannot legitimately have zero products, so the listing grid is not being served to this browser (bot, consent or hydration gating — root cause unverified). Record it once per fire as a listing-surface coverage boundary, keep extracting product pages (they are unaffected), and do not spend the budget re-driving the search box or /s/ deep links for the same query.',
+        );
+      } else if (searchPage.noResultsShell) {
         // Observed live 2026-09-01: a /s/ deep link can render this shell
         // while the same query driven through the search box returns a full
         // page, so an empty shell is ambiguous between a true zero and
-        // deep-link gating.
+        // deep-link gating. Observed live 2026-09-03: the search box and the
+        // deep link can ALSO dead-end on the same shell, so the remedy must
+        // say where that ends instead of prescribing the route that produced
+        // the page.
         warnings.push(
-          'SEARCH_EMPTY_SHELL: the page says the search did not match any products. On Zazzle a /s/ deep link can render this shell even when the query has results — navigate to the storefront and drive the search box (browser_fill + Enter) with the same query before recording zero coverage.',
+          'SEARCH_EMPTY_SHELL: the page says the search did not match any products. On Zazzle a /s/ deep link can render this shell even when the query has results — if this page came from a deep link, navigate to the storefront and drive the search box (browser_fill + Enter) with the same query before recording zero coverage. If this page came from the search box, or the search box lands on the same shell, the listing grid is not being served to this browser: record that once per fire as a listing-surface coverage boundary (a /c/ category page will show the same, as CATEGORY_EMPTY_SHELL) and keep extracting product pages.',
         );
       } else if (searchPage.results.length === 0) {
         warnings.push(

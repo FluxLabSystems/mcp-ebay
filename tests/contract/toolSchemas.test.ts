@@ -307,6 +307,7 @@ describe('output schema contracts (Appendix A)', () => {
         role: 'button',
         name: 'Change shipping destination',
         text: 'Change',
+        href: null,
         disabled: false,
         checked: null,
         valueRedacted: false,

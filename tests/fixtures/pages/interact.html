@@ -9,6 +9,12 @@
   <a id="nav-link" href="/pages/second.html">Go to second page</a>
   <a id="popup-link" href="/pages/second.html" target="_blank" rel="noopener">Open second page in new tab</a>
   <a id="popup-denied-link" href="https://example.com/design-tool" target="_blank" rel="noopener">Open external design tool in new tab</a>
+  <!-- Zazzle's "Personalize this design" control: a BUTTON whose JS handler
+       calls window.open after doing its own work, not an anchor with
+       target=_blank (2026-09-03 wardrobe re-file). The delay stands in for
+       that handler's work; it stays inside Chrome's user-activation window. -->
+  <button id="popup-script-btn" aria-label="Personalize this design. (opens in new tab)"
+    onclick="setTimeout(function () { window.open('/pages/second.html', '_blank', 'noopener'); }, 600)">Personalize this design</button>
 
   <button id="counter-btn" onclick="document.getElementById('count').textContent = String(1 + Number(document.getElementById('count').textContent))">Increment counter</button>
   <span id="count">0</span>
