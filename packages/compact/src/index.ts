@@ -611,6 +611,27 @@ export function compactSearchPage(
   out.offset = options.offset;
   out.hasMore = !filterBudgetExceeded && options.offset + candidates.length < matched.length;
   out.nextOffset = out.hasMore === true ? options.offset + candidates.length : null;
+  // offset/limit walk the rows THIS page rendered, never the site's result
+  // set: an offset past the page yields nothing, and the result set continues
+  // on the site's next page (hasNextPage/nextPageUrl, a navigate away). A
+  // 2026-09-03 office fire asked a 1584-result Kijiji category page for 60,
+  // got the 46 it rendered with hasMore:false / nextOffset:null beside
+  // hasNextPage:true, read the window's own cursor as "no more", and reported
+  // ~3% of the category as its coverage. The cursor keeps its page-local
+  // meaning; a window the page could not fill is named instead, with the
+  // pointer that does continue the result set.
+  if (
+    source.hasNextPage === true &&
+    !filterBudgetExceeded &&
+    out.hasMore === false &&
+    candidates.length < options.limit
+  ) {
+    const total = typeof source.totalResults === 'number' ? ` of totalResults ${source.totalResults}` : '';
+    const next = typeof source.nextPageUrl === 'string' ? source.nextPageUrl : null;
+    warnings.push(
+      `PAGE_LOCAL_LIMIT: search.limit ${options.limit} (offset ${options.offset}) ran past the ${rows.length} candidate(s) this page rendered${total}; ${matched.length} matched and ${candidates.length} were returned. hasMore/nextOffset describe this page only, and the result set continues on the site's next page${next === null ? '' : ` — navigate nextPageUrl ${next} and extract again`}.`,
+    );
+  }
   out.compacted = true;
   out.candidates = candidates;
   out.note =
