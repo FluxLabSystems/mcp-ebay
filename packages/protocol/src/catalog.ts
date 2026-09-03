@@ -310,7 +310,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'reversible',
     timeoutMs: DEFAULT_TIMEOUT_MS,
     description:
-      'Navigate a tab to an allowed HTTPS URL and run site-profile extraction on the page it lands on, in one call. Returns exactly what browser_extract returns plus finalUrl and navigationStatus. On a search or store page the optional search object reduces the candidate list server-side (canonical URLs, limit/offset, a field allow-list, and title/price/format filters) and is applied with its defaults when omitted, so a full results page arrives compact rather than as a hundred-kilobyte candidate dump.',
+      'Navigate a tab to an allowed HTTPS URL and run site-profile extraction on the page it lands on, in one call. Returns exactly what browser_extract returns plus finalUrl and navigationStatus. On a search or store page the optional search object reduces the candidate list server-side (canonical URLs, limit/offset, a field allow-list, and title/price/format filters) and is applied with its defaults when omitted, so a full results page arrives compact rather than as a hundred-kilobyte candidate dump. limit/offset walk the candidates the fetched page rendered, never the whole result set: hasMore/nextOffset are page-local, the result set continues through hasNextPage/nextPageUrl (navigate it and extract again), and a window the page could not fill is named by a PAGE_LOCAL_LIMIT warning.',
     inputSchema: OpenAndExtractInput,
     outputSchema: OpenAndExtractOutput,
   },

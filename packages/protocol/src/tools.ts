@@ -503,6 +503,15 @@ function searchCompactionInput(defaultLimit: number) {
        * truncation. The response always reports candidateCount, hasMore and
        * nextOffset, so a caller can see what it did not receive and page
        * through it.
+       *
+       * Page-local, on the Bridge: the window walks the candidates the
+       * fetched page rendered, never the site's result set, so an offset
+       * past that page yields nothing and hasMore/nextOffset go false/null
+       * at the page's end however many results the site still holds. The
+       * result set continues through the page's own hasNextPage/nextPageUrl
+       * (a navigate away), and a window the page could not fill is named by
+       * the PAGE_LOCAL_LIMIT warning (2026-09-03 office fire: limit 60 on a
+       * 1584-result category page rendering 46).
        */
       limit: z.int().min(1).max(240).default(defaultLimit),
       offset: z.int().min(0).default(0),

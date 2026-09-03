@@ -430,6 +430,83 @@ describe('search compaction', () => {
     expect(record.candidates[0]!.priceText).toBeUndefined();
   });
 
+  describe('PAGE_LOCAL_LIMIT (2026-09-03 office fire)', () => {
+    // A City-of-Toronto c40 category page rendered 46 of its 1584 results.
+    // search {limit: 60} came back returnedCount 46, hasMore:false,
+    // nextOffset:null beside hasNextPage:true — and a routine reading the
+    // window's own cursor concluded "no more", then reported ~3% of the
+    // category as its coverage. offset/limit walk the rows THIS page
+    // rendered; the site's next page is a navigate away, and a window the
+    // page could not fill has to say so.
+    const NEXT_PAGE = 'https://www.kijiji.ca/b-commercial-office-space/city-of-toronto/page-2/c40l1700273';
+    function kijijiCategoryPage(rendered: number, extra: Record<string, unknown>) {
+      return {
+        siteProfile: 'kijiji.ca.v1',
+        pageKind: 'search',
+        pageUrl: 'https://www.kijiji.ca/b-commercial-office-space/city-of-toronto/c40l1700273',
+        candidateCount: rendered,
+        candidates: Array.from({ length: rendered }, (_, index) => ({
+          adId: String(1742900000 + index),
+          url: `https://www.kijiji.ca/v-commercial-office-space/city-of-toronto/office-${index}/${1742900000 + index}`,
+          title: `Office space ${index}`,
+          price: { kind: 'amount', value: 850 + index, currency: 'CAD', rawText: `$${850 + index}.00` },
+          locationText: 'Toronto',
+        })),
+        totalResults: 1584,
+        ...extra,
+      };
+    }
+
+    it('warns when the window ran past the rendered page and the site has a next page', () => {
+      const page = kijijiCategoryPage(46, { hasNextPage: true, nextPageUrl: NEXT_PAGE });
+      const { record, warnings } = compactSearchPage(page, SearchCompactionInput.parse({ limit: 60 }));
+      // The page-local cursor keeps meaning what it meant: nothing further on
+      // THIS page. What changes is that the shortfall is named.
+      expect(record).toMatchObject({
+        candidateCount: 46,
+        returnedCount: 46,
+        hasMore: false,
+        nextOffset: null,
+        hasNextPage: true,
+        nextPageUrl: NEXT_PAGE,
+      });
+      const warning = warnings.find((entry) => entry.startsWith('PAGE_LOCAL_LIMIT'));
+      expect(warning).toBeDefined();
+      expect(warning).toContain('46');
+      expect(warning).toContain('60');
+      expect(warning).toContain('1584');
+      expect(warning).toContain(NEXT_PAGE);
+    });
+
+    it('also warns when a filter, not the page, left the window short and more pages remain', () => {
+      const page = kijijiCategoryPage(46, { hasNextPage: true, nextPageUrl: NEXT_PAGE });
+      const { record, warnings } = compactSearchPage(
+        page,
+        SearchCompactionInput.parse({ limit: 40, include: { maxPrice: 860 } }),
+      );
+      expect(record).toMatchObject({ matchedCount: 11, returnedCount: 11, hasMore: false });
+      expect(warnings.some((entry) => entry.startsWith('PAGE_LOCAL_LIMIT'))).toBe(true);
+    });
+
+    it('stays quiet when the page filled the window', () => {
+      const page = kijijiCategoryPage(46, { hasNextPage: true, nextPageUrl: NEXT_PAGE });
+      const { record, warnings } = compactSearchPage(page, SearchCompactionInput.parse({ limit: 40 }));
+      expect(record).toMatchObject({ returnedCount: 40, hasMore: true, nextOffset: 40 });
+      expect(warnings.some((entry) => entry.startsWith('PAGE_LOCAL_LIMIT'))).toBe(false);
+    });
+
+    it('stays quiet on the last page, where the page really is the end of the result set', () => {
+      const page = kijijiCategoryPage(24, { hasNextPage: false, nextPageUrl: null, totalResults: 1584 });
+      const { warnings } = compactSearchPage(page, SearchCompactionInput.parse({ limit: 60 }));
+      expect(warnings.some((entry) => entry.startsWith('PAGE_LOCAL_LIMIT'))).toBe(false);
+    });
+
+    it('stays quiet on an eBay page, which carries no next-page pointer', () => {
+      const { warnings } = compactSearchPage(searchRecord(46), SearchCompactionInput.parse({ limit: 60 }));
+      expect(warnings.some((entry) => entry.startsWith('PAGE_LOCAL_LIMIT'))).toBe(false);
+    });
+  });
+
   it('preserves the zazzle empty-shell marker through compaction', () => {
     const zazzle = {
       siteProfile: 'zazzle.com.v1',
