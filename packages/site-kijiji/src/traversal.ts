@@ -60,6 +60,14 @@ export interface KijijiSearchPage {
   /** Total results the page claims, when it states one. */
   totalResults: number | null;
   /**
+   * The rendered document <title>, verbatim. The deals and office SKILLs make
+   * the rendered page title the sole accepted proof of which region an
+   * l<regionId> path segment actually scopes ("12,543 ads for lego … in
+   * Toronto (GTA)" vs "… in City of Toronto"), so a search record that omits
+   * it cannot satisfy the one verification the routines are told to perform.
+   */
+  pageTitle: string | null;
+  /**
    * The ad Kijiji redirected away from to land here, when it did. A removed
    * ad renders no banner and keeps no VIP: the ad URL 302s to its category
    * search page carrying ?adRemoved=<id>. That parameter is the removed-ad
@@ -318,11 +326,14 @@ export function extractSearchResults(
   const moreByCount = totalResults !== null && Number.isFinite(totalResults) && seenSoFar < totalResults;
   if (moreByCount && nextPageUrl === null) nextPageUrl = nextKijijiPageUrl(pageUrl);
 
+  const pageTitle = (document.querySelector('title')?.textContent ?? '').replace(/\s+/g, ' ').trim();
+
   return {
     results,
     hasNextPage: nextPageUrl !== null || moreByCount,
     nextPageUrl,
     totalResults,
+    pageTitle: pageTitle.length > 0 ? pageTitle : null,
     removedAdId: removedAdIdFromUrl(pageUrl),
   };
 }

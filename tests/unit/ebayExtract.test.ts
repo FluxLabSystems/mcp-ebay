@@ -318,3 +318,77 @@ describe('defects the 2026-08-29 deals run surfaced', () => {
     }
   });
 });
+
+// C2 (2026-09-03 deals fire): item-page seller field returned the /str/ store
+// slug for some sellers, which then failed as an _ssn= login id (magellanstore)
+// and made a live seller read as "no inventory". The extractor must prefer a
+// /usr/ login id and, when only a store slug is readable, flag it rather than
+// pass the slug off as a login id.
+describe('seller login id vs store slug (C2)', () => {
+  it('records only a store slug as sellerStoreSlug and withholds seller, with SELLER_LOGIN_ID_UNAVAILABLE', () => {
+    const document = parseHTML(
+      `<h1 class="x-item-title__mainTitle">LEGO Bulk Lot</h1>
+       <div class="x-price-primary">C $25.00</div>
+       <div class="x-sellercard-atf">
+         <div class="x-sellercard-atf__info__about-seller">
+           <a href="https://www.ebay.ca/str/magellanstore"><span>Magellan Store</span></a>
+         </div>
+       </div>`,
+    ).document as unknown as Document;
+    const { record, warnings } = extractListing(document, 'https://www.ebay.ca/itm/257719232683');
+    expect(record.seller).toBeNull();
+    expect(record.sellerStoreSlug?.value).toBe('magellanstore');
+    expect(record.sellerProfileUrl?.value).toBe('https://www.ebay.ca/str/magellanstore');
+    expect(warnings.some((w) => w.startsWith('SELLER_LOGIN_ID_UNAVAILABLE'))).toBe(true);
+  });
+
+  it('prefers the /usr/ login id even when a /str/ store link appears first on the card', () => {
+    const document = parseHTML(
+      `<h1 class="x-item-title__mainTitle">LEGO Bulk Lot</h1>
+       <div class="x-price-primary">C $25.00</div>
+       <div class="x-sellercard-atf">
+         <div class="x-sellercard-atf__info__about-seller">
+           <a href="https://www.ebay.ca/str/scottstoyemporium"><span>Scott's Toy Emporium</span></a>
+         </div>
+         <a href="https://www.ebay.ca/usr/novanut74">novanut74</a>
+       </div>`,
+    ).document as unknown as Document;
+    const { record, warnings } = extractListing(document, 'https://www.ebay.ca/itm/257679218767');
+    expect(record.seller).toMatchObject({ value: 'novanut74', source: 'dom' });
+    expect(record.sellerStoreSlug?.value).toBe('scottstoyemporium');
+    expect(warnings.some((w) => w.startsWith('SELLER_LOGIN_ID_UNAVAILABLE'))).toBe(false);
+  });
+});
+
+// C3 (2026-09-03 deals fire): itemLocationText returned a truncated fragment of
+// eBay's delivery-estimate disclaimer (", the shipping service selected, the
+// seller's shipping history, and other factor") instead of the location, which
+// was still present as a "Located in:" span in the shipping module.
+describe('item location rejects the delivery-estimate disclaimer (C3)', () => {
+  it('skips the disclaimer fragment and reads the "Located in:" span from shipping', () => {
+    const document = parseHTML(
+      `<h1 class="x-item-title__mainTitle">LEGO Bulk Lot</h1>
+       <div class="x-price-primary">C $30.00</div>
+       <div class="ux-labels-values--itemLocation">
+         <div class="ux-labels-values__values">, the shipping service selected, the seller's shipping history, and other factor</div>
+       </div>
+       <div class="ux-labels-values--shipping">
+         <div class="ux-labels-values__values">C $18.00 Standard Shipping. Located in: Prince Albert, Saskatchewan, Canada</div>
+       </div>`,
+    ).document as unknown as Document;
+    const { record } = extractListing(document, 'https://www.ebay.ca/itm/128056737473');
+    expect(record.itemLocationText?.value).toBe('Prince Albert, Saskatchewan, Canada');
+  });
+
+  it('returns null rather than the disclaimer when no real location is present', () => {
+    const document = parseHTML(
+      `<h1 class="x-item-title__mainTitle">LEGO Bulk Lot</h1>
+       <div class="x-price-primary">C $30.00</div>
+       <div class="ux-labels-values--itemLocation">
+         <div class="ux-labels-values__values">Delivery time is estimated using our proprietary method which is based on the buyer's proximity to the item location</div>
+       </div>`,
+    ).document as unknown as Document;
+    const { record } = extractListing(document, 'https://www.ebay.ca/itm/820076179536');
+    expect(record.itemLocationText).toBeNull();
+  });
+});

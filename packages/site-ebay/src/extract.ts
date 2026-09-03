@@ -543,12 +543,30 @@ function readEndTime(
   return { endsAt: null, timeLeftText };
 }
 
+/**
+ * eBay's delivery-estimate disclaimer ("Delivery time is estimated using our
+ * proprietary method which is based on the buyer's proximity to the item
+ * location, the shipping service selected, the seller's shipping history, and
+ * other factors") renders inside a delivery/location row on some templates,
+ * and a broad location selector picks up a truncated fragment of it. Disclaimer
+ * prose is worse than null in the location field: it feeds the Canada-vs-import
+ * route decision in the multi-path shipping policy and a consumer cannot tell
+ * it is junk without pattern-matching the sentence. Any candidate carrying one
+ * of these phrases is rejected so the "Located in:" fallback can run instead.
+ */
+const LOCATION_DISCLAIMER_RE =
+  /delivery\s+time\s+is\s+estimated|proprietary\s+method|shipping\s+service\s+selected|shipping\s+history|buyer'?s\s+proximity|other\s+factors?\b/i;
+
 function readItemLocation(document: Document): ExtractionRecord['itemLocationText'] {
   for (const selector of ITEM_LOCATION_SELECTORS) {
     const text = textOf(document, selector);
     if (text !== null) {
       const value = text.replace(/^(?:located\s+in|item\s+location)\s*:?\s*/i, '').trim();
-      if (value.length > 0) return { value, source: 'dom', confidence: 0.95 };
+      // Skip a disclaimer fragment and keep looking; the fallback below reads
+      // the "Located in:" span the shipping module still carries.
+      if (value.length > 0 && !LOCATION_DISCLAIMER_RE.test(value)) {
+        return { value, source: 'dom', confidence: 0.95 };
+      }
     }
   }
   // Some templates fold the location into the shipping or delivery row
@@ -556,7 +574,10 @@ function readItemLocation(document: Document): ExtractionRecord['itemLocationTex
   for (const selector of [...SHIPPING_SELECTORS, ...DELIVERY_SELECTORS]) {
     const text = textOf(document, selector);
     const match = text === null ? null : /\b(?:located\s+in|item\s+location)\s*:?\s*([^.|]{2,80})/i.exec(text);
-    if (match !== null) return { value: match[1]!.trim(), source: 'dom', confidence: 0.8 };
+    if (match !== null) {
+      const value = match[1]!.trim();
+      if (!LOCATION_DISCLAIMER_RE.test(value)) return { value, source: 'dom', confidence: 0.8 };
+    }
   }
   return null;
 }
@@ -687,27 +708,55 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
   if (title === null) warnings.push('title could not be resolved');
 
   // --- seller ---
+  // A seller card links either /usr/<loginId> — the addressable login id the
+  // _ssn= seller sweep needs — or /str/<slug>, a store slug in a different
+  // namespace that fails as an _ssn= value. The two were conflated: the first
+  // selector that matched won, so a store-linked card recorded its slug as if
+  // it were a login id, and a later _ssn=<slug> sweep read its zero-candidate
+  // result as "seller has no inventory". Prefer a /usr/ login id wherever the
+  // page carries one (the /usr/-specific selectors sit later in the list);
+  // when only a store slug is readable, surface it as sellerStoreSlug and warn
+  // SELLER_LOGIN_ID_UNAVAILABLE rather than passing a slug off as a login id.
   let seller: ExtractionRecord['seller'] = null;
+  let sellerStoreSlug: string | null = null;
+  let sellerProfileUrl: string | null = null;
+  let sellerTextName: string | null = null;
   for (const selector of SELLER_SELECTORS) {
+    let elements: Element[];
     try {
-      const el = document.querySelector(selector);
-      if (!el) continue;
-      const href = el.getAttribute('href') ?? '';
-      const fromHref = /\/(?:usr|str)\/([^/?#]+)/.exec(href)?.[1];
-      const text = el.textContent?.replace(/\s+/g, ' ').trim();
-      const value = fromHref ?? (text && text.length > 0 && text.length <= 64 ? text : undefined);
-      if (value) {
-        seller = { value: decodeURIComponent(value), source: 'dom', confidence: 0.99 };
-        break;
-      }
+      elements = Array.from(document.querySelectorAll(selector));
     } catch {
       continue;
     }
+    for (const el of elements) {
+      const href = el.getAttribute('href') ?? '';
+      const usrSlug = /\/usr\/([^/?#]+)/.exec(href)?.[1];
+      const strSlug = /\/str\/([^/?#]+)/.exec(href)?.[1];
+      if (usrSlug !== undefined && seller === null) {
+        seller = { value: decodeURIComponent(usrSlug), source: 'dom', confidence: 0.99 };
+        if (href.length > 0) sellerProfileUrl = href;
+      } else if (strSlug !== undefined && sellerStoreSlug === null) {
+        sellerStoreSlug = decodeURIComponent(strSlug);
+        if (sellerProfileUrl === null && href.length > 0) sellerProfileUrl = href;
+      } else if (sellerTextName === null) {
+        const text = el.textContent?.replace(/\s+/g, ' ').trim();
+        if (text && text.length > 0 && text.length <= 64) sellerTextName = text;
+      }
+    }
+    if (seller !== null) break;
   }
   if (seller === null && jsonld?.offers?.seller?.name) {
     seller = { value: jsonld.offers.seller.name, source: 'jsonld', confidence: 0.95 };
   }
-  if (seller === null) warnings.push('seller could not be resolved');
+  if (seller === null) {
+    if (sellerStoreSlug !== null) {
+      warnings.push(
+        `SELLER_LOGIN_ID_UNAVAILABLE: the seller card links a store (/str/${sellerStoreSlug}), not a /usr/ login id; the store slug is not addressable as an _ssn= seller and was not recorded as one`,
+      );
+    } else {
+      warnings.push('seller could not be resolved');
+    }
+  }
 
   // --- item price ---
   let itemPrice: ExtractionRecord['itemPrice'] = null;
@@ -834,6 +883,9 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
     canonicalUrl,
     title,
     seller,
+    sellerStoreSlug: sellerStoreSlug === null ? null : { value: sellerStoreSlug, source: 'dom', confidence: 0.95 },
+    sellerProfileUrl: sellerProfileUrl === null ? null : { value: sellerProfileUrl, source: 'dom', confidence: 0.99 },
+    sellerDisplayName: sellerTextName === null ? null : { value: sellerTextName, source: 'dom', confidence: 0.9 },
     itemPrice,
     shipping,
     offer: { available: offerAvailable, sellerOfferPrice: null, expiresAt: null },

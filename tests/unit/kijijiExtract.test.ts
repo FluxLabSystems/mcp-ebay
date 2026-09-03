@@ -248,3 +248,27 @@ describe('defects found on the first live Kijiji run', () => {
     expect(page.nextPageUrl).toBeNull();
   });
 });
+
+// G0 (2026-09-03 office fire): on VIP pages a broad location selector picked up
+// a third-party neighbourhood marketing blurb ("About The Annex Explore the
+// area … This information is provided by a third party data source …") in the
+// location field. The blurb must be rejected so the og:locality fallback runs.
+describe('VIP location rejects the neighbourhood blurb (G0)', () => {
+  it('falls back to og:locality instead of the third-party area blurb', () => {
+    const document = parseHTML(
+      `<html><head>
+         <meta property="og:locality" content="Toronto (GTA)">
+       </head><body>
+         <h1>Office space Dupont and Spadina</h1>
+         <div class="locationContainer">About The Annex Explore the area The Annex has a character that caters to a fairly diverse group of people. This information is provided by a third party data source. Kijiji is not responsible for the accuracy of this information.</div>
+       </body></html>`,
+    ).document as unknown as Document;
+    const { record, warnings } = extractKijijiListing(
+      document,
+      'https://www.kijiji.ca/v-commercial-office-space/city-of-toronto/office-space/1742919641',
+    );
+    expect(record.location?.text).toBe('Toronto (GTA)');
+    expect(record.location?.source).toBe('meta');
+    expect(warnings.some((w) => w.includes('og:locality'))).toBe(true);
+  });
+});
