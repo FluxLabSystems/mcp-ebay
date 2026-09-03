@@ -95,12 +95,31 @@ export class DeviceRegistry {
     return [...this.connections.values()];
   }
 
+  /**
+   * Ids of the devices that can take a command right now: registered and
+   * with an OPEN socket, the same test sendCommand applies. A socket that
+   * is CLOSING but whose close event has not fired yet is still registered
+   * and not online.
+   */
+  onlineDeviceIds(): string[] {
+    return [...this.connections.values()]
+      .filter((connection) => connection.socket.readyState === connection.socket.OPEN)
+      .map((connection) => connection.deviceId);
+  }
+
   touch(deviceId: string): void {
     const connection = this.connections.get(deviceId);
     if (connection !== undefined) connection.lastSeenAt = Date.now();
   }
 
-  /** Resolve the target device: exact id, or "default" when unambiguous. */
+  /**
+   * Resolve the target device: exact id, or "default" when unambiguous.
+   * An unresolvable request is echoed back unchanged — "default" with zero
+   * or several devices registered stays "default" — so sendCommand fails
+   * with DEVICE_OFFLINE and the broker reports resolvedDeviceId null. The
+   * registry knows nothing about paired-but-offline devices; the broker
+   * adds that from the store (devices/offline.ts).
+   */
   resolveDeviceId(requested: string): string {
     if (this.connections.has(requested)) return requested;
     if (requested === 'default') {

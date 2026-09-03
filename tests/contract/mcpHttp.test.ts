@@ -4,7 +4,7 @@
  * agreement, error catalog stability, and RFC 9728 discovery (§10.1).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { MCP_PROTOCOL_VERSION, BRIDGE_ERROR_CODES, TOOL_CATALOG } from '@browser-bridge/protocol';
+import { MCP_PROTOCOL_VERSION, BRIDGE_ERROR_CODES, ERROR_CATALOG, TOOL_CATALOG } from '@browser-bridge/protocol';
 import { buildGatewayHarness, type GatewayHarness } from '../helpers/gatewayHarness.js';
 import { ModernMcpClient, MODERN_META } from '../helpers/mcpClient.js';
 
@@ -123,10 +123,24 @@ describe('tool-call error surface (FR-12, §17)', () => {
     expect(response.status).toBe(200);
     expect(response.body.result?.isError).toBe(true);
     const text = response.body.result?.content?.[0]?.text ?? '{}';
-    const parsed = JSON.parse(text) as { error: { code: string; retryable: boolean } };
+    const parsed = JSON.parse(text) as {
+      error: { code: string; message: string; retryable: boolean; details: Record<string, unknown> };
+    };
     expect(parsed.error.code).toBe('DEVICE_OFFLINE');
     expect(parsed.error.retryable).toBe(true);
     expect(BRIDGE_ERROR_CODES).toContain(parsed.error.code);
+    // DEVICE_OFFLINE says what the gateway knows (2026-09-03 deals-routine
+    // report): the id as requested, what it resolved to, who is online and
+    // who is paired — nothing here, so the lists are empty but present —
+    // and a hint that is also appended to the catalog message.
+    expect(parsed.error.details).toEqual({
+      deviceId: 'dev_not_connected',
+      resolvedDeviceId: 'dev_not_connected',
+      onlineDeviceIds: [],
+      knownDevices: [],
+      hint: 'No Windows agent is connected and no device has been paired; pair one with device:pair on the gateway.',
+    });
+    expect(parsed.error.message).toBe(`${ERROR_CATALOG.DEVICE_OFFLINE.message} ${parsed.error.details.hint}`);
   });
 
   it('rejects malformed tool arguments before any device dispatch', async () => {

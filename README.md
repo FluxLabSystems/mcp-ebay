@@ -139,6 +139,8 @@ The stack **reuses** the pre-existing `fluxology-caddy` container on the externa
 7. Health: `https://<host>/healthz` and `/readyz` through Caddy.
 8. Pair a device: `docker compose -f deploy/compose.yaml exec mcp-gateway node apps/gateway/dist/cli.js device:pair --name <device-name>` (prints a one-time token valid 10 minutes).
 
+**Build provenance.** The image records the commit it was built from: `docker build -f apps/gateway/Dockerfile --build-arg GATEWAY_BUILD_SHA=$(git rev-parse --short=12 HEAD) -t <image> .` bakes the value into the OCI `org.opencontainers.image.revision` label (`docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' <image>`) and into the container's `GATEWAY_BUILD_SHA` environment, which the gateway reports through `ebay_api_status`. A build that does not pass the arg — CI's `docker build`, or a compose file without `build.args` such as `deploy/compose.yaml` — stamps the Dockerfile default `unknown`. The live FluxLab `vps/bridge` compose forwards it from its `deploy.sh`; keep it a build arg rather than an `.env` key, or `env_file` would override the baked value with a stale one.
+
 ## Windows agent setup (SDD §11, §13, §32)
 
 On the Windows PC with the **clean Google Chrome installation provisioned for this project** (the agent never installs/replaces Chrome and never falls back to Edge/Chromium/Firefox/WebKit):

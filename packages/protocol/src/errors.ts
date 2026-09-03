@@ -4,6 +4,14 @@
  */
 
 export const ERROR_CATALOG = {
+  /**
+   * A gateway-raised DEVICE_OFFLINE carries details a routine can act on
+   * (apps/gateway/src/devices/offline.ts): deviceId as requested,
+   * resolvedDeviceId (null when "default" resolved to nothing),
+   * onlineDeviceIds, knownDevices[] ({deviceId, name, status, lastSeenAt,
+   * online}; at most 10, most recently seen first) and a one-sentence hint
+   * that is also appended to the message.
+   */
   DEVICE_OFFLINE: { retryable: true, message: 'Selected Windows agent is not connected.' },
   DEVICE_UNAUTHORIZED: { retryable: false, message: 'Device pairing/signature/revocation failed.' },
   BROWSER_UNAVAILABLE: {

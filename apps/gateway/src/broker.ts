@@ -19,6 +19,7 @@ import {
 } from '@browser-bridge/protocol';
 import type { Logger } from 'pino';
 import type { ArtifactStore } from './artifacts/store.js';
+import { describeDeviceOffline, withDeviceOfflineDetails } from './devices/offline.js';
 import type { DeviceRegistry } from './devices/registry.js';
 import type { Store } from './store/types.js';
 
@@ -88,13 +89,16 @@ export class CommandBroker {
       throw new BridgeError('INTERNAL_ERROR', `Unknown tool ${toolName}.`);
     }
 
+    /** deviceId as the caller expressed it, echoed in a DEVICE_OFFLINE payload. */
+    let requestedDeviceId: string;
     let deviceId: string;
     let browserSessionHandle: string;
     let tabId: string | null = null;
     const commandArgs: Record<string, unknown> = { ...args };
 
     if (toolName === 'browser_session_open') {
-      deviceId = this.deps.registry.resolveDeviceId(String(args.deviceId ?? ''));
+      requestedDeviceId = String(args.deviceId ?? '');
+      deviceId = this.deps.registry.resolveDeviceId(requestedDeviceId);
       browserSessionHandle = PENDING_SESSION_HANDLE;
       delete commandArgs.deviceId;
     } else {
@@ -107,6 +111,8 @@ export class CommandBroker {
       if (owner === undefined) {
         throw new BridgeError('SESSION_NOT_FOUND', undefined, { browserSessionHandle: handle });
       }
+      // The handle names the device; nothing else was asked for.
+      requestedDeviceId = owner;
       deviceId = owner;
       delete commandArgs.browserSessionHandle;
       if ('tabId' in commandArgs) {
@@ -152,7 +158,7 @@ export class CommandBroker {
         traceparent: caller.traceparent,
       });
     } catch (err) {
-      const bridgeError = BridgeError.from(err);
+      const bridgeError = await this.describeIfDeviceOffline(BridgeError.from(err), requestedDeviceId, deviceId);
       const requestId =
         typeof bridgeError.details.requestId === 'string' ? bridgeError.details.requestId : null;
       await this.auditCommand(auditBase, entry.command, requestId, 'error', bridgeError.code, null);
@@ -216,6 +222,42 @@ export class CommandBroker {
       response: structured,
     });
     return { structured, artifacts };
+  }
+
+  /**
+   * A DEVICE_OFFLINE out of the registry says only that no OPEN socket
+   * answered; the caller needs to know which PC that was, when it was last
+   * seen and whether another one is up. The registry is store-free by
+   * design, so the join happens here (devices/offline.ts). Every other
+   * error passes through untouched, and a failing device lookup must not
+   * mask the real error: the payload then carries what the registry alone
+   * knows, and says so.
+   */
+  private async describeIfDeviceOffline(
+    err: BridgeError,
+    requestedDeviceId: string,
+    targetDeviceId: string,
+  ): Promise<BridgeError> {
+    if (err.code !== 'DEVICE_OFFLINE') return err;
+    // resolveDeviceId echoes an unresolvable "default" back unchanged, and
+    // no paired device can be named "default" (ids are dev_…, §14).
+    const resolvedDeviceId = targetDeviceId === 'default' ? null : targetDeviceId;
+    try {
+      const details = await describeDeviceOffline(
+        { devices: this.deps.store.devices, registry: this.deps.registry },
+        { requestedDeviceId, resolvedDeviceId },
+      );
+      return withDeviceOfflineDetails(err, details);
+    } catch (lookupErr) {
+      this.deps.logger.warn({ err: String(lookupErr) }, 'Paired-device lookup for DEVICE_OFFLINE details failed');
+      return withDeviceOfflineDetails(err, {
+        deviceId: requestedDeviceId,
+        resolvedDeviceId,
+        onlineDeviceIds: this.deps.registry.onlineDeviceIds(),
+        knownDevices: [],
+        hint: 'The paired-device records could not be read, so no last-seen time is available; check the gateway log and database.',
+      });
+    }
   }
 
   private logToolCall(
