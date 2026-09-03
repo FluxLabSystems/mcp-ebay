@@ -234,6 +234,18 @@ const LOCATION_SELECTORS = [
   '[class*="mapLocation"]',
   '[class*="locationText"]',
 ];
+/**
+ * Kijiji renders an editorial neighbourhood blurb near the map on many VIP
+ * pages ("About The Annex Explore the area … This information is provided by a
+ * third party data source. Kijiji is not responsible for the accuracy of this
+ * information."). A broad location selector picks it up in place of the
+ * address/locality the Office and Deals records need for municipality and
+ * geocoding. The blurb is third-party editorial, not the ad's location, so a
+ * candidate carrying one of these markers is rejected and the og:locality
+ * fallback (with its existing region-not-address warning) runs instead.
+ */
+const AREA_BLURB_RE =
+  /this\s+information\s+is\s+provided\s+by\s+a\s+third\s+party\s+data\s+source|explore\s+the\s+area|^about\s+.+\bexplore\b/i;
 /** Where the ad renders its map/address block; scanned for the address line
  *  or a bare postal code when no selector above matched, rather than the
  *  whole page. */
@@ -628,7 +640,9 @@ export function extractKijijiListing(
   if (location === null) {
     for (const selector of LOCATION_SELECTORS) {
       const text = textOf(document, selector);
-      if (text) {
+      // Reject a third-party neighbourhood blurb picked up by a broad
+      // location selector; it is editorial, not the ad's location.
+      if (text && !AREA_BLURB_RE.test(text)) {
         location = { text, source: 'dom', confidence: 0.95 };
         break;
       }

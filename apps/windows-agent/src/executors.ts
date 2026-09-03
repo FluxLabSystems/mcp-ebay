@@ -670,6 +670,9 @@ async function executeExtract(
           hasNextPage: searchPage.hasNextPage,
           nextPageUrl: searchPage.nextPageUrl,
           totalResults: searchPage.totalResults,
+          // The rendered <title> is the sole accepted proof of which region an
+          // l<regionId> scopes; it survives compaction as a passthrough root.
+          pageTitle: searchPage.pageTitle,
           // The removed-ad marker: a deleted ad's VIP URL 302s to this
           // search page carrying ?adRemoved=<id>. Dropping it here made the
           // redirect indistinguishable from an ordinary search landing.

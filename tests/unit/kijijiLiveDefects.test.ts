@@ -239,4 +239,19 @@ describe('kijiji seller identity (live captures)', () => {
     const { record } = extractKijijiListing(document as unknown as Document, PRICED_URL, { pageRevision: 1 });
     expect(record.sellerName?.value).toBe('View Ridge Salvage');
   });
+
+  // B1 (2026-09-02 deals fire): search records carried no pageTitle, yet the
+  // deals and office SKILLs make the rendered page title the sole accepted
+  // proof of which region an l<regionId> path segment scopes.
+  it('carries the rendered document title as pageTitle (B1)', () => {
+    const page = extractSearchResults(loadFixture('live-search-lego-toronto.html'), SEARCH_URL);
+    expect(page.pageTitle).toBe('3,386 ads for lego in Toys & Games in City of Toronto | Kijiji Marketplaces');
+  });
+
+  it('reports pageTitle null when the page carries no title', () => {
+    const document = parseHTML('<html><body><div data-testid="listing-card"></div></body></html>').document as unknown as Document;
+    const page = extractSearchResults(document, SEARCH_URL);
+    expect(page.pageTitle).toBeNull();
+  });
+
 });
