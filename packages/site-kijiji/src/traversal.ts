@@ -68,6 +68,18 @@ export interface KijijiSearchPage {
    */
   pageTitle: string | null;
   /**
+   * The keyword the page says it searched for — the hydration cache's
+   * searchQuery.keywords, the quoted term in the h1 ('"lego" in Toys &
+   * Games in City of Toronto'), or the <title> ("3,386 ads for lego in …");
+   * null on a category browse that applied none. The 2026-09-02 deals fire
+   * requested /b-lego/gta-greater-toronto-area/k0l1700273 and got 77
+   * plumbers, painters and mattresses back as an ordinary search page with
+   * no signal that "lego" was never the query the site ran. This is that
+   * signal: compare it with the keyword you meant (kijijiKeywordWarnings
+   * does, for the keyword the URL carries).
+   */
+  searchTerm: string | null;
+  /**
    * The ad Kijiji redirected away from to land here, when it did. A removed
    * ad renders no banner and keeps no VIP: the ad URL 302s to its category
    * search page carrying ?adRemoved=<id>. That parameter is the removed-ad
@@ -288,6 +300,51 @@ function apolloPagination(
   return null;
 }
 
+/** searchQuery.keywords for THIS page's path out of the hydration cache. */
+function apolloSearchKeywords(cache: Record<string, unknown> | null, pageUrl: string): string | null {
+  if (cache === null) return null;
+  const root = cache.ROOT_QUERY;
+  if (typeof root !== 'object' || root === null) return null;
+  let path: string;
+  try {
+    path = new URL(pageUrl).pathname;
+  } catch {
+    return null;
+  }
+  const prefix = 'searchResultsPageByUrl:';
+  for (const [key, page] of Object.entries(root as Record<string, unknown>)) {
+    if (!key.startsWith(prefix) || key.slice(prefix.length) !== path) continue;
+    if (typeof page !== 'object' || page === null) continue;
+    const query = (page as Record<string, unknown>).searchQuery;
+    if (typeof query !== 'object' || query === null) continue;
+    const keywords = (query as Record<string, unknown>).keywords;
+    if (typeof keywords === 'string' && keywords.trim().length > 0) return keywords.trim();
+  }
+  return null;
+}
+
+/** '"lego" in Toys & Games in City of Toronto' (live h1, 2026-09-02 capture). */
+const H1_QUOTED_TERM_RE = /^\s*["\u201c]([^"\u201d]+)["\u201d]\s+in\b/;
+/** "3,386 ads for lego in Toys & Games in City of Toronto | Kijiji" (live <title>). */
+const TITLE_TERM_RE = /^\s*[\d,]+\s+ads?\s+for\s+(.+?)\s+in\b/i;
+
+/**
+ * The keyword the page states it applied, in the order the statement can be
+ * trusted: the hydration cache for this exact path, the quoted h1, the
+ * title. Null when none states one, which is what a category browse says.
+ */
+function readSearchTerm(document: Document, apollo: Record<string, unknown> | null, pageUrl: string): string | null {
+  const fromCache = apolloSearchKeywords(apollo, pageUrl);
+  if (fromCache !== null) return fromCache;
+  const h1 = (document.querySelector('h1')?.textContent ?? '').replace(/\s+/g, ' ').trim();
+  const quoted = H1_QUOTED_TERM_RE.exec(h1);
+  if (quoted !== null && quoted[1]!.trim().length > 0) return quoted[1]!.trim();
+  const title = (document.querySelector('title')?.textContent ?? '').replace(/\s+/g, ' ').trim();
+  const titled = TITLE_TERM_RE.exec(title);
+  if (titled !== null && titled[1]!.trim().length > 0) return titled[1]!.trim();
+  return null;
+}
+
 /**
  * Anchor-href-based primary extraction: every link whose href matches the
  * VIP pattern becomes a candidate, deduplicated by ad id in DOM order;
@@ -425,9 +482,78 @@ export function extractSearchResults(
     nextPageUrl,
     totalResults,
     pageTitle: pageTitle.length > 0 ? pageTitle : null,
+    searchTerm: readSearchTerm(document, apollo, pageUrl),
     removedAdId: removedAdIdFromUrl(pageUrl),
     warnings,
   };
+}
+
+/** Kijiji's own slug form: lower case, runs of anything else become '-'. */
+function kijijiSlug(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * The keyword a Kijiji search URL asks for, or null when it asks for none.
+ * Two forms carry one: ?q=<keyword> (buildSearchUrl), and the keyword-in-
+ * path form, where the keyword is the LAST slug before the id segment —
+ * /b-<location>/<keyword>/k0l<regionId> under all categories (k…), or
+ * /b-<category>/<location>/<keyword>/c<cat>l<regionId> (an id segment
+ * naming a category, c…, spends its first two slugs on category and
+ * location). A path with fewer slugs than that is a category or location
+ * browse and asks for no keyword.
+ */
+export function kijijiRequestedKeyword(pageUrl: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(pageUrl);
+  } catch {
+    return null;
+  }
+  const q = url.searchParams.get('q');
+  if (q !== null && q.trim().length > 0) return q.trim();
+  const segments = url.pathname.split('/').filter((segment) => segment.length > 0 && !/^page-\d+$/.test(segment));
+  if (segments.length < 2 || !segments[0]!.startsWith('b-')) return null;
+  const last = segments[segments.length - 1]!;
+  const id = /^(k\d+)?(c\d+)?l\d+(?:r\d+)?$/i.exec(last);
+  if (id === null) return null;
+  const slugs = [segments[0]!.slice(2), ...segments.slice(1, -1)];
+  const slugsBeforeKeyword = id[2] === undefined ? 1 : 2;
+  if (slugs.length <= slugsBeforeKeyword) return null;
+  return slugs[slugs.length - 1]!;
+}
+
+/** Warning-code prefix for a search page that ran a different keyword than its URL asked for. */
+export const KEYWORD_NOT_APPLIED_WARNING_PREFIX = 'KEYWORD_NOT_APPLIED';
+
+/**
+ * Warnings for a search page whose stated keyword is not the one its URL
+ * asked for. Observed live 2026-09-02 (deals fire, fingerprint site-kijiji+
+ * extractor_defect+b-keyword-path-silently-drops-keyword): a keyword put in
+ * the FIRST path segment is read by the site as a location/category slug
+ * and the page runs a different query, or none — and reports a perfectly
+ * ordinary result set for it. Both sides are compared as Kijiji slugs, so
+ * "Lego bulk lot" and lego-bulk-lot agree.
+ */
+export function kijijiKeywordWarnings(
+  pageUrl: string,
+  page: Pick<KijijiSearchPage, 'searchTerm' | 'pageTitle'>,
+): string[] {
+  const requested = kijijiRequestedKeyword(pageUrl);
+  if (requested === null) return [];
+  if (page.searchTerm !== null && kijijiSlug(page.searchTerm) === kijijiSlug(requested)) return [];
+  const stated =
+    page.searchTerm === null
+      ? 'the page states no keyword at all (it rendered as a category or location browse)'
+      : `the page states it searched for "${page.searchTerm}"`;
+  const title = page.pageTitle === null ? '' : ` Page title: "${page.pageTitle}".`;
+  return [
+    `${KEYWORD_NOT_APPLIED_WARNING_PREFIX}: the URL asked for keyword "${requested}" but ${stated}, so these results are not for your query — do not count them as coverage of it.${title} Kijiji's keyword-in-path form is /b-<location-slug>/<keyword>/k0l<regionId> (the keyword LAST before the id segment); a keyword in the first segment is read as a location/category slug and dropped (observed live 2026-09-02).`,
+  ];
 }
 
 export interface KijijiSearchUrlInput {

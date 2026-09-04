@@ -450,16 +450,22 @@ describe('search compaction', () => {
       nextPageUrl: 'https://www.kijiji.ca/b-toys-games/city-of-toronto/lego/page-2/k0c108l1700273r45',
       totalResults: 73,
       removedAdId: '1799999999',
+      searchTerm: 'lego',
     };
     const record = compactSearchPage(kijiji, DEFAULTS).record as {
       hasNextPage: boolean;
       nextPageUrl: string;
       totalResults: number;
       removedAdId: string;
+      searchTerm: string;
       candidates: Record<string, unknown>[];
     };
     expect(record.hasNextPage).toBe(true);
     expect(record.totalResults).toBe(73);
+    // The keyword the page applied (2026-09-02 b-keyword-path-silently-
+    // drops-keyword): compacting it away would hide that the site ran a
+    // different query than the one the URL meant.
+    expect(record.searchTerm).toBe('lego');
     // The removed-ad marker is why the redirect landed here; compaction
     // must not turn "this ad was removed" back into an ordinary search page.
     expect(record.removedAdId).toBe('1799999999');

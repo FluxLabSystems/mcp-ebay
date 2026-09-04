@@ -180,6 +180,7 @@ export function mapSearchRows(input: MapSearchRowsInput): Mapped<ApiListingCandi
       url: canonicalListingUrl(itemId, `https://www.${input.domain}/itm/${itemId}`),
       title,
       snippetPrice,
+      snippetPriceSource: snippetPrice === null ? null : 'api',
       sellingFormat,
       bidCount: null,
       shippingSnippetText: null,

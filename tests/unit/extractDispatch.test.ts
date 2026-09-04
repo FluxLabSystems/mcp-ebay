@@ -370,3 +370,60 @@ describe('browser_extract dispatches by page kind instead of refusing', () => {
     expect(parsed.warnings.some((warning) => warning.startsWith('DECLARED_SITE_PROFILE_MISMATCH'))).toBe(true);
   });
 });
+
+// 2026-09-04 deals fire: /str/lapennaco rendered 50 cards with title and
+// URL but every snippetPrice null (store-page-snippetprice-null-on-every-
+// row). The extractor now falls back to the card text; the page-level
+// warning says how many prices came from text so a run can see that the
+// hint is a text read, not a priced element.
+describe('store cards priced from text are named at page level', () => {
+  it('SNIPPET_PRICE_FROM_CARD_TEXT counts the cards whose price came from text', async () => {
+    const outcome = await runExtract(
+      'https://www.ebay.ca/str/lapennaco?_sop=10&_ipg=240',
+      `<html><head><title>LaPenna Co | eBay Stores</title></head><body><div class="str-search-results">
+         <div class="str-grid-item"><a href="https://www.ebay.ca/itm/800106302072"><h3>Cisco C9130AXE-A</h3></a><div><span>C $59.99</span></div><div><span>+C $12.00 shipping</span></div></div>
+         <div class="str-grid-item"><a href="https://www.ebay.ca/itm/800348101076"><h3>Cisco bracket</h3></a><div><span>C $24.50</span></div></div>
+         <div class="str-grid-item"><a href="https://www.ebay.ca/itm/555666777888"><h3>Priced element</h3></a><span class="s-card__price">C $19.99</span></div>
+       </div></body></html>`,
+      'ebay.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as {
+      pageKind: string;
+      candidates: { itemId: string; snippetPrice: { value: number } | null; sellingFormat: string }[];
+    };
+    expect(record.pageKind).toBe('store');
+    expect(record.candidates.map((row) => row.snippetPrice?.value)).toEqual([59.99, 24.5, 19.99]);
+    expect(record.candidates.map((row) => row.sellingFormat)).toEqual(['fixed_price', 'fixed_price', 'fixed_price']);
+    const fromText = parsed.warnings.find((warning) => warning.startsWith('SNIPPET_PRICE_FROM_CARD_TEXT'));
+    expect(fromText).toBeDefined();
+    expect(fromText).toContain('2 of 3');
+  });
+
+  it('is silent when every price came from a priced element', async () => {
+    const outcome = await runExtract('https://www.ebay.ca/str/tweedsidesales', fixture('ebay', 'seller-store.html'), 'ebay.ca.v1');
+    const parsed = ExtractOutput.parse(outcome.result);
+    expect(parsed.warnings.some((warning) => warning.startsWith('SNIPPET_PRICE_FROM_CARD_TEXT'))).toBe(false);
+  });
+});
+
+// 2026-09-02 deals fire (b-keyword-path-silently-drops-keyword): the record
+// carries the keyword the page applied and warns when it is not the one the
+// URL asked for.
+describe('kijiji search records carry searchTerm and KEYWORD_NOT_APPLIED', () => {
+  it('a keyword URL whose page applied another keyword is warned about, and the record says which', async () => {
+    const outcome = await runExtract(
+      'https://www.kijiji.ca/b-gta-greater-toronto-area/lego/k0l1700273',
+      `<html><head><title>77 ads for gta greater toronto area in All Categories in City of Toronto | Kijiji Marketplaces</title></head>
+       <body><h1>"gta greater toronto area" in All Categories in City of Toronto</h1>
+       <ul><li><a href="/v-plumbers/city-of-toronto/professional-licensed-plumber-in-gta/1742364312">Professional Licensed Plumber in GTA</a></li></ul>
+       </body></html>`,
+      'kijiji.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as { pageKind: string; searchTerm: string | null };
+    expect(record.pageKind).toBe('search');
+    expect(record.searchTerm).toBe('gta greater toronto area');
+    expect(parsed.warnings.some((warning) => warning.startsWith('KEYWORD_NOT_APPLIED'))).toBe(true);
+  });
+});

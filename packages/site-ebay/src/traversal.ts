@@ -14,6 +14,19 @@ export interface ListingCandidate {
   /** Snippet price: traversal hint only, never canonical evidence. */
   snippetPrice: { value: number; currency: string } | null;
   /**
+   * Where snippetPrice was read: a price element one of the card selectors
+   * names ('element'), or the first non-shipping amount in the card's own
+   * text when no price element matched ('text'); null when there is no
+   * price. The 2026-09-04 deals fire read 50 /str/ store cards with title
+   * and URL on every row and snippetPrice null on every row — the store
+   * grid prices its cards under class names the selectors do not know, and
+   * a selector miss was a silent null. The text is still a hint, not
+   * evidence, and the page-level SNIPPET_PRICE_FROM_CARD_TEXT warning
+   * counts the rows that took this path. 'api' is the Countdown API mapper
+   * (ebay.api.v1), whose rows carry a priced field, not a rendered card.
+   */
+  snippetPriceSource: 'element' | 'text' | 'api' | null;
+  /**
    * Selling format as far as the CARD says, which is much less than an item
    * page says. A candidate carrying no format had to be opened just to learn
    * whether it was an auction, and opening every row is what exhausts a run's
@@ -152,6 +165,55 @@ export function cardRootFor(anchor: Element): Element {
   return root;
 }
 
+/**
+ * An amount that is a shipping/delivery figure rather than the price, as a
+ * card renders it ("+C $12.00 shipping", "C $8.50 delivery", "Free
+ * shipping"); stripped before the card text is read for a price so a card
+ * whose only amount is its shipping never gets that amount as its price.
+ */
+const CARD_SHIPPING_PHRASE_RE =
+  /(?:\+\s*)?(?:(?:C|CA|US)\s?\$|\$|CAD|USD)\s?[\d,]+(?:\.\d{1,2})?\s*(?:shipping|delivery|postage|est(?:imated)?\.?\s*(?:shipping|delivery))\b|\bfree\s+(?:shipping|delivery|postage)\b/gi;
+/** The shipping line as a card renders it, for cards with no named shipping element. */
+const CARD_SHIPPING_TEXT_RE =
+  /\bfree\s+(?:shipping|delivery|postage)\b|(?:\+\s*)?(?:(?:C|CA|US)\s?\$|\$|CAD|USD)\s?[\d,]+(?:\.\d{1,2})?\s*(?:shipping|delivery|postage)\b(?:\s+estimate)?/i;
+
+/**
+ * The card's price when no price element matched: the first amount in the
+ * card's text that is not a shipping figure, with the title removed first
+ * (a title is free to say "$5 Lego Lot"). Strike-through and "was" prices
+ * render after the current price on every eBay template seen, so "first"
+ * is the current price; that is the extent of the claim, and the value is
+ * a traversal hint the item page still decides.
+ */
+function priceFromCardText(card: Element, rawTitle: string | null): ReturnType<typeof parseMoney> {
+  let text = spacedText(card);
+  if (rawTitle !== null && rawTitle.length > 0) text = text.split(rawTitle).join(' ');
+  text = text.replace(CARD_SHIPPING_PHRASE_RE, ' ');
+  return parseMoney(text);
+}
+
+function shippingFromCardText(card: Element): string | null {
+  const match = CARD_SHIPPING_TEXT_RE.exec(spacedText(card));
+  return match === null ? null : match[0].trim();
+}
+
+/**
+ * The card's text with a space at every element boundary. textContent runs
+ * adjacent elements together ("+C $12.00 shippingC $45.00"), and a word
+ * boundary the regexes above rely on disappears with the whitespace.
+ */
+function spacedText(root: Element): string {
+  const parts: string[] = [];
+  const walk = (node: Node): void => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === 3) parts.push(child.textContent ?? '');
+      else if (child.nodeType === 1) walk(child);
+    }
+  };
+  walk(root);
+  return normalizeText(parts.join(' '));
+}
+
 const CARD_BIDS_RE = /\b(\d{1,5})\s*bids?\b/i;
 const CARD_BIN_RE = /\bbuy\s+it\s+now\b|\bor\s+best\s+offer\b/i;
 const CARD_AUCTION_RE = /\bplace\s+bid\b|\bcurrent\s+bid\b|\bstarting\s+bid\b/i;
@@ -255,7 +317,9 @@ export function extractListingCandidates(document: Document, pageUrl: string): L
       // empty string here would split the format blob character by character.
       const rawTitle = cardText(card, CARD_TITLE_SELECTOR) ?? (anchorText.length > 0 ? anchorText : null);
       const titleText = rawTitle === null ? null : cleanTitle(rawTitle);
-      const parsedPrice = parseMoney(cardText(card, CARD_PRICE_SELECTOR) ?? '');
+      const elementPrice = parseMoney(cardText(card, CARD_PRICE_SELECTOR) ?? '');
+      const textPrice = elementPrice === null ? priceFromCardText(card, rawTitle) : null;
+      const parsedPrice = elementPrice ?? textPrice;
       const { sellingFormat, bidCount } = detectCardFormat(card, rawTitle, parsedPrice !== null);
 
       candidates.push({
@@ -263,9 +327,10 @@ export function extractListingCandidates(document: Document, pageUrl: string): L
         url: absolute,
         title: titleText !== null && titleText.length > 0 ? titleText : null,
         snippetPrice: parsedPrice === null ? null : { value: parsedPrice.value, currency: parsedPrice.currency },
+        snippetPriceSource: elementPrice !== null ? 'element' : textPrice !== null ? 'text' : null,
         sellingFormat,
         bidCount,
-        shippingSnippetText: cardText(card, CARD_SHIPPING_SELECTOR),
+        shippingSnippetText: cardText(card, CARD_SHIPPING_SELECTOR) ?? shippingFromCardText(card),
         itemLocationText: cardText(card, CARD_LOCATION_SELECTOR),
         isNewListing: isNewListingCard(card, rawTitle),
         order: candidates.length,

@@ -15,6 +15,7 @@ import {
   extractSearchResults,
   isKijijiListingPage,
   KijijiExtractionRecordSchema,
+  kijijiKeywordWarnings,
   kijijiSearchUrlWarnings,
 } from '../../packages/site-kijiji/src/index.js';
 
@@ -349,5 +350,86 @@ describe('sorted category pages (2026-09-04 office fire)', () => {
       { observedAt },
     );
     expect(ordered.warnings.some((warning) => warning.startsWith('SORT_NOT_HONOURED'))).toBe(false);
+  });
+});
+
+// 2026-09-02 deals fire (site-kijiji+extractor_defect+b-keyword-path-silently-
+// drops-keyword): /b-lego/gta-greater-toronto-area/k0l1700273 came back as an
+// ordinary search page — totalResults 77, 40 candidates, no warning — and
+// every candidate was a plumber, a painter or a mattress. The page states
+// which keyword it actually applied (h1, <title>, the hydration cache) and
+// the record did not carry it, so a run had no way to see that the query it
+// meant was never the one the site ran.
+describe('kijiji search records state the keyword the page applied', () => {
+  it('reads searchTerm off the live capture (h1, title and hydration cache all say lego)', () => {
+    const page = extractSearchResults(
+      loadFixture('live-search-lego-toronto.html'),
+      'https://www.kijiji.ca/b-toys-games/city-of-toronto/lego/k0c108l1700273',
+    );
+    expect(page.searchTerm).toBe('lego');
+  });
+
+  it('reads searchTerm from the quoted h1 when there is no hydration cache', () => {
+    const document = parseHTML(
+      `<html><head><title>77 ads for gta greater toronto area in All Categories in City of Toronto | Kijiji Marketplaces</title></head>
+       <body><h1>"gta greater toronto area" in All Categories in City of Toronto</h1>
+       <ul><li><a href="/v-plumbers/city-of-toronto/professional-licensed-plumber-in-gta/1742364312">Professional Licensed Plumber in GTA</a></li></ul>
+       </body></html>`,
+    ).document as unknown as Document;
+    const page = extractSearchResults(document, 'https://www.kijiji.ca/b-lego/gta-greater-toronto-area/k0l1700273');
+    expect(page.searchTerm).toBe('gta greater toronto area');
+  });
+
+  it('a category browse with no keyword reports searchTerm null', () => {
+    const document = parseHTML(
+      `<html><head><title>Commercial & Office Space in City of Toronto | Kijiji</title></head>
+       <body><h1>Commercial & Office Space in City of Toronto</h1>
+       <ul><li><a href="/v-commercial-office-space/city-of-toronto/office/1742919641">Office</a></li></ul>
+       </body></html>`,
+    ).document as unknown as Document;
+    const page = extractSearchResults(document, 'https://www.kijiji.ca/b-commercial-office-space/city-of-toronto/c40l1700273');
+    expect(page.searchTerm).toBeNull();
+  });
+});
+
+describe('KEYWORD_NOT_APPLIED (kijijiKeywordWarnings)', () => {
+  const quietPage = { searchTerm: 'lego', pageTitle: '3,915 ads for lego in All Categories in Toronto (GTA)' };
+
+  it('is silent when the keyword-in-path URL and the page agree', () => {
+    expect(kijijiKeywordWarnings('https://www.kijiji.ca/b-gta-greater-toronto-area/lego/k0l1700273?sort=dateDesc', quietPage)).toEqual([]);
+    expect(kijijiKeywordWarnings('https://www.kijiji.ca/b-toys-games/city-of-toronto/lego/k0c108l1700273', quietPage)).toEqual([]);
+    expect(kijijiKeywordWarnings('https://www.kijiji.ca/b-gta-greater-toronto-area/lego-bulk-lot/k0l1700273', { ...quietPage, searchTerm: 'Lego bulk lot' })).toEqual([]);
+  });
+
+  it('is silent on a category browse that asked for no keyword', () => {
+    expect(kijijiKeywordWarnings('https://www.kijiji.ca/b-commercial-office-space/city-of-toronto/c40l1700273', { searchTerm: null, pageTitle: 'Commercial & Office Space in City of Toronto' })).toEqual([]);
+  });
+
+  it('names the mismatch when the page applied a different keyword than the URL segment', () => {
+    const warnings = kijijiKeywordWarnings('https://www.kijiji.ca/b-gta-greater-toronto-area/lego/k0l1700273', {
+      searchTerm: 'gta greater toronto area',
+      pageTitle: '77 ads for gta greater toronto area in All Categories in City of Toronto',
+    });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/^KEYWORD_NOT_APPLIED: /);
+    expect(warnings[0]).toContain('"lego"');
+    expect(warnings[0]).toContain('"gta greater toronto area"');
+  });
+
+  it('names the miss when a keyword URL landed on a page that applied no keyword', () => {
+    const warnings = kijijiKeywordWarnings('https://www.kijiji.ca/b-lego/gta-greater-toronto-area/k0l1700273', {
+      searchTerm: null,
+      pageTitle: 'Buy & Sell in City of Toronto',
+    });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/^KEYWORD_NOT_APPLIED: /);
+    expect(warnings[0]).toContain('no keyword');
+  });
+
+  it('checks a ?q= query the same way', () => {
+    expect(kijijiKeywordWarnings('https://www.kijiji.ca/b-buy-sell/canada?q=lego+lot', { searchTerm: 'lego lot', pageTitle: null })).toEqual([]);
+    const warnings = kijijiKeywordWarnings('https://www.kijiji.ca/b-buy-sell/canada?q=lego+lot', { searchTerm: null, pageTitle: 'Buy & Sell in Canada' });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('"lego lot"');
   });
 });

@@ -68,6 +68,7 @@ import {
   isKijijiAdImageUrl,
   KIJIJI_GALLERY_SELECTORS,
   KIJIJI_SITE_PROFILE_ID,
+  kijijiKeywordWarnings,
   kijijiSearchUrlWarnings,
   normalizeKijijiImageUrl,
 } from '@browser-bridge/site-kijiji';
@@ -669,7 +670,14 @@ async function executeExtract(
       // The page's own warnings say what its pagination metadata could not
       // (a sorted category URL renders no count and no next link, and is
       // not date-ordered — 2026-09-04 office fire).
-      const warnings = [...intentWarnings, ...kijijiSearchUrlWarnings(pageUrl), ...searchPage.warnings];
+      const warnings = [
+        ...intentWarnings,
+        ...kijijiSearchUrlWarnings(pageUrl),
+        // The page ran a different keyword than the URL asked for, or none
+        // (2026-09-02: a keyword in the first path segment is dropped).
+        ...kijijiKeywordWarnings(pageUrl, searchPage),
+        ...searchPage.warnings,
+      ];
       if (kind === 'other') {
         warnings.push(
           `UNCLASSIFIED_PAGE: ${pageUrl} is not a Kijiji ad or search URL; returned a best-effort ad-link scan. An empty candidate list here may mean the page has no ads, not that extraction failed.`,
@@ -694,6 +702,9 @@ async function executeExtract(
           // The rendered <title> is the sole accepted proof of which region an
           // l<regionId> scopes; it survives compaction as a passthrough root.
           pageTitle: searchPage.pageTitle,
+          // The keyword the page says it applied; the run compares it with
+          // the keyword it meant (KEYWORD_NOT_APPLIED does so for the URL's).
+          searchTerm: searchPage.searchTerm,
           // The removed-ad marker: a deleted ad's VIP URL 302s to this
           // search page carrying ?adRemoved=<id>. Dropping it here made the
           // redirect indistinguishable from an ordinary search landing.
@@ -890,6 +901,16 @@ async function executeExtract(
     } else if (candidates.length === 0) {
       warnings.push(
         'NO_LISTING_CANDIDATES: no /itm/ links found — an empty results page, or the result-card selectors need updating.',
+      );
+    }
+    // 2026-09-04 deals fire: /str/lapennaco rendered 50 cards and every
+    // snippetPrice was null — the store grid's price class is not one the
+    // selectors name. Those rows now read the card text instead; say how
+    // many, so the hint is known to be a text read.
+    const pricedFromText = candidates.filter((candidate) => candidate.snippetPriceSource === 'text').length;
+    if (pricedFromText > 0) {
+      warnings.push(
+        `SNIPPET_PRICE_FROM_CARD_TEXT: no price element matched on ${pricedFromText} of ${candidates.length} card(s); their snippetPrice is the first non-shipping amount in the card's rendered text — a traversal hint only (the item page is the price). Capture one such card (browser_snapshot) so the store-card price selector can be pinned.`,
       );
     }
     const ebayPage = applySearchCompaction(
