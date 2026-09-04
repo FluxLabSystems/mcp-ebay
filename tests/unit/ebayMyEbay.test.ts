@@ -289,3 +289,111 @@ describe('extractOffersPage', () => {
     expect(vague.warnings.some((warning) => warning.startsWith('OFFERS_DIRECTION_UNKNOWN'))).toBe(true);
   });
 });
+
+// 2026-09-04 deals fires (site-ebay+extractor_defect+offers-template-unpinned,
+// offers-offerprice-is-the-ask-not-a-received-offer, offers-page-underreads-
+// stated-row-count): on the live /mye/myebay/bidsoffers page every row read
+// offerPrice HIGHER than listPrice, and opening two rows' item pages proved
+// offerPrice == the listing's own ask (800300142565: offerPrice 65 CAD,
+// itemPrice 65.00 CAD). The rows carry the listing's Best Offer control
+// ("Make Best offer") followed by the ask, which the offer-amount regex read
+// as an offer. Rows that DO hold a thread say "View offer details" and
+// render no amount. The page's own header says "All (39)" over 31 rows.
+describe('offers page: the Best Offer control is not an offer (2026-09-04 fires)', () => {
+  function offersDoc(rows: string): Document {
+    const { document } = parseHTML(
+      `<html><head><title>Bids and offers | My eBay</title></head><body>
+       <div class="filter-menu" role="tablist"><button role="tab" aria-selected="true">All (39)</button><button role="tab">Offers (31)</button></div>
+       <ul>${rows}</ul></body></html>`,
+    );
+    return document as unknown as Document;
+  }
+  const control = `<li class="offer-card"><a href="https://www.ebay.ca/itm/800300142565">Cisco C9130AXE-A Access Point</a>
+      <div class="offer-card__info">Buy It Now C $65.00 +C $19.99 shipping</div><button>Make Best offer</button></li>`;
+  const thread = `<li class="offer-card"><a href="https://www.ebay.ca/itm/358700472944">Arista DCS-7050QX-32S</a>
+      <div class="offer-card__info">C $890.00</div><a href="https://www.ebay.ca/mye/myebay/bidsoffers?offer=1">View offer details</a></li>`;
+
+  it('never reads the ask after "Make Best offer" as an offer amount', () => {
+    const page = extractOffersPage(offersDoc(control), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    const row = page.candidates[0]!;
+    expect(row.offerPrice).toBeNull();
+    expect(row.listPrice).toEqual({ value: 65, currency: 'CAD' });
+    expect(row.direction).toBe('unknown');
+    expect(row.offerStatus).toBe('none');
+    const none = page.warnings.find((warning) => warning.startsWith('OFFERS_NO_OFFER_THREAD'));
+    expect(none).toBeDefined();
+    expect(none).toMatch(/1 of 1/);
+  });
+
+  it('reports a row that holds a thread whose figures the template does not render', () => {
+    const page = extractOffersPage(offersDoc(thread), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    const row = page.candidates[0]!;
+    expect(row.offerPrice).toBeNull();
+    expect(row.offerStatus).toBe('unknown');
+    const unread = page.warnings.find((warning) => warning.startsWith('OFFERS_THREAD_UNREAD'));
+    expect(unread).toBeDefined();
+    expect(unread).toMatch(/358700472944/);
+    expect(unread).toMatch(/offers-template-unpinned/);
+  });
+
+  it('reads the stated row count from the "All" tab and names the shortfall', () => {
+    const page = extractOffersPage(offersDoc(control + thread), 'https://www.ebay.ca/mye/myebay/bidsoffers', {
+      observedAt: OBSERVED_AT,
+    });
+    expect(page.totalCount).toBe(39);
+    expect(page.totalCountSource).toBe('All (39)');
+    const short = page.warnings.find((warning) => warning.startsWith('OFFERS_PAGINATION_UNKNOWN'));
+    expect(short).toBeDefined();
+    expect(short).toMatch(/39/);
+    expect(short).toMatch(/\b2\b/);
+  });
+
+  it('still reads a labelled offer amount when the row carries one', () => {
+    const page = extractOffersPage(loadFixture('offers-page.html'), 'https://www.ebay.ca/mye/myebay/bidsoffers', {
+      observedAt: OBSERVED_AT,
+    });
+    expect(page.candidates[0]!.offerPrice).toEqual({ value: 165, currency: 'USD' });
+    expect(page.totalCount).toBe(3);
+    expect(page.warnings).toEqual([]);
+  });
+});
+
+// 2026-09-04 deals fire (site-ebay+extractor_defect+watchlist-totalresults-
+// misparse-as-1): every one of 34 watch-list reads reported totalResults 1
+// from totalCountSource "1 item" while the page rendered up to 328 rows.
+describe('watch list: a stated count below the rendered rows is rejected (2026-09-04 fire)', () => {
+  function watchlistDoc(countLabel: string, rows = 3): Document {
+    const cards = Array.from(
+      { length: rows },
+      (_, index) =>
+        `<li class="m-item"><a class="m-item__title" href="https://www.ebay.ca/itm/28713881074${index}">Item ${index}</a><div class="m-item__price">C $${10 + index}.00</div></li>`,
+    ).join('');
+    const { document } = parseHTML(
+      `<html><head><title>Watch list | My eBay</title></head><body>${countLabel}<ul>${cards}</ul></body></html>`,
+    );
+    return document as unknown as Document;
+  }
+
+  it('drops a "1 item" label read as the list total when three rows rendered, and says so', () => {
+    const page = extractWatchlistPage(watchlistDoc('<h2>1 item</h2>'), 'https://www.ebay.ca/mye/myebay/watchlist', {
+      observedAt: OBSERVED_AT,
+    });
+    expect(page.candidates).toHaveLength(3);
+    expect(page.totalCount).toBeNull();
+    expect(page.totalCountSource).toBeNull();
+    const rejected = page.warnings.find((warning) => warning.startsWith('WATCHLIST_TOTAL_REJECTED'));
+    expect(rejected).toBeDefined();
+    expect(rejected).toMatch(/"1 item"/);
+    expect(rejected).toMatch(/3 rows/);
+  });
+
+  it('prefers the "All (N)" tab over an "N items" heading when both render', () => {
+    const page = extractWatchlistPage(
+      watchlistDoc('<div role="tablist"><button role="tab">All (312)</button></div><h2>1 item</h2>'),
+      'https://www.ebay.ca/mye/myebay/watchlist',
+      { observedAt: OBSERVED_AT },
+    );
+    expect(page.totalCount).toBe(312);
+    expect(page.totalCountSource).toBe('All (312)');
+  });
+});

@@ -666,7 +666,10 @@ async function executeExtract(
       // radius=/address= are ignored by kijiji.ca (2026-09-02, isolated
       // live); a URL that still carries them must not be read as a radius
       // sweep.
-      const warnings = [...intentWarnings, ...kijijiSearchUrlWarnings(pageUrl)];
+      // The page's own warnings say what its pagination metadata could not
+      // (a sorted category URL renders no count and no next link, and is
+      // not date-ordered — 2026-09-04 office fire).
+      const warnings = [...intentWarnings, ...kijijiSearchUrlWarnings(pageUrl), ...searchPage.warnings];
       if (kind === 'other') {
         warnings.push(
           `UNCLASSIFIED_PAGE: ${pageUrl} is not a Kijiji ad or search URL; returned a best-effort ad-link scan. An empty candidate list here may mean the page has no ads, not that extraction failed.`,
@@ -841,10 +844,12 @@ async function executeExtract(
           ? 'Watch-list cards are traversal hints: the countdown, price and status are what the card said, and the item page decides. A sellerOffer on a row is the evidence Track O reads first; open the item page before valuing it.'
           : 'Offer rows are what the bids/offers page rendered: direction and status are read from the row text and each row carries its snippet for audit. Open the item page before valuing an offer.',
     };
+    // Both pages state a row count ("All (312)" / "All (39)"); the audit
+    // compares rows read against it.
+    record.totalResults = page.totalCount;
+    record.totalCountSource = page.totalCountSource;
     if (kind === 'watchlist') {
       const watchlist = page as ReturnType<typeof extractWatchlistPage>;
-      record.totalResults = watchlist.totalCount;
-      record.totalCountSource = watchlist.totalCountSource;
       record.currentPage = watchlist.currentPage;
     }
     const myEbayPage = applySearchCompaction(record, searchOptions, warnings);

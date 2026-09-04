@@ -74,6 +74,76 @@ export interface KijijiSearchPage {
    * marker, and this is a search page precisely because the ad is gone.
    */
   removedAdId: string | null;
+  /**
+   * What this page could NOT say about the result set, so the caller never
+   * reads the absence of a count or a next link as the end of it. Observed
+   * 2026-09-04 (office fire): a category URL carrying ?sort=dateDesc renders
+   * no result count and no pagination control at all, which used to come
+   * back as the exact shape of a genuine last page (hasNextPage:false,
+   * nextPageUrl:null, totalResults:null) while the unsorted URL for the
+   * same 1579-ad category reported all three. The same sorted page was not
+   * date-ordered either. Neither is fixable here; both are named.
+   */
+  warnings: string[];
+}
+
+export const PAGINATION_METADATA_ABSENT_WARNING_PREFIX = 'PAGINATION_METADATA_ABSENT';
+export const SORT_NOT_HONOURED_WARNING_PREFIX = 'SORT_NOT_HONOURED';
+
+/** Sorting parameters kijiji.ca accepts on a category or search URL. */
+const SORT_PARAM_KEYS = ['sort'] as const;
+
+/**
+ * The same page without its sort parameter. On 2026-09-04 the unsorted
+ * category URL was the one that rendered a count and a next link, so it is
+ * the route the warning names; the sorted page's /page-2/ is not derived
+ * here because no fire has yet shown that a sorted second page renders.
+ */
+function unsortedPageUrl(pageUrl: string): string | null {
+  try {
+    const url = new URL(pageUrl);
+    let changed = false;
+    for (const key of SORT_PARAM_KEYS) {
+      if (url.searchParams.has(key)) {
+        url.searchParams.delete(key);
+        changed = true;
+      }
+    }
+    return changed ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function sortParamOf(pageUrl: string): string | null {
+  try {
+    const url = new URL(pageUrl);
+    for (const key of SORT_PARAM_KEYS) {
+      const value = url.searchParams.get(key);
+      if (value !== null && value.length > 0) return `${key}=${value}`;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * The rendered posted times, in page order, are older-first at some point
+ * even though the URL asked for newest-first. Relative posted texts round
+ * ("3 hours ago"), so an inversion has to exceed an hour to count.
+ */
+function newestFirstViolated(results: readonly KijijiSearchResult[]): boolean {
+  const TOLERANCE_MS = 60 * 60_000;
+  let previous: number | null = null;
+  for (const result of results) {
+    if (result.postedAt === null) continue;
+    const ms = Date.parse(result.postedAt);
+    if (Number.isNaN(ms)) continue;
+    if (previous !== null && ms > previous + TOLERANCE_MS) return true;
+    previous = ms;
+  }
+  return false;
 }
 
 // Card-enrichment selectors are secondary; the anchor-href VIP pattern is
@@ -328,13 +398,35 @@ export function extractSearchResults(
 
   const pageTitle = (document.querySelector('title')?.textContent ?? '').replace(/\s+/g, ' ').trim();
 
+  const warnings: string[] = [];
+  const hasNextPage = nextPageUrl !== null || moreByCount;
+  const sortParam = sortParamOf(pageUrl);
+  if (results.length > 0 && totalResults === null && nextPageUrl === null) {
+    // A page that rendered ads but states no count and links no next page
+    // has said nothing about the result set; hasNextPage:false here is the
+    // absence of evidence, not a last page. Say which fields are missing and
+    // which URL form has been seen to carry them.
+    const unsorted = unsortedPageUrl(pageUrl);
+    warnings.push(
+      `${PAGINATION_METADATA_ABSENT_WARNING_PREFIX}: ${pageUrl} rendered ${results.length} candidate(s) but stated no result count and linked no next page, so totalResults:null, nextPageUrl:null and hasNextPage:false describe what the page withheld, not the end of the result set${
+        sortParam === null ? '' : ` (a category URL carrying ${sortParam} renders neither; observed 2026-09-04)`
+      }. Walk the category without the sort parameter${unsorted === null ? '' : ` — ${unsorted} — which does carry both`}, and never count this page as the whole category.`,
+    );
+  }
+  if (sortParam !== null && /^sort=dateDesc$/i.test(sortParam) && newestFirstViolated(results)) {
+    warnings.push(
+      `${SORT_NOT_HONOURED_WARNING_PREFIX}: ${pageUrl} asked for newest first (${sortParam}) but the rendered posted times are not in newest-first order, so this page is not "everything since the last fire"; filter by postedAt yourself and do not treat page 1 of a sorted sweep as the recent delta.`,
+    );
+  }
+
   return {
     results,
-    hasNextPage: nextPageUrl !== null || moreByCount,
+    hasNextPage,
     nextPageUrl,
     totalResults,
     pageTitle: pageTitle.length > 0 ? pageTitle : null,
     removedAdId: removedAdIdFromUrl(pageUrl),
+    warnings,
   };
 }
 

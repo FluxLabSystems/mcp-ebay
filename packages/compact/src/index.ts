@@ -398,11 +398,20 @@ const PRESERVED_ROOT_FIELDS = [
 ] as const;
 
 /**
- * Rows are only ever scanned up to this many; a page that somehow renders
- * more candidates than the largest window the schema can ask for is not a
- * reason to run a caller-supplied regex an unbounded number of times.
+ * Rows are only ever scanned up to this many. The ceiling bounds a
+ * caller-supplied regex against one rendered page; it is NOT the largest
+ * window the schema can ask for. It used to be (240), and a 2026-09-04
+ * deals fire found out what that meant: the signed-in watch list rendered
+ * 328 rows on one page, search.offset 240 came back empty and a price split
+ * summed to exactly 240, because the slice ran BEFORE the filters and the
+ * window — the last 88 rows were unreachable through any argument of the
+ * call. The wall-clock budget below already bounds a slow filter, so the
+ * ceiling only has to be higher than any page a marketplace renders
+ * (eBay's _ipg tops out at 240; the overflow watch-list render is the whole
+ * list). A page past it is still truncated, and the warning now says what
+ * that costs.
  */
-const MAX_SCANNED_CANDIDATES = 240;
+const MAX_SCANNED_CANDIDATES = 1000;
 
 export interface SearchCompactionResult {
   record: Record<string, unknown>;
@@ -419,7 +428,7 @@ export interface SearchCompactionResult {
  * auction.
  */
 export interface SearchCompactionOptions extends SearchCompaction {
-  /** Rows scanned before filtering; defaults to MAX_SCANNED_CANDIDATES. */
+  /** Rows scanned before filtering; defaults to MAX_SCANNED_CANDIDATES (1000). */
   maxScanned?: number;
 }
 
@@ -515,7 +524,7 @@ export function compactSearchPage(
   const rows = (source.candidates as unknown[]).slice(0, maxScanned);
   if ((source.candidates as unknown[]).length > maxScanned) {
     warnings.push(
-      `CANDIDATES_TRUNCATED: the page rendered ${(source.candidates as unknown[]).length} candidates; only the first ${maxScanned} were considered.`,
+      `CANDIDATES_TRUNCATED: the page rendered ${(source.candidates as unknown[]).length} candidates; only the first ${maxScanned} were considered, and search.offset and search.include cannot reach the rows past them — the site's own pagination (nextPageUrl) or a narrower page is the route to the rest.`,
     );
   }
 

@@ -145,12 +145,16 @@ refused for five minutes, so report it and take the Bridge path.
   `price`, `format` or `location` returns eBay's `snippetPrice`,
   `sellingFormat` and `itemLocationText` under the name you asked for, so
   one field list serves eBay and Kijiji pages alike.
-- **The candidate scan window is 240 rows per page.** A page that renders
-  more says so with `CANDIDATES_TRUNCATED`, and `search.offset` pages only
-  through the matched set *inside* that window — it cannot reach row 241.
-  For a deeper scan, narrow the query or follow the marketplace's own
-  pagination (Kijiji's `nextPageUrl`; eBay's `_pgn`/`_ipg` URL
-  parameters), which loads a fresh page with a fresh window.
+- **The candidate scan ceiling is 1000 rows per page** (240 until
+  2026-09-04, when a 328-row watch-list render proved the slice ran before
+  `search.offset` and `search.include`, leaving the last 88 rows unreachable
+  through any argument of the call). A page that renders more than the
+  ceiling says so with `CANDIDATES_TRUNCATED`, and `search.offset` pages
+  only through the matched set *inside* the scanned rows — it cannot reach
+  a row past the ceiling. For a deeper scan, narrow the query or follow the
+  marketplace's own pagination (Kijiji's `nextPageUrl`; eBay's
+  `_pgn`/`_ipg` URL parameters), which loads a fresh page with a fresh
+  window.
 - **`browser_extract_many`** traverses up to 25 URLs per call with a
   per-URL error slot. One dead listing is one error, not a failed batch.
   A page that loads but is not a listing — an eBay error/removed-item
