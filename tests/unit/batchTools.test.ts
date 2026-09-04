@@ -102,7 +102,16 @@ function buildStub(options: StubOptions): Stub {
     enqueue,
     getTab: (tabId: string) => {
       if (tabId !== TAB) throw new Error('TAB_NOT_FOUND');
-      return { tabId: TAB, page, get revision() { return revision; }, dirty: false, lastBlock: null };
+      return {
+        tabId: TAB,
+        page,
+        get revision() {
+          return revision;
+        },
+        dirty: false,
+        lastBlock: null,
+        blockedSubresources: new Map(),
+      };
     },
     listTabs: async () => [],
   } as unknown as BrowserSessionRuntime;

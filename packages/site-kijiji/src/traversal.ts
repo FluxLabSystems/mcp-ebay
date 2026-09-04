@@ -201,6 +201,8 @@ function toIsoOrNull(raw: string | null): string | null {
  *  trailing category segment. Returns null when the shape is unrecognised --
  *  hasNextPage still stands on the count alone. */
 function nextKijijiPageUrl(pageUrl: string): string | null {
+  const seller = nextKijijiSellerPageUrl(pageUrl);
+  if (seller !== null) return seller;
   try {
     const url = new URL(pageUrl);
     const paged = url.pathname.match(/\/page-(\d+)(\/|$)/);
@@ -216,6 +218,32 @@ function nextKijijiPageUrl(pageUrl: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The next page of a poster's listings: /o-profile/<posterId>/<n> → <n+1>,
+ * and a bare /o-profile/<posterId> → /2. Null for any other path. Both live
+ * VIP captures link the first page as /o-profile/<id>/1, so the trailing
+ * segment is read as the page number (NEEDS-LIVE-VERIFICATION: no seller
+ * page beyond the link itself has been captured).
+ */
+export function nextKijijiSellerPageUrl(pageUrl: string): string | null {
+  try {
+    const url = new URL(pageUrl);
+    const match = /^\/o-profile\/(\d{1,16})(?:\/(\d+))?\/?$/.exec(url.pathname);
+    if (match === null) return null;
+    const page = match[2] === undefined ? 1 : toInt(match[2]);
+    url.pathname = `/o-profile/${match[1]}/${page + 1}`;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+/** The poster's listings page, as every VIP links it ("View all listings (N)"). */
+export function buildSellerListingsUrl(sellerId: string, page = 1): string {
+  const id = sellerId.trim().replace(/\D/g, '');
+  return `https://www.kijiji.ca/o-profile/${id}/${Math.max(1, Math.trunc(page))}`;
 }
 
 const NEXT_PAGE_SELECTORS = [

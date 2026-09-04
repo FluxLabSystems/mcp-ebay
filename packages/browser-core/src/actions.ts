@@ -125,6 +125,38 @@ function announcesPopup(info: LiveElementInfo): boolean {
   return info.target === '_blank' || ANNOUNCES_NEW_TAB_RE.test(info.accessibleName) || ANNOUNCES_NEW_TAB_RE.test(info.text);
 }
 
+/**
+ * How long an overlay may sit over the target before the click is refused
+ * as CLICK_INTERCEPTED. A loading veil or a fade-in clears well inside
+ * this; a consent SDK's dark filter never does (2026-09-03 wardrobe fire:
+ * the same interception on every retry for the full 15 s timeout).
+ */
+const INTERCEPT_PROBE_MS = 3000;
+
+/**
+ * Playwright's actionability log for a covered target reads
+ * `<div class="onetrust-pc-dark-filter ot-fade-in"></div> from <div
+ * id="onetrust-consent-sdk">…</div> subtree intercepts pointer events`.
+ * The element before "intercepts pointer events" is the interceptor.
+ */
+const INTERCEPTS_RE = /(<[^\n]*?)\s+(?:from\s+<[^\n]*?\s+subtree\s+)?intercepts pointer events/i;
+
+function interceptorOf(err: unknown): string | null {
+  const message = err instanceof Error ? err.message : String(err);
+  if (!/intercepts pointer events/i.test(message)) return null;
+  const match = INTERCEPTS_RE.exec(message);
+  const snippet = (match?.[1] ?? message).replace(/\s+/g, ' ').trim();
+  return snippet.slice(0, 300);
+}
+
+function clickIntercepted(elementRef: string, interceptor: string, probedMs: number): BridgeError {
+  return new BridgeError(
+    'CLICK_INTERCEPTED',
+    `Click on ${elementRef} cannot land: ${interceptor} intercepts pointer events at the target (still covering it after ${probedMs} ms). Dismissing a consent overlay is the operator's decision, not the routine's; traverse by href instead (browser_snapshot link nodes carry it, browser_navigate follows it).`,
+    { elementRef, interceptor, probedMs },
+  );
+}
+
 export async function click(
   session: BrowserSessionRuntime,
   tabId: string,
@@ -137,6 +169,19 @@ export async function click(
   if (info.field !== null) {
     // Clicking into a secret field is also blocked (focus/interaction).
     session.policy.assertFieldAllowed(info.field as FieldContext);
+  }
+  // A trial click runs every actionability check (visible, stable, enabled,
+  // receives events) without clicking. When the hit-target check is what
+  // fails, and keeps failing for INTERCEPT_PROBE_MS, the click is refused
+  // as a typed error here instead of retrying inside Playwright until the
+  // full timeout and surfacing as INTERNAL_ERROR. Any other trial failure
+  // falls through to the real click, which behaves exactly as before.
+  const probeMs = Math.min(timeoutMs, INTERCEPT_PROBE_MS);
+  try {
+    await locator.first().click({ trial: true, timeout: probeMs });
+  } catch (err) {
+    const interceptor = interceptorOf(err);
+    if (interceptor !== null) throw clickIntercepted(elementRef, interceptor, probeMs);
   }
   const beforeRevision = tab.revision;
   const beforeUrl = tab.page.url();
@@ -163,7 +208,14 @@ export async function click(
   });
   let popup: Page | null = null;
   try {
-    await locator.first().click({ timeout: timeoutMs });
+    try {
+      await locator.first().click({ timeout: timeoutMs });
+    } catch (err) {
+      // An overlay that appeared between the probe and the click.
+      const interceptor = interceptorOf(err);
+      if (interceptor !== null) throw clickIntercepted(elementRef, interceptor, timeoutMs);
+      throw err;
+    }
     await tab.page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => undefined);
     const popupWait = announcesPopup(info) ? POPUP_WAIT_ANNOUNCED_MS : POPUP_WAIT_GRACE_MS;
     popup = await Promise.race([

@@ -8,9 +8,12 @@ import { describe, expect, it } from 'vitest';
 // linked into tests/node_modules; tsc and vitest both resolve the
 // TypeScript source directly through this path.
 import {
+  buildSellerListingsUrl,
+  classifyKijijiPage,
   extractKijijiListing,
   extractSearchResults,
   KijijiExtractionRecordSchema,
+  nextKijijiSellerPageUrl,
 } from '../../packages/site-kijiji/src/index.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'kijiji');
@@ -254,4 +257,134 @@ describe('kijiji seller identity (live captures)', () => {
     expect(page.pageTitle).toBeNull();
   });
 
+});
+
+/**
+ * 2026-09-02 deals fire (site-kijiji+coverage_gap+kijiji-no-seller-
+ * inventory-surface): a new Kijiji trader was found through one good ad and
+ * the mandatory same-run seller drill-down could not be performed — the ad
+ * record carried a sellerName but no seller id, profile URL or other-ads
+ * link. Both live captures render exactly that link: an anchor to
+ * /o-profile/<posterId>/1 labelled "View all listings (N)", and the
+ * hydration cache states posterInfo.posterId for the ad.
+ */
+describe('kijiji seller listings surface (live captures)', () => {
+  it('carries the poster id, the "View all listings" URL and its stated count on a priced ad', () => {
+    const { record } = pricedAd();
+    expect(record.sellerId).toMatchObject({ value: '81273541', source: 'dom' });
+    expect(record.sellerListingsUrl).toMatchObject({
+      value: 'https://www.kijiji.ca/o-profile/81273541/1',
+      source: 'dom',
+    });
+    expect(record.sellerListingCount).toBe(1);
+  });
+
+  it('reads a three-digit listing count on the contact-price ad', () => {
+    const { record } = contactAd();
+    expect(record.sellerId?.value).toBe('1008009261');
+    expect(record.sellerListingsUrl?.value).toBe('https://www.kijiji.ca/o-profile/1008009261/1');
+    expect(record.sellerListingCount).toBe(219);
+  });
+
+  it('answers null for all three on a page that renders no profile link', () => {
+    const { document } = parseHTML('<html><body><h1>LEGO lot</h1><p data-testid="vip-price">$5</p></body></html>');
+    const { record } = extractKijijiListing(document as unknown as Document, PRICED_URL, { pageRevision: 1 });
+    expect(record.sellerId).toBeNull();
+    expect(record.sellerListingsUrl).toBeNull();
+    expect(record.sellerListingCount).toBeNull();
+    expect(KijijiExtractionRecordSchema.safeParse(record).success).toBe(true);
+  });
+
+  it('classifies /o-profile/<id>/<page> as a seller page and pages it by the trailing number', () => {
+    expect(classifyKijijiPage('https://www.kijiji.ca/o-profile/81273541/1')).toBe('seller');
+    expect(classifyKijijiPage('https://www.kijiji.ca/o-profile/81273541')).toBe('seller');
+    expect(buildSellerListingsUrl('1008009261')).toBe('https://www.kijiji.ca/o-profile/1008009261/1');
+    expect(buildSellerListingsUrl('1008009261', 3)).toBe('https://www.kijiji.ca/o-profile/1008009261/3');
+    expect(nextKijijiSellerPageUrl('https://www.kijiji.ca/o-profile/1008009261/1')).toBe(
+      'https://www.kijiji.ca/o-profile/1008009261/2',
+    );
+    expect(nextKijijiSellerPageUrl('https://www.kijiji.ca/o-profile/1008009261')).toBe(
+      'https://www.kijiji.ca/o-profile/1008009261/2',
+    );
+    expect(nextKijijiSellerPageUrl('https://www.kijiji.ca/b-buy-sell/city-of-toronto/lego/c10l1700273')).toBeNull();
+  });
+
+  it('a seller page runs the ad-link scan and names itself a seller page', () => {
+    // No live /o-profile/ capture exists; the scan is anchor-href based, so
+    // the search capture stands in for the markup shape it does not depend on.
+    const page = extractSearchResults(
+      loadFixture('live-search-lego-toronto.html'),
+      'https://www.kijiji.ca/o-profile/1008009261/1',
+    );
+    expect(page.results.length).toBeGreaterThan(0);
+    expect(page.nextPageUrl === null || page.nextPageUrl.startsWith('https://www.kijiji.ca/o-profile/1008009261/')).toBe(true);
+  });
+});
+
+/**
+ * 2026-09-03 deals fire (site-kijiji+extractor_defect+search-card-price-
+ * differs-from-ad-page-price): four ads whose search cards read C$1.50,
+ * C$1.50, C$1.50 and C$7.50 came back C$1.00, C$1.00, C$1.00 and C$7.00 from
+ * their ad pages, fetched within two minutes of the cards. Every one lost
+ * exactly its cents. The ad page's JSON-LD carries offers.price as a
+ * whole-number string ("35" on the live 1740940278 capture, whose hydration
+ * cache states amount 3500 in cents), and the extractor took JSON-LD first
+ * — so a fractional price arrives truncated while the page itself states
+ * the exact amount a few kilobytes away. The cache's amount is the value
+ * the search card rendered ($2.50 for amount 250 on the live search
+ * capture).
+ */
+describe('kijiji ad price against the page\'s own stated amount', () => {
+  function vipWithPrices(jsonldPrice: string, cacheAmountCents: number | null, rendered: string): Document {
+    const cache =
+      cacheAmountCents === null
+        ? '{}'
+        : JSON.stringify({
+            props: {
+              pageProps: {
+                __APOLLO_STATE__: {
+                  'StandardListing:1740940278': {
+                    __typename: 'StandardListing',
+                    price: { __typename: 'StandardAmountPrice', type: 'FIXED', amount: cacheAmountCents, currency: 'CAD', originalAmount: null },
+                  },
+                },
+              },
+            },
+          });
+    const html = `<html><head>
+      <link rel="canonical" href="${PRICED_URL}">
+      <script type="application/ld+json">${JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        name: 'Lego minifigure',
+        offers: { '@type': 'Offer', price: jsonldPrice, priceCurrency: 'CAD' },
+      })}</script>
+      <script id="__NEXT_DATA__" type="application/json">${cache}</script>
+      </head><body><h1>Lego minifigure</h1><p data-testid="vip-price">${rendered}</p></body></html>`;
+    return parseHTML(html).document as unknown as Document;
+  }
+
+  it('records the exact cents the page states when JSON-LD carries a truncated whole number', () => {
+    const { record, warnings } = extractKijijiListing(vipWithPrices('1', 150, '$1.50'), PRICED_URL, { pageRevision: 1 });
+    expect(record.price).toMatchObject({ kind: 'amount', value: 1.5, currency: 'CAD' });
+    expect(record.price?.source).not.toBe('jsonld');
+    expect(warnings.some((warning) => warning.startsWith('PRICE_JSONLD_TRUNCATED') && warning.includes('1.50'))).toBe(true);
+  });
+
+  it('keeps JSON-LD provenance when it agrees with the stated amount', () => {
+    const { record, warnings } = extractKijijiListing(vipWithPrices('35', 3500, '$35'), PRICED_URL, { pageRevision: 1 });
+    expect(record.price).toMatchObject({ kind: 'amount', value: 35, source: 'jsonld' });
+    expect(warnings.some((warning) => warning.startsWith('PRICE_JSONLD_TRUNCATED'))).toBe(false);
+  });
+
+  it('keeps JSON-LD when the page states no amount for the ad', () => {
+    const { record } = extractKijijiListing(vipWithPrices('7', null, '$7.50'), PRICED_URL, { pageRevision: 1 });
+    expect(record.price).toMatchObject({ kind: 'amount', value: 7, source: 'jsonld' });
+  });
+
+  it('the live priced capture is unchanged: JSON-LD "35" and amount 3500 agree', () => {
+    const { record, warnings } = pricedAd();
+    expect(record.price).toMatchObject({ kind: 'amount', value: 35, source: 'jsonld' });
+    expect(warnings.some((warning) => warning.startsWith('PRICE_JSONLD_TRUNCATED'))).toBe(false);
+  });
 });

@@ -178,7 +178,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'reversible',
     timeoutMs: DEFAULT_TIMEOUT_MS,
     description:
-      'Navigate a tab to an allowed HTTPS URL. Returns final URL, title, origin, navigation status, and the new page revision.',
+      'Navigate a tab to an allowed HTTPS URL. Returns final URL, title, origin, navigation status, the new page revision, and blockedSubresources: every origin the local site allowlist refused an image, script, frame or fetch from while the page loaded (origin, code, request count, one example URL), so a module that renders as an empty skeleton because its data host is outside the allowlist can be reported by host instead of guessed; an empty list on a page that still renders nothing means the gap is not a policy block. browser_wait returns the same tally read again later.',
     inputSchema: NavigateInput,
     outputSchema: NavigateOutput,
   },
@@ -233,7 +233,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'reversible',
     timeoutMs: INTERACTION_TIMEOUT_MS,
     description:
-      'Click a semantic target by elementRef if local policy permits. Protected transaction/account controls are always blocked locally. A control that opens a new tab reports it as openedTab (use that tabId with the other browser_* tools; changed stays false because the original tab did not change) or, when the popup targets a host outside the site allowlist, as popupDenied with the refused URL.',
+      'Click a semantic target by elementRef if local policy permits. Protected transaction/account controls are always blocked locally. A control that opens a new tab reports it as openedTab (use that tabId with the other browser_* tools; changed stays false because the original tab did not change) or, when the popup targets a host outside the site allowlist, as popupDenied with the refused URL. A target another element keeps covering (a consent SDK dark filter, a modal veil — often absent from the snapshot) fails within about 3 s as CLICK_INTERCEPTED, details.interceptor naming the overlay: do not retry the click; traverse by the href browser_snapshot link nodes carry (browser_navigate), and leave dismissing a consent banner to the operator.',
     inputSchema: ClickInput,
     outputSchema: ClickOutput,
   },
@@ -284,7 +284,8 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     scope: SCOPE_READ,
     policyClass: 'read',
     timeoutMs: DEFAULT_TIMEOUT_MS,
-    description: 'Wait for a deterministic page condition: text, url pattern, element, or network idle.',
+    description:
+      'Wait for a deterministic page condition: text, url pattern, element, or network idle. Also returns blockedSubresources — the origins the local site allowlist has refused requests from since the tab last navigated, read after the wait — so a module that fetches its data after load (a price widget) can be seen asking a host the allowlist refused; on a roster vendor that host is what a coverage_gap report names.',
     inputSchema: WaitInput,
     outputSchema: WaitOutput,
   },
@@ -295,7 +296,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'read',
     timeoutMs: DEFAULT_TIMEOUT_MS,
     description:
-      'Run versioned site-profile extraction on the current page, dispatched by page kind. eBay (ebay.ca.v1): item /itm/ pages return the full listing record with provenance and confidence; search /sch/ and seller store /str/ or /usr/ pages return an ordered listing-candidate list for traversal; the signed-in My eBay watch list (/mye/myebay/watchlist, /myb/WatchList) returns pageKind "watchlist" — candidates carrying timeLeftText, endsAt, watchlistStatus, seller and any sellerOffer the card advertises, plus signedIn, totalResults (the count the page states) and next-page pagination — and the bids/offers page (/mye/myebay/bidsoffers, /myb/BidsOffers) returns pageKind "offers" with one row per offer (offerPrice, direction from_seller/from_you, offerStatus, expiresText); both are read in the eBay research profile that holds the session, and a sign-in wall is reported as SIGN_IN_REQUIRED rather than as an empty list. Kijiji (kijiji.ca.v1): ad (VIP) pages return the full record; search /b-* pages return candidates plus next-page pagination. Zazzle (zazzle.com.v1): product pages return the wardrobe record (listed-currency prices, priceBasis discriminator, personalization/promo evidence); /s/ and /c/ pages return candidates. Candidate snippets are traversal hints - follow each candidate URL and extract the item page for canonical evidence.',
+      'Run versioned site-profile extraction on the current page, dispatched by page kind. eBay (ebay.ca.v1): item /itm/ pages return the full listing record with provenance and confidence; search /sch/ and seller store /str/ or /usr/ pages return an ordered listing-candidate list for traversal; the signed-in My eBay watch list (/mye/myebay/watchlist, /myb/WatchList) returns pageKind "watchlist" — candidates carrying timeLeftText, endsAt, watchlistStatus, seller and any sellerOffer the card advertises, plus signedIn, totalResults (the count the page states) and next-page pagination — and the bids/offers page (/mye/myebay/bidsoffers, /myb/BidsOffers) returns pageKind "offers" with one row per offer (offerPrice, direction from_seller/from_you, offerStatus, expiresText); both are read in the eBay research profile that holds the session, and a sign-in wall is reported as SIGN_IN_REQUIRED rather than as an empty list. Kijiji (kijiji.ca.v1): ad (VIP) pages return the full record, including the poster\'s sellerId, sellerListingsUrl (/o-profile/<posterId>/1, the "View all listings (N)" link) and sellerListingCount; search /b-* pages return candidates plus next-page pagination; a seller /o-profile/ page returns pageKind "seller" with the same candidate list (no live capture of that page kind exists yet — SELLER_PAGE_UNVERIFIED says what to check). Zazzle (zazzle.com.v1): product pages return the wardrobe record (listed-currency prices, priceBasis discriminator, personalization/promo evidence); /s/ and /c/ pages return candidates. Candidate snippets are traversal hints - follow each candidate URL and extract the item page for canonical evidence.',
     inputSchema: ExtractInput,
     outputSchema: ExtractOutput,
   },

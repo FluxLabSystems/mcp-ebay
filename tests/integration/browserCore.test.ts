@@ -185,6 +185,82 @@ describe('navigation + revisions + snapshot (FR-02/03, §14)', () => {
     await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
   });
 
+  // 2026-09-03 wardrobe fire (gateway+coverage_gap+vistaprint-pricing-
+  // module-never-hydrates): Vistaprint's "Size and quantity" module rendered
+  // as a skeleton that never hydrated and no price appeared anywhere. The
+  // route layer refuses every subresource from a host outside the
+  // allowlist (packages/policy checkUrl, context 'subresource'), logs it
+  // at the agent, and tells the caller nothing — so the run could not name
+  // the host the roster rule would have added. The tally now rides on the
+  // navigate result and on browser_wait.
+  it('navigate names the subresource origins the policy refused, grouped by origin', async () => {
+    const result = await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/blocked-assets.html`, 'load', 20_000);
+    expect(result.navigationStatus).toBe('committed');
+    const origins = result.blockedSubresources.map((entry) => entry.origin).sort();
+    expect(origins).toEqual(['https://cdn.example.net', 'https://example.com']);
+    const images = result.blockedSubresources.find((entry) => entry.origin === 'https://example.com');
+    expect(images).toMatchObject({ code: 'ORIGIN_DENIED', requests: 2 });
+    expect(images?.exampleUrl).toMatch(/^https:\/\/example\.com\/pixel-[12]\.png$/);
+    // The local image loaded and is not listed.
+    expect(result.blockedSubresources.some((entry) => entry.origin === fixtures.baseUrl)).toBe(false);
+  });
+
+  it('browser_wait reports refusals that happened after the navigation settled', async () => {
+    const waited = await waitFor(harness.session, tabId, { networkIdleMs: 400 }, 10_000);
+    expect(waited.satisfied).toBe(true);
+    const late = waited.blockedSubresources.find((entry) => entry.origin === 'https://api.example.org');
+    expect(late).toMatchObject({ code: 'ORIGIN_DENIED', requests: 1, exampleUrl: 'https://api.example.org/prices' });
+    // The earlier refusals are still in the tally: it resets on the next
+    // main-frame navigation, not per call.
+    expect(waited.blockedSubresources.some((entry) => entry.origin === 'https://example.com')).toBe(true);
+  });
+
+  it('the tally resets on the next navigation and is empty on a page that loads clean', async () => {
+    const result = await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
+    expect(result.blockedSubresources).toEqual([]);
+    const waited = await waitFor(harness.session, tabId, { text: 'Interaction fixture' }, 5_000);
+    expect(waited.blockedSubresources).toEqual([]);
+  });
+
+  // 2026-09-03 wardrobe fire (gateway+coverage_gap+spreadshirt-onetrust-
+  // overlay-blocks-all-clicks): every browser_click on spreadshirt.ca burned
+  // ~15 s and came back INTERNAL_ERROR, with the cause — "<div
+  // class="onetrust-pc-dark-filter"> … intercepts pointer events" — buried
+  // in Playwright's call log. The overlay outlived the visible dialog and
+  // was not in the accessibility tree, so no snapshot could warn the run.
+  it('a click a persistent overlay intercepts fails fast with CLICK_INTERCEPTED naming the overlay', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/overlay.html`, 'load', 20_000);
+    const snap = await snapshot(harness.session, tabId, 3000);
+    const button = snap.snapshot.find((node) => node.name === 'Redeem Code Now');
+    expect(button?.elementRef).toBeTruthy();
+    const started = Date.now();
+    let caught: BridgeError | null = null;
+    try {
+      await click(harness.session, tabId, button!.elementRef!, 15_000);
+    } catch (err) {
+      caught = err as BridgeError;
+    }
+    const elapsed = Date.now() - started;
+    expect(caught?.code).toBe('CLICK_INTERCEPTED');
+    expect(caught?.retryable).toBe(false);
+    expect(String(caught?.details.interceptor)).toContain('onetrust-pc-dark-filter');
+    expect(caught?.message).toContain('onetrust-pc-dark-filter');
+    // Well inside the 15 s the fire paid per click.
+    expect(elapsed).toBeLessThan(8_000);
+    // The click never landed.
+    expect(await harness.session.getTab(tabId).page.textContent('#state')).toBe('idle');
+  });
+
+  it('an overlay that clears itself within the probe window does not fail the click', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/overlay.html?transient=1`, 'load', 20_000);
+    const snap = await snapshot(harness.session, tabId, 3000);
+    const button = snap.snapshot.find((node) => node.name === 'Redeem Code Now');
+    const result = await click(harness.session, tabId, button!.elementRef!, 15_000);
+    expect(result.changed).toBe(false);
+    expect(await harness.session.getTab(tabId).page.textContent('#state')).toBe('redeemed');
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
+  });
+
   it('the tab automation last touched reports active=true (F-11)', async () => {
     await snapshot(harness.session, tabId, 3000);
     const tabs = await harness.session.listTabs();

@@ -346,6 +346,29 @@ describe('browser_extract dispatches by page kind instead of refusing', () => {
     expect(record.nextPageUrl).toContain('page-2');
   });
 
+  // 2026-09-02 deals fire (site-kijiji+coverage_gap+kijiji-no-seller-
+  // inventory-surface): a Kijiji seller's other ads were unreachable except
+  // by keyword collision. The ad record now carries the poster's
+  // /o-profile/<id>/<page> URL, and that page dispatches as a candidate
+  // page: the same anchor-href ad scan the search pages run, under its own
+  // page kind, with the caveat that no live /o-profile/ page is captured.
+  it('Kijiji seller (/o-profile/) pages return candidates under pageKind seller', async () => {
+    const outcome = await runExtract(
+      'https://www.kijiji.ca/o-profile/1008009261/1',
+      fixture('kijiji', 'search-results.html'),
+      'kijiji.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as { pageKind: string; candidateCount: number; candidates: { adId: string }[] };
+    expect(record.pageKind).toBe('seller');
+    expect(record.candidateCount).toBeGreaterThan(0);
+    expect(record.candidates[0]!.adId).toMatch(/^\d+$/);
+    expect(parsed.warnings.some((warning) => warning.startsWith('UNCLASSIFIED_PAGE'))).toBe(false);
+    const unverified = parsed.warnings.find((warning) => warning.startsWith('SELLER_PAGE_UNVERIFIED'));
+    expect(unverified).toBeDefined();
+    expect(unverified).toContain('browser_snapshot');
+  });
+
   it('Kijiji ad (VIP) pages return the full extraction record', async () => {
     const outcome = await runExtract(
       'https://www.kijiji.ca/v-buy-sell/city-of-toronto/lego-friends-bulk-lot-5-lbs/1712345678',

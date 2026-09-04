@@ -37,6 +37,28 @@ export interface ExtractionPin {
   fingerprint?: string;
 }
 
+export type NetworkBlockCode = 'ORIGIN_DENIED' | 'PRIVATE_NETWORK_DENIED' | 'SCHEME_DENIED' | 'ACTION_BLOCKED';
+
+/**
+ * One origin the network policy refused subresource requests from, since
+ * the tab's last main-frame navigation. Observed 2026-09-03 (wardrobe fire,
+ * gateway+coverage_gap+vistaprint-pricing-module-never-hydrates): a
+ * vendor's price module rendered as a skeleton because its data host was
+ * outside the allowlist, and nothing told the caller which host — the
+ * route layer aborted the request and logged it at the agent only.
+ */
+export interface BlockedSubresource {
+  origin: string;
+  code: NetworkBlockCode;
+  /** Requests refused from this origin under this code. */
+  requests: number;
+  /** The first refused URL, so the reader can name the resource, not only the host. */
+  exampleUrl: string;
+}
+
+/** Distinct (origin, code) pairs kept per tab; a busy page cannot flood the result. */
+export const MAX_BLOCKED_SUBRESOURCE_ENTRIES = 25;
+
 export interface TabState {
   tabId: string;
   page: Page;
@@ -44,10 +66,38 @@ export interface TabState {
   /** Set by mutating actions; next snapshot bumps the revision (§14). */
   dirty: boolean;
   /** Last network-policy block observed for a main-frame navigation. */
-  lastBlock: { url: string; code: 'ORIGIN_DENIED' | 'PRIVATE_NETWORK_DENIED' | 'SCHEME_DENIED' | 'ACTION_BLOCKED' } | null;
+  lastBlock: { url: string; code: NetworkBlockCode } | null;
+  /**
+   * Subresource refusals since the last main-frame navigation, keyed by
+   * `${code} ${origin}` in first-seen order. Reported by navigate() and
+   * waitFor(); reset when the main frame navigates.
+   */
+  blockedSubresources: Map<string, BlockedSubresource>;
   imageRegistry: Map<string, ImageRegistryEntry>;
   /** Pinned extraction source for the current revision; null until first extract. */
   extractionPin: ExtractionPin | null;
+}
+
+/** The tab's refusal tally as a list, in first-seen order. */
+export function blockedSubresourcesOf(tab: TabState): BlockedSubresource[] {
+  return Array.from(tab.blockedSubresources.values()).map((entry) => ({ ...entry }));
+}
+
+function recordBlockedSubresource(tab: TabState, url: string, code: NetworkBlockCode): void {
+  let origin: string;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    origin = url;
+  }
+  const key = `${code} ${origin}`;
+  const existing = tab.blockedSubresources.get(key);
+  if (existing !== undefined) {
+    existing.requests += 1;
+    return;
+  }
+  if (tab.blockedSubresources.size >= MAX_BLOCKED_SUBRESOURCE_ENTRIES) return;
+  tab.blockedSubresources.set(key, { origin, code, requests: 1, exampleUrl: url });
 }
 
 /**
@@ -210,6 +260,7 @@ export class BrowserSessionRuntime {
       revision: 0,
       dirty: false,
       lastBlock: null,
+      blockedSubresources: new Map(),
       imageRegistry: new Map(),
       extractionPin: null,
     };
@@ -221,6 +272,7 @@ export class BrowserSessionRuntime {
         tab.dirty = false;
         tab.imageRegistry.clear();
         tab.extractionPin = null;
+        tab.blockedSubresources.clear();
       }
     });
     page.on('download', (download) => {
@@ -265,7 +317,11 @@ export class BrowserSessionRuntime {
       if (this.policy.isProtectedEndpoint(url, request.method())) {
         this.events.onRequestAborted?.(url, 'protected-endpoint');
         const tab = frame === null ? undefined : this.pageToTab.get(frame.page());
-        if (tab) tab.lastBlock = { url, code: 'ACTION_BLOCKED' };
+        if (tab) {
+          const mainNavigation = frame !== null && request.isNavigationRequest() && frame === frame.page().mainFrame();
+          if (mainNavigation) tab.lastBlock = { url, code: 'ACTION_BLOCKED' };
+          else recordBlockedSubresource(tab, url, 'ACTION_BLOCKED');
+        }
         await route.abort('blockedbyclient').catch(() => undefined);
         return;
       }
@@ -293,6 +349,11 @@ export class BrowserSessionRuntime {
             url,
             code: decision.errorCode ?? 'ORIGIN_DENIED',
           };
+        } else if (tab) {
+          // A refused subresource is silent to the page (the image simply
+          // never loads, the script never runs); the tally is how the
+          // caller learns which host to name (see BlockedSubresource).
+          recordBlockedSubresource(tab, url, decision.errorCode ?? 'ORIGIN_DENIED');
         }
         this.events.onRequestAborted?.(url, decision.errorCode ?? 'ORIGIN_DENIED');
         await route.abort('blockedbyclient').catch(() => undefined);
@@ -381,6 +442,12 @@ export interface NavigateResult {
   origin: string;
   pageRevision: number;
   navigationStatus: 'committed' | 'same_document' | 'blocked';
+  /**
+   * Subresource origins the network policy refused while the page loaded,
+   * up to the moment the navigation settled (waitUntil). Requests a script
+   * issues later show up on browser_wait's copy of the same tally.
+   */
+  blockedSubresources: BlockedSubresource[];
 }
 
 export async function navigate(
@@ -393,6 +460,10 @@ export async function navigate(
   const tab = session.getTab(tabId);
   await session.policy.assertUrlAllowed(url, 'navigation');
   tab.lastBlock = null;
+  // The main-frame 'framenavigated' hook clears the tally once the new
+  // document commits; clearing here too keeps a same-document navigation
+  // (no commit) from reporting the previous page's refusals.
+  tab.blockedSubresources.clear();
   try {
     let response;
     try {
@@ -447,6 +518,7 @@ export async function navigate(
       origin,
       pageRevision: tab.revision,
       navigationStatus: response === null ? 'same_document' : 'committed',
+      blockedSubresources: blockedSubresourcesOf(tab),
     };
   } catch (err) {
     const block = readLastBlock(tab);

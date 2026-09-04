@@ -19,10 +19,13 @@ import {
 } from '@browser-bridge/protocol';
 
 describe('error catalog (§17)', () => {
-  it('contains exactly the 27 normative codes', () => {
-    // 24 from SDD v0.5 §17 plus the three Countdown API source codes
-    // (docs/COUNTDOWN-API-PLAN.md §2).
-    expect(BRIDGE_ERROR_CODES).toHaveLength(27);
+  it('contains exactly the 28 normative codes', () => {
+    // 24 from SDD v0.5 §17, the three Countdown API source codes
+    // (docs/COUNTDOWN-API-PLAN.md §2), and CLICK_INTERCEPTED (2026-09-04:
+    // a consent overlay intercepting every pointer event used to surface
+    // as a 15 s INTERNAL_ERROR timeout).
+    expect(BRIDGE_ERROR_CODES).toHaveLength(28);
+    expect(BRIDGE_ERROR_CODES).toContain('CLICK_INTERCEPTED');
     expect(BRIDGE_ERROR_CODES).toContain('DESTINATION_UNVERIFIED');
     expect(BRIDGE_ERROR_CODES).toContain('PROFILE_IN_USE');
     expect(BRIDGE_ERROR_CODES).toContain('SOURCE_UNAVAILABLE');

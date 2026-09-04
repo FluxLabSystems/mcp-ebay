@@ -117,6 +117,7 @@ export function statefulStub(
     revision: 1,
     dirty: false,
     lastBlock: null,
+    blockedSubresources: new Map(),
     imageRegistry: new Map(),
     extractionPin: null as unknown,
     page: {

@@ -139,6 +139,40 @@ export function readKijijiApolloCache(document: Document): Record<string, unknow
   return typeof cache === 'object' && cache !== null ? (cache as Record<string, unknown>) : null;
 }
 
+/**
+ * The amount the cache states for one ad, in CENTS with its currency —
+ * "price":{"__typename":"StandardAmountPrice","type":"FIXED","amount":3500,
+ * "currency":"CAD"} on the live 1740940278 capture, whose page renders $35
+ * and whose JSON-LD says "35"; the live search capture renders $2.50 for
+ * amount 250. Null for a non-amount price (Please Contact, Swap) or when
+ * the entry states none.
+ */
+export function apolloPriceAmount(
+  cache: Record<string, unknown> | null,
+  adId: string | null,
+): { amountCents: number; currency: string | null } | null {
+  if (cache === null || adId === null) return null;
+  const entry = cache[`StandardListing:${adId}`];
+  if (typeof entry !== 'object' || entry === null) return null;
+  const price = (entry as Record<string, unknown>).price;
+  if (typeof price !== 'object' || price === null) return null;
+  const { __typename, amount, currency } = price as Record<string, unknown>;
+  if (__typename !== undefined && __typename !== 'StandardAmountPrice') return null;
+  if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) return null;
+  return { amountCents: amount, currency: typeof currency === 'string' ? currency : null };
+}
+
+/** posterInfo.posterId for one ad out of the hydration cache (live captures: "81273541", "1008009261"). */
+export function apolloPosterId(cache: Record<string, unknown> | null, adId: string | null): string | null {
+  if (cache === null || adId === null) return null;
+  const entry = cache[`StandardListing:${adId}`];
+  if (typeof entry !== 'object' || entry === null) return null;
+  const poster = (entry as Record<string, unknown>).posterInfo;
+  if (typeof poster !== 'object' || poster === null) return null;
+  const posterId = (poster as Record<string, unknown>).posterId;
+  return typeof posterId === 'string' && /^\d{1,16}$/.test(posterId) ? posterId : null;
+}
+
 /** The activation date the cache states for one ad, in the "StandardListing:<id>" entry. */
 export function apolloActivationDate(cache: Record<string, unknown> | null, adId: string | null): string | null {
   if (cache === null || adId === null) return null;
@@ -282,6 +316,17 @@ const SELLER_SELECTORS = [
  * own title/aria-label is consulted before its text.
  */
 const PROFILE_LABEL_RE = /^view\s+(.+?)(?:['\u2019])s\s+profile$/i;
+/**
+ * The poster's listings link. Both live VIP captures (2026-08-29) render
+ * `<a href="/o-profile/<posterId>/1" target="_blank">View all listings (N)</a>`
+ * in the about-seller block; the avatar and name anchors point at the same
+ * path without the count. The count is read only from the labelled anchor.
+ */
+const SELLER_PROFILE_PATH_RE = /\/o-profile\/(\d{1,16})(?:\/|$|\?)/;
+const VIEW_ALL_LISTINGS_RE = /view\s+all\s+listings\s*\(\s*([\d,]+)\s*\)/i;
+
+/** Warning-code prefix for a JSON-LD price the page's own stated amount contradicts. */
+export const PRICE_JSONLD_TRUNCATED_WARNING_PREFIX = 'PRICE_JSONLD_TRUNCATED';
 
 function plausibleSellerName(raw: string | null | undefined): string | null {
   const collapsed = raw?.replace(/\s+/g, ' ').trim() ?? '';
@@ -592,6 +637,32 @@ export function extractKijijiListing(
     if (jsonldCurrency && jsonldCurrency.toUpperCase() !== 'CAD') {
       warnings.push(`JSON-LD priceCurrency is "${jsonldCurrency}"; kijiji.ca.v1 records assume CAD`);
     }
+    // 2026-09-03 deals fire (search-card-price-differs-from-ad-page-price):
+    // four ads whose cards read C$1.50/C$7.50 came back C$1.00/C$7.00 from
+    // their ad pages — each lost exactly its cents. JSON-LD offers.price is
+    // a whole-number string on the live capture ("35" for amount 3500), so
+    // a fractional price arrives truncated while the hydration cache states
+    // the exact amount in cents. When the two disagree the page's own
+    // amount is recorded and the disagreement is named; when they agree
+    // JSON-LD keeps its provenance.
+    const stated = apolloPriceAmount(apollo, adId);
+    if (stated !== null && (stated.currency === null || stated.currency.toUpperCase() === 'CAD')) {
+      const exact = stated.amountCents / 100;
+      if (Math.abs(exact - jsonldAmount) >= 0.005) {
+        const rendered = exact.toFixed(2);
+        price = {
+          kind: 'amount',
+          value: exact,
+          currency: 'CAD',
+          rawText: `$${rendered}`,
+          source: 'dom',
+          confidence: 0.97,
+        };
+        warnings.push(
+          `${PRICE_JSONLD_TRUNCATED_WARNING_PREFIX}: JSON-LD offers.price "${String(jsonldPrice)}" disagrees with the amount the page states for this ad (${stated.amountCents} cents = C$${rendered}); the stated amount is recorded (observed 2026-09-03: ads whose search cards read C$1.50 and C$7.50 extracted as C$1.00 and C$7.00 from JSON-LD alone).`,
+        );
+      }
+    }
   }
   if (price === null) {
     for (const selector of PRICE_SELECTORS) {
@@ -743,6 +814,50 @@ export function extractKijijiListing(
   }
   if (sellerName === null) warnings.push('sellerName could not be resolved');
 
+  // --- seller listings surface (hydration posterId → /o-profile/ anchors) ---
+  // 2026-09-02 deals fire (kijiji-no-seller-inventory-surface): a good new
+  // trader's other ads were unreachable except by keyword collision. The
+  // VIP links them: "View all listings (N)" → /o-profile/<posterId>/1.
+  let sellerId: KijijiExtractionRecord['sellerId'] = null;
+  let sellerListingsUrl: KijijiExtractionRecord['sellerListingsUrl'] = null;
+  let sellerListingCount: number | null = null;
+  const cachedPosterId = apolloPosterId(apollo, adId);
+  if (cachedPosterId !== null) sellerId = { value: cachedPosterId, source: 'dom', confidence: 0.98 };
+  let profileAnchors: Element[] = [];
+  try {
+    profileAnchors = Array.from(document.querySelectorAll('a[href*="/o-profile/"]'));
+  } catch {
+    profileAnchors = [];
+  }
+  let labelledHref: string | null = null;
+  let firstHref: string | null = null;
+  for (const anchor of profileAnchors) {
+    const href = anchor.getAttribute('href');
+    if (!href || !SELLER_PROFILE_PATH_RE.test(href)) continue;
+    if (firstHref === null) firstHref = href;
+    const label = VIEW_ALL_LISTINGS_RE.exec((anchor.textContent ?? '').replace(/\s+/g, ' ').trim());
+    if (label !== null && labelledHref === null) {
+      labelledHref = href;
+      const count = Number.parseInt(label[1]!.replace(/,/g, ''), 10);
+      if (Number.isFinite(count)) sellerListingCount = count;
+    }
+  }
+  const profileHref = labelledHref ?? firstHref;
+  if (profileHref !== null) {
+    try {
+      const absolute = new URL(profileHref, pageUrl);
+      absolute.search = '';
+      absolute.hash = '';
+      sellerListingsUrl = { value: absolute.toString(), source: 'dom', confidence: labelledHref === null ? 0.9 : 0.97 };
+      if (sellerId === null) {
+        const fromPath = SELLER_PROFILE_PATH_RE.exec(absolute.pathname);
+        if (fromPath !== null) sellerId = { value: fromPath[1]!, source: 'dom', confidence: 0.95 };
+      }
+    } catch {
+      // an unparseable href is no evidence; leave the fields null
+    }
+  }
+
   // --- description excerpt (jsonld → dom) ---
   let description: KijijiExtractionRecord['description'] = null;
   if (jsonld?.description) {
@@ -810,6 +925,9 @@ export function extractKijijiListing(
     postedText,
     sellerName,
     sellerType,
+    sellerId,
+    sellerListingsUrl,
+    sellerListingCount,
     description,
     attributes,
     imageCount,
@@ -837,13 +955,21 @@ export function isKijijiListingPage(pageUrl: string): boolean {
   }
 }
 
-export type KijijiPageKind = 'listing' | 'search' | 'other';
+/**
+ * 'seller' is the poster's listings page, /o-profile/<posterId>/<page> —
+ * the URL every VIP links as "View all listings (N)". NEEDS-LIVE-
+ * VERIFICATION: no live /o-profile/ page is captured; it is read with the
+ * same anchor-href ad scan the search pages use, which depends on no card
+ * markup, and its pagination is the trailing page number (observed as /1).
+ */
+export type KijijiPageKind = 'listing' | 'search' | 'seller' | 'other';
 
 /** Path-shape classification, mirroring classifyEbayPage. */
 export function classifyKijijiPage(pageUrl: string): KijijiPageKind {
   try {
     const url = new URL(pageUrl);
     if (/^\/b-/.test(url.pathname)) return 'search';
+    if (/^\/o-profile\/\d{1,16}(?:\/|$)/.test(url.pathname)) return 'seller';
     if (adIdFromUrl(pageUrl) !== null) return 'listing';
     return 'other';
   } catch {

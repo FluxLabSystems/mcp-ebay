@@ -333,6 +333,28 @@ describe('output schema contracts (Appendix A)', () => {
         expiresAt: '2026-08-12T21:15:00Z',
       }).success,
     ).toBe(true);
+    // 2026-09-04: the refused-subresource tally is part of the navigate
+    // contract (a schema change: gateway redeploy + connector reconnect).
+    expect(
+      getToolEntry('browser_navigate')!.outputSchema.safeParse({
+        finalUrl: 'https://www.vistaprint.ca/clothing-bags/t-shirts',
+        title: 'T-shirts',
+        origin: 'https://www.vistaprint.ca',
+        pageRevision: 1,
+        navigationStatus: 'committed',
+        blockedSubresources: [
+          { origin: 'https://cdn.example.net', code: 'ORIGIN_DENIED', requests: 3, exampleUrl: 'https://cdn.example.net/w.js' },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(
+      getToolEntry('browser_wait')!.outputSchema.safeParse({
+        satisfied: true,
+        pageRevision: 1,
+        elapsedMs: 12,
+        blockedSubresources: [],
+      }).success,
+    ).toBe(true);
     // additionalProperties: false on outputs
     expect(
       getToolEntry('browser_navigate')!.outputSchema.safeParse({

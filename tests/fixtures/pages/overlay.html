@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<!-- Browser-integration fixture (2026-09-03 wardrobe fire, gateway+
+     coverage_gap+spreadshirt-onetrust-overlay-blocks-all-clicks): a
+     consent SDK's dark-filter div covers the whole viewport and intercepts
+     every pointer event, with no dialog in the accessibility tree. The
+     "transient" variant clears itself after 800 ms, the way a loading
+     veil does. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Overlay fixture</title>
+<style>
+  .onetrust-pc-dark-filter { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,.35); }
+</style>
+</head>
+<body>
+  <h1>Overlay fixture</h1>
+  <button id="redeem" aria-label="Redeem Code Now" onclick="document.getElementById('state').textContent = 'redeemed'">20% off everything Redeem Code Now</button>
+  <span id="state">idle</span>
+  <div id="onetrust-consent-sdk" aria-hidden="true">
+    <div class="onetrust-pc-dark-filter ot-fade-in"></div>
+  </div>
+  <script>
+    if (location.search.indexOf('transient=1') !== -1) {
+      setTimeout(function () {
+        var sdk = document.getElementById('onetrust-consent-sdk');
+        sdk.parentNode.removeChild(sdk);
+      }, 800);
+    }
+  </script>
+</body>
+</html>

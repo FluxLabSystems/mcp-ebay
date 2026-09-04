@@ -34,6 +34,20 @@ export const ERROR_CATALOG = {
     retryable: false,
     message: 'Target is password, payment, 2FA, security, or other secret field.',
   },
+  /**
+   * Another element sits over the target and intercepts pointer events —
+   * a consent SDK's dark filter, a modal veil — so the click can never
+   * land. details.interceptor carries the intercepting element as
+   * Playwright rendered it. Not retryable: the same click fails the same
+   * way until the overlay is gone; traverse by href (browser_snapshot →
+   * browser_navigate) instead, or report the overlay. 2026-09-03 wardrobe
+   * fire: every click on spreadshirt.ca burned ~15 s and came back as
+   * INTERNAL_ERROR with the cause buried in the call log.
+   */
+  CLICK_INTERCEPTED: {
+    retryable: false,
+    message: 'Another element intercepts pointer events at the click target (a consent or modal overlay); the click cannot land.',
+  },
   DESTINATION_UNVERIFIED: {
     retryable: true,
     message: 'eBay shipping destination could not be verified as M6H 2W9.',
