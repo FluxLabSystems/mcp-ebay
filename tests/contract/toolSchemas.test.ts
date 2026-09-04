@@ -57,6 +57,7 @@ const VALID_INPUTS: Record<string, Record<string, unknown>> = {
   'browser_images': { browserSessionHandle: HANDLE, tabId: TAB },
   'browser_image_get': { browserSessionHandle: HANDLE, tabId: TAB, imageId: 'img_0123456789' },
   'browser_click': { browserSessionHandle: HANDLE, tabId: TAB, elementRef: 'el_1_0_abc' },
+  'browser_dismiss_consent': { browserSessionHandle: HANDLE, tabId: TAB },
   'browser_fill': { browserSessionHandle: HANDLE, tabId: TAB, elementRef: 'el_1_0_abc', value: 'M6H 2W9' },
   'browser_select': { browserSessionHandle: HANDLE, tabId: TAB, elementRef: 'el_1_0_abc', value: 'Friends heavy' },
   'browser_scroll': { browserSessionHandle: HANDLE, tabId: TAB, deltaY: 500 },
@@ -80,8 +81,9 @@ const VALID_INPUTS: Record<string, Record<string, unknown>> = {
 };
 
 describe('tool catalog completeness (§15)', () => {
-  it('exposes exactly the 18 normative tools with scopes and policy classes', () => {
-    expect(TOOL_CATALOG).toHaveLength(18);
+  it('exposes exactly the 19 normative tools with scopes and policy classes', () => {
+    // 18 from SDD v0.5 §15 plus browser_dismiss_consent (operator decision 2026-09-04).
+    expect(TOOL_CATALOG).toHaveLength(19);
     const expectations: Array<[string, string, string]> = [
       ['browser_session_open', SCOPE_INTERACT, 'reversible'],
       ['browser_tabs', SCOPE_READ, 'read'],
@@ -91,6 +93,7 @@ describe('tool catalog completeness (§15)', () => {
       ['browser_images', SCOPE_READ, 'read'],
       ['browser_image_get', SCOPE_READ, 'read'],
       ['browser_click', SCOPE_INTERACT, 'reversible'],
+      ['browser_dismiss_consent', SCOPE_INTERACT, 'reversible'],
       ['browser_fill', SCOPE_INTERACT, 'reversible'],
       ['browser_select', SCOPE_INTERACT, 'reversible'],
       ['browser_scroll', SCOPE_INTERACT, 'reversible'],
@@ -403,7 +406,7 @@ describe('zod → JSON Schema derivation sanity', () => {
 
 describe('deals run checkpoint tools (Phase 4)', () => {
   it('are additive: the browser and dashboard catalogs are untouched', () => {
-    expect(TOOL_CATALOG).toHaveLength(18);
+    expect(TOOL_CATALOG).toHaveLength(19);
     expect(DASHBOARD_TOOL_CATALOG.map((entry) => entry.name)).toEqual(['dashboard_feed', 'dashboard_upsert']);
     // The run tools live in their own catalog because they are neither
     // device commands nor dashboard records; getToolEntry, which drives the
@@ -548,7 +551,7 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
     }
     // The account probe is the one source tool that spends nothing.
     expect(SOURCE_TOOL_CATALOG.map((entry) => entry.spendsCredits)).toEqual([true, true, true, false]);
-    expect(TOOL_CATALOG).toHaveLength(18);
+    expect(TOOL_CATALOG).toHaveLength(19);
     expect(getSourceToolEntry('browser_extract')).toBeUndefined();
   });
 

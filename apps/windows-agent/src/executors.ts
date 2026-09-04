@@ -6,6 +6,7 @@
 import { parseHTML } from 'linkedom';
 import {
   click,
+  dismissConsent,
   enumerateImages,
   fetchImage,
   handoff,
@@ -25,6 +26,7 @@ import {
   BridgeError,
   ClickInput,
   DEFAULT_SEARCH_COMPACTION,
+  DismissConsentInput,
   ExtractInput,
   ExtractManyInput,
   FillInput,
@@ -436,6 +438,15 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
           ...(args as object),
         });
         const outcome = await click(session, tabId, input.elementRef, budget);
+        return { result: { ...outcome }, pageRevision: outcome.pageRevision, artifacts: [] };
+      }
+      case 'dismiss_consent': {
+        const input = DismissConsentInput.parse({
+          browserSessionHandle: envelope.browserSessionHandle,
+          tabId,
+          ...(args as object),
+        });
+        const outcome = await dismissConsent(session, input.tabId, budget);
         return { result: { ...outcome }, pageRevision: outcome.pageRevision, artifacts: [] };
       }
       case 'fill': {

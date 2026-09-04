@@ -231,6 +231,42 @@ export const ClickOutput = z.strictObject({
    */
   openedTab: z.object({ tabId: z.string(), url: z.string() }).nullable(),
   popupDenied: z.string().nullable(),
+  /**
+   * A consent banner that intercepted the click and was dismissed before the
+   * click was retried (operator decision 2026-09-04); null when none was in
+   * the way. Same shape as browser_dismiss_consent's method/sdk/control.
+   * NOTE: schema change — gateway redeploy + connector reconnect.
+   */
+  consentDismissed: z
+    .object({
+      method: z.enum(['rejected', 'closed', 'accepted', 'removed']),
+      sdk: z.string().nullable(),
+      control: z.string().nullable(),
+    })
+    .nullable()
+    .default(null),
+});
+
+/**
+ * Clear a cookie/consent banner on the current page. Operator decision
+ * 2026-09-04: the agent may dismiss consent banners on the read-only roster
+ * hosts. Preference order reject → close → accept → remove a known SDK's
+ * overlay elements; every control is checked against the site policy's
+ * protected-action rules before it is pressed.
+ */
+export const DismissConsentInput = z.strictObject({
+  browserSessionHandle: z.string(),
+  tabId: z.string(),
+});
+export const DismissConsentOutput = z.strictObject({
+  pageRevision: z.int(),
+  /** False when no consent surface was found, or one was found and nothing cleared it. */
+  dismissed: z.boolean(),
+  method: z.enum(['rejected', 'closed', 'accepted', 'removed']).nullable(),
+  /** onetrust, cookiebot, trustarc, didomi, quantcast, osano, generic; null when none was recognised. */
+  sdk: z.string().nullable(),
+  /** The control pressed (accessible name / text) or, for removed, the selectors removed. */
+  control: z.string().nullable(),
 });
 
 export const FillInput = z.strictObject({
