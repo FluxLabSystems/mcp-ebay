@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import * as z from 'zod/v4';
 import {
   ArtifactDescriptorSchema,
+  compileTitleRegex,
   DASHBOARD_TOOL_CATALOG,
   DashboardFeedInput,
   DashboardUpsertInput,
@@ -255,6 +256,37 @@ describe('input schema contracts (Appendix A)', () => {
     expect(withRegex('a{500}')).toBe(false);
     expect(withRegex('lego(')).toBe(false);
     expect(withRegex('a'.repeat(SEARCH_TITLE_REGEX_MAX_LENGTH + 1))).toBe(false);
+  });
+
+  // 2026-09-02 deals fire (browser-bridge+ops_note+titleregex-rejects-inline-
+  // case-insensitive-flag) and 2026-09-04 (gateway+connector_defect+search-
+  // include-titleregex-rejects-inline-regex-flags): "(?i)base\s?plate" was
+  // refused as "Invalid group" although the pattern is compiled with /i
+  // anyway, costing the whole call; the same call without the flag
+  // succeeded (candidateCount 90). The flag is redundant, not wrong.
+  it('a leading (?i) is accepted and ignored; other inline flag groups are refused by name', () => {
+    const schema = getToolEntry('browser_open_and_extract')!.inputSchema;
+    const parse = (titleRegex: string) =>
+      schema.safeParse({
+        ...VALID_INPUTS['browser_open_and_extract'],
+        search: { include: { titleRegex } },
+      });
+    expect(parse('(?i)base\\s?plate').success).toBe(true);
+    expect(parse('(?i)(minifig|printed|tile)').success).toBe(true);
+    // The compiled filter is the same one the bare pattern gives, so the
+    // agent sees a pattern it can compile and rows match case-insensitively.
+    expect(compileTitleRegex('(?i)base\\s?plate').test('LEGO Baseplate 32x32')).toBe(true);
+    expect(compileTitleRegex('(?i)base\\s?plate').source).toBe(compileTitleRegex('base\\s?plate').source);
+    // Flags JavaScript cannot express inline are still refused, but the
+    // message names the fix instead of "Invalid group".
+    const multiline = parse('(?im)lego');
+    expect(multiline.success).toBe(false);
+    expect(JSON.stringify(multiline.error?.issues)).toMatch(/always case-insensitive/);
+    expect(parse('(?s)lego').success).toBe(false);
+    // Only a LEADING flag group is the redundant idiom; anything else is the
+    // syntax error it always was.
+    expect(parse('lego(?i)').success).toBe(false);
+    expect(parse('(?i)').success).toBe(false);
   });
 
   it('dashboard_upsert accepts listings, touch, or both — but not neither', () => {

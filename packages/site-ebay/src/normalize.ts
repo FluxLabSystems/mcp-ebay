@@ -25,12 +25,26 @@ export interface ParsedMoney {
    * separate amount. The free phrase wins; this says the cell was mixed.
    */
   ambiguousFree: boolean;
+  /**
+   * The page's own "(approx C $4.97)" conversion of a foreign quote, when it
+   * rendered one. Present only beside a quote in another currency; the
+   * `value`/`currency` pair above is always the amount as quoted.
+   */
+  conversion?: { value: number; currency: string };
 }
 
 /**
  * Parse eBay-rendered money text: "C $35.00", "US $12.00", "CA $1,234.56",
  * "$10.99", "C $8.91 to C $12.00", "Free", "Free shipping".
  * `defaultCurrency` applies to bare "$" amounts (CAD on ebay.ca).
+ *
+ * Foreign quotes (2026-09-04 deals fire, shipping-currency-mislabelled-on-
+ * foreign-quotes): an overseas seller's cell reads "AU $5.00 (approx C
+ * $4.97)" or "GBP 33.05 (approx C $61.66)". The bare "$" alternative used to
+ * match inside "AU $" and take the .ca default, so the foreign figure wore
+ * the domestic label; an ISO-coded quote matched nothing and only its
+ * conversion was read, silently. The quote is now parsed under its own
+ * currency and the conversion is carried beside it for the caller to prefer.
  */
 /**
  * "Free shipping", "Free standard delivery", "Free 2-day postage" -- the word
@@ -48,8 +62,7 @@ export function parseMoney(rawText: string, defaultCurrency = 'CAD'): ParsedMone
   const text = rawText.replace(/[\u00a0\u202f]/g, ' ').trim();
   if (text.length === 0) return null;
 
-  const pattern = /(C\s?\$|CA\s?\$|CAD\s?\$?|US\s?\$|USD\s?\$?|\$)\s?([\d,]+(?:\.\d{1,2})?)/gi;
-  const matches = [...text.matchAll(pattern)];
+  const matches = [...text.matchAll(MONEY_RE)];
   const freeShipping = FREE_SHIPPING_RE.test(text);
 
   // Explicit "free shipping" wins over any amount in the same cell: a second
@@ -66,13 +79,51 @@ export function parseMoney(rawText: string, defaultCurrency = 'CAD'): ParsedMone
       : null;
   }
 
-  const first = matches[0]!;
-  const symbol = first[1]!.toUpperCase().replace(/\s/g, '');
-  const currency = symbol.startsWith('US') ? 'USD' : symbol === '$' ? defaultCurrency : 'CAD';
+  // The quoted amount is the first figure that is NOT inside an "(approx …)"
+  // clause; a cell that is only a conversion still parses as that figure.
+  const conversionMatch = APPROX_RE.exec(text);
+  const conversionIndex = conversionMatch === null ? -1 : conversionMatch.index + conversionMatch[0].indexOf(conversionMatch[1]!);
+  const first = matches.find((m) => m.index !== conversionIndex) ?? matches[0]!;
+  const currency = currencyOfSymbol(first[1]!, defaultCurrency);
   const value = Number.parseFloat(first[2]!.replace(/,/g, ''));
   if (Number.isNaN(value)) return null;
   const approximate = /\bto\b/i.test(text) && matches.length > 1;
-  return { value, currency, approximate, ambiguousFree: false };
+  const parsed: ParsedMoney = { value, currency, approximate, ambiguousFree: false };
+  if (conversionMatch !== null && conversionIndex !== first.index) {
+    const convertedValue = Number.parseFloat(conversionMatch[2]!.replace(/,/g, ''));
+    const convertedCurrency = currencyOfSymbol(conversionMatch[1]!, defaultCurrency);
+    if (!Number.isNaN(convertedValue) && convertedCurrency !== currency) {
+      parsed.conversion = { value: convertedValue, currency: convertedCurrency };
+    }
+  }
+  return parsed;
+}
+
+/**
+ * Every currency marker eBay renders in front of an amount. Two-letter
+ * country prefixes ("C $", "US $", "AU $"), a symbol (£, €), or an ISO code
+ * with or without the symbol ("GBP 33.05", "CAD $5"). The ISO list is
+ * closed on purpose: a generic [A-Z]{3} would read "LOT 5" as a currency.
+ */
+const CURRENCY_MARKER =
+  '(C\\s?\\$|CA\\s?\\$|CAD\\s?\\$?|US\\s?\\$|USD\\s?\\$?|AU\\s?\\$|A\\$|AUD\\s?\\$?|NZ\\s?\\$|NZD\\s?\\$?|HK\\s?\\$|HKD\\s?\\$?|GBP\\s?£?|£|EUR\\s?€?|€|JPY\\s?¥?|¥|CHF|SGD\\s?\\$?|MXN\\s?\\$?|CNY|\\$)';
+const MONEY_RE = new RegExp(`${CURRENCY_MARKER}\\s?([\\d,]+(?:\\.\\d{1,2})?)`, 'gi');
+const APPROX_RE = new RegExp(`approx(?:imately|\\.)?\\s*${CURRENCY_MARKER}\\s?([\\d,]+(?:\\.\\d{1,2})?)`, 'i');
+
+function currencyOfSymbol(rawSymbol: string, defaultCurrency: string): string {
+  const symbol = rawSymbol.toUpperCase().replace(/\s/g, '');
+  if (symbol === '$') return defaultCurrency;
+  if (symbol.startsWith('US')) return 'USD';
+  if (symbol.startsWith('AU') || symbol === 'A$') return 'AUD';
+  if (symbol.startsWith('NZ')) return 'NZD';
+  if (symbol.startsWith('HK')) return 'HKD';
+  if (symbol.startsWith('GBP') || symbol === '£') return 'GBP';
+  if (symbol.startsWith('EUR') || symbol === '€') return 'EUR';
+  if (symbol.startsWith('JPY') || symbol === '¥') return 'JPY';
+  if (symbol === 'CHF' || symbol === 'CNY') return symbol;
+  if (symbol.startsWith('SGD')) return 'SGD';
+  if (symbol.startsWith('MXN')) return 'MXN';
+  return 'CAD';
 }
 
 /**

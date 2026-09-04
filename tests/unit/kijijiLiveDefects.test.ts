@@ -257,6 +257,57 @@ describe('kijiji seller identity (live captures)', () => {
     expect(page.pageTitle).toBeNull();
   });
 
+  // 2026-09-03 office fire (site-kijiji+extractor_defect+vip-sellername-
+  // unresolved-on-mls-syndicated-ads): 7 of 12 commercial ads answered
+  // sellerName null with the generic "could not be resolved" warning, and
+  // every one of them carried MLS-syndicated body copy (an "(id:24493)
+  // MLS# …" tail) or operator copy, while the 5 private advertisers in the
+  // same batch resolved. No syndicated VIP is captured, so whether such an
+  // ad renders a poster under another element cannot be pinned here; what
+  // CAN be said from the page is that the ad is a brokerage syndication, so
+  // a run can tell "no poster shown on a syndicated ad" from "selector
+  // missed" without a per-listing judgement call.
+  describe('a syndicated (MLS) ad with no resolvable seller says so (2026-09-03)', () => {
+    const OFFICE_URL = 'https://www.kijiji.ca/v-commercial-office-space/mississauga-peel-region/2c07-7215-goreway-drive/1740058167';
+    it('names the syndication instead of the generic resolution failure', () => {
+      const { document } = parseHTML(
+        `<html><body>
+           <h1>7215 Goreway Drive, Mississauga — office unit 2C07</h1>
+           <div data-testid="vip-description-wrapper">Bright second-floor office in Malton. Ample parking. Available immediately.
+             (id:24493) MLS# W9312345</div>
+         </body></html>`,
+      );
+      const { record, warnings } = extractKijijiListing(document as unknown as Document, OFFICE_URL, { pageRevision: 1 });
+      expect(record.sellerName).toBeNull();
+      expect(warnings.some((w) => w.startsWith('SELLER_UNRESOLVED_SYNDICATED') && w.includes('MLS# W9312345'))).toBe(true);
+      expect(warnings).not.toContain('sellerName could not be resolved');
+    });
+
+    it('keeps the generic warning on an unsyndicated ad with no seller', () => {
+      const { document } = parseHTML(
+        `<html><body><h1>Desk for rent</h1>
+           <div data-testid="vip-description-wrapper">One desk in a shared office, month to month.</div>
+         </body></html>`,
+      );
+      const { record, warnings } = extractKijijiListing(document as unknown as Document, OFFICE_URL, { pageRevision: 1 });
+      expect(record.sellerName).toBeNull();
+      expect(warnings).toContain('sellerName could not be resolved');
+      expect(warnings.some((w) => w.startsWith('SELLER_UNRESOLVED_SYNDICATED'))).toBe(false);
+    });
+
+    it('does not mention syndication when the seller resolved', () => {
+      const { document } = parseHTML(
+        `<html><body><h1>Office</h1>
+           <a href="/o-profile/55/1" aria-label="View Royal LePage Signature's profile">R</a>
+           <div data-testid="vip-description-wrapper">Great unit. (id:24493) MLS# W9312345</div>
+         </body></html>`,
+      );
+      const { record, warnings } = extractKijijiListing(document as unknown as Document, OFFICE_URL, { pageRevision: 1 });
+      expect(record.sellerName?.value).toBe('Royal LePage Signature');
+      expect(warnings.some((w) => w.startsWith('SELLER_UNRESOLVED_SYNDICATED'))).toBe(false);
+    });
+  });
+
 });
 
 /**

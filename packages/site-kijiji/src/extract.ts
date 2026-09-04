@@ -544,6 +544,13 @@ function toIsoOrNull(raw: string | null | undefined): string | null {
 }
 
 /** Collapse whitespace and cap at the record's 500-char excerpt limit. */
+/**
+ * The tail a brokerage feed appends to an MLS-syndicated Kijiji ad:
+ * "(id:24493) MLS# W9312345" (2026-09-03 office fire, 7 of 12 commercial
+ * ads). Either half alone counts; the match is quoted in the warning.
+ */
+const MLS_SYNDICATION_RE = /\(id:\s*\d+\)\s*(?:MLS\s*#?\s*[A-Z]?\d{5,})?|\bMLS\s*#\s*[A-Z]?\d{5,}\b/i;
+
 function excerpt(raw: string): string {
   return raw.replace(/\s+/g, ' ').trim().slice(0, 500);
 }
@@ -812,7 +819,8 @@ export function extractKijijiListing(
       }
     }
   }
-  if (sellerName === null) warnings.push('sellerName could not be resolved');
+  // The unresolved warning is pushed after the description is read: a
+  // brokerage-syndicated ad is named as such (see MLS_SYNDICATION_RE).
 
   // --- seller listings surface (hydration posterId → /o-profile/ anchors) ---
   // 2026-09-02 deals fire (kijiji-no-seller-inventory-surface): a good new
@@ -860,16 +868,39 @@ export function extractKijijiListing(
 
   // --- description excerpt (jsonld → dom) ---
   let description: KijijiExtractionRecord['description'] = null;
+  // The whole body, not the 500-char excerpt: the syndication tail sits at
+  // the end of a long brokerage description.
+  let descriptionBody: string | null = null;
   if (jsonld?.description) {
+    descriptionBody = jsonld.description;
     description = { value: excerpt(jsonld.description), source: 'jsonld', confidence: 0.95 };
   }
   if (description === null) {
     for (const selector of DESCRIPTION_SELECTORS) {
       const text = textOf(document, selector);
       if (text) {
+        descriptionBody = text;
         description = { value: excerpt(text), source: 'dom', confidence: 0.9 };
         break;
       }
+    }
+  }
+
+  // --- unresolved seller: syndicated ad or selector miss? ---
+  // 2026-09-03 office fire (vip-sellername-unresolved-on-mls-syndicated-ads):
+  // every unresolved ad in the batch carried an "(id:NNNNN) MLS# …" tail;
+  // every resolved one was a private advertiser. Naming the syndication lets
+  // a run tell the two apart. Whether a syndicated VIP renders the poster
+  // under some other element is NOT known — no such page is captured — so
+  // the warning asks for that capture rather than guessing a selector.
+  if (sellerName === null) {
+    const syndication = descriptionBody === null ? null : MLS_SYNDICATION_RE.exec(descriptionBody);
+    if (syndication !== null) {
+      warnings.push(
+        `SELLER_UNRESOLVED_SYNDICATED: no seller element matched and the body carries a brokerage syndication reference "${syndication[0].trim()}" — an MLS-syndicated ad may render no poster; capture the about-seller block of one such ad so the selector can be pinned or the absence confirmed`,
+      );
+    } else {
+      warnings.push('sellerName could not be resolved');
     }
   }
 

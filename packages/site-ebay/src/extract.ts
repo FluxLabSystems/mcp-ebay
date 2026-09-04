@@ -867,11 +867,31 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
           `shipping cell claims free shipping but also carries an amount; took free: "${text}"`,
         );
       }
+      // A foreign quote (2026-09-04 shipping-currency-mislabelled-on-foreign-
+      // quotes): the page's own "(approx C $x)" conversion is the figure the
+      // .ca buyer is shown, so it is the recorded value; the quoted amount
+      // stays in observedText and the warning. Without a conversion the
+      // quote keeps its own currency — never the domestic label.
+      let value = parsed.value;
+      let currency = parsed.currency;
+      let confidence = parsed.approximate ? 0.8 : 0.95;
+      if (currency !== 'CAD' && parsed.conversion?.currency === 'CAD') {
+        value = parsed.conversion.value;
+        currency = 'CAD';
+        confidence = 0.9;
+        warnings.push(
+          `SHIPPING_CONVERTED_BY_PAGE: quoted ${parsed.currency} ${parsed.value}; recorded the page's own approx C $${parsed.conversion.value} conversion (observedText keeps the quote)`,
+        );
+      } else if (currency !== 'CAD') {
+        warnings.push(
+          `SHIPPING_FOREIGN_CURRENCY: quoted in ${currency} with no CAD conversion rendered; shipping.value is ${currency}, not CAD`,
+        );
+      }
       shipping = {
-        value: parsed.value,
-        currency: parsed.currency,
+        value,
+        currency,
         source: 'dom',
-        confidence: parsed.approximate ? 0.8 : 0.95,
+        confidence,
         destinationPostalCode: destinationPostal,
         destinationVerified,
         observedText: text,
