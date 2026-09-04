@@ -1276,6 +1276,49 @@ export function ebayDomainOfUrl(url: string): EbayApiDomain | null {
   return EBAY_HOST_DOMAIN.get(hostname) ?? null;
 }
 
+// --- role (§2.1) -------------------------------------------------------------
+
+/**
+ * The standing of the source in a run, as configured by COUNTDOWN_ROLE.
+ * 'secondary' is the default and the operator's standing instruction
+ * (2026-09-03): the Browser Bridge is the first route for every step, and
+ * a charged ebay_api_* call is admitted only when it declares why the
+ * Bridge could not do that step. 'primary' admits charged calls on the
+ * credit gate alone.
+ */
+export const EbayApiRoleSchema = z.enum(['primary', 'secondary']);
+export type EbayApiRole = z.infer<typeof EbayApiRoleSchema>;
+
+/**
+ * Why a run is spending a credit instead of reading the page through the
+ * Bridge. Required on every charged call while the source is secondary;
+ * accepted and recorded in the audit row under either role.
+ * - device_offline: browser_session_open answered DEVICE_OFFLINE.
+ * - bridge_unreachable: the Browser Bridge connector itself is absent or
+ *   the gateway cannot reach the agent.
+ * - challenge_blocked: the Bridge hit eBay's bot wall on this URL and the
+ *   in-session retry walled again.
+ * - extractor_gap: the Bridge reads the page but not the field this step
+ *   needs (with the improvement-queue fingerprint in fallbackNote).
+ * - operator_request: the operator asked for the API on this fire.
+ */
+export const EbayApiFallbackReasonSchema = z.enum([
+  'device_offline',
+  'bridge_unreachable',
+  'challenge_blocked',
+  'extractor_gap',
+  'operator_request',
+]);
+export type EbayApiFallbackReason = z.infer<typeof EbayApiFallbackReasonSchema>;
+export const EBAY_API_FALLBACK_NOTE_MAX_CHARS = 200;
+
+/** The two fields every charged tool accepts; see EbayApiFallbackReasonSchema. */
+const fallbackFields = {
+  fallbackReason: EbayApiFallbackReasonSchema.optional(),
+  /** Free text beside the reason: the error code seen, the URL walled, the fingerprint. */
+  fallbackNote: z.string().max(EBAY_API_FALLBACK_NOTE_MAX_CHARS).optional(),
+} as const;
+
 // --- ebay_api_search (§3.1) --------------------------------------------------
 
 /**
@@ -1353,6 +1396,7 @@ export const EbayApiSearchInput = z
      * offset re-issues the vendor requests.
      */
     search: EbayApiSearchCompactionInput.optional(),
+    ...fallbackFields,
   })
   .check((ctx) => {
     const value = ctx.value;
@@ -1498,6 +1542,7 @@ export type EbayApiItemRef = z.infer<typeof EbayApiItemRefSchema>;
  */
 export const EbayApiItemsInput = z.strictObject({
   items: z.array(EbayApiItemRefSchema).min(1).max(EBAY_API_ITEMS_MAX),
+  ...fallbackFields,
   /** Default for itemId entries; an entry given as a url takes its domain from the url. */
   domain: EbayApiDomainSchema.default('ebay.ca'),
   destination: EbayApiDestinationSchema.default('domain_default'),
@@ -1545,6 +1590,7 @@ export const EbayApiSellerInput = z
     /** An https /usr/ or /str/ URL on an eBay host; see screenEbayUrl. */
     url: z.url().optional(),
     domain: EbayApiDomainSchema.default('ebay.ca'),
+    ...fallbackFields,
   })
   .check((ctx) => {
     const value = ctx.value;
@@ -1708,6 +1754,16 @@ export const EbayApiStatusOutput = z.strictObject({
     reason: z.union([EbayApiGateReasonSchema, z.null()]),
     /** Credits a run may spend before the gate shuts: max(0, remaining − effective reserve); null while the balance is unknown. */
     spendable: z.union([z.int().min(0), z.null()]),
+  }),
+  /**
+   * COUNTDOWN_ROLE as the gateway runs it. Under 'secondary' a charged call
+   * without a fallbackReason is refused with SOURCE_REJECTED
+   * (details.reason 'secondary_role') before any credit or probe is spent.
+   */
+  role: z.strictObject({
+    name: EbayApiRoleSchema,
+    chargedCallsRequireFallbackReason: z.boolean(),
+    acceptedFallbackReasons: z.array(EbayApiFallbackReasonSchema),
   }),
   build: z.strictObject({
     /** GATEWAY_BUILD_SHA of the serving gateway, or "unknown". */

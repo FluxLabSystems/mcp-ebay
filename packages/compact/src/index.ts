@@ -291,6 +291,43 @@ const DEFAULT_EBAY_CANDIDATE_FIELDS = [
   'isNewListing',
 ] as const;
 
+/**
+ * A watch-list row carries what a triage of the operator's OWN list reads:
+ * the countdown (what ends before the next fire), the card's state, the
+ * seller, and any offer the seller sent — the row Track O reads first.
+ */
+const DEFAULT_EBAY_WATCHLIST_FIELDS = [
+  'itemId',
+  'url',
+  'title',
+  'snippetPrice',
+  'sellingFormat',
+  'bidCount',
+  'timeLeftText',
+  'endsAt',
+  'watchlistStatus',
+  'seller',
+  'sellerText',
+  'sellerOffer',
+  'priceDropText',
+  'shippingSnippetText',
+] as const;
+
+/** An offers row: who offered what, whether it is still open, and until when. */
+const DEFAULT_EBAY_OFFERS_FIELDS = [
+  'itemId',
+  'url',
+  'title',
+  'offerPrice',
+  'listPrice',
+  'direction',
+  'offerStatus',
+  'expiresText',
+  'expiresAt',
+  'seller',
+  'sellerText',
+] as const;
+
 const DEFAULT_KIJIJI_CANDIDATE_FIELDS = [
   'adId',
   'url',
@@ -342,6 +379,13 @@ const PRESERVED_ROOT_FIELDS = [
   'hasNextPage',
   'nextPageUrl',
   'totalResults',
+  // My eBay pages: whether the research profile's session rendered the
+  // page at all, which page of the list this is, and where the stated
+  // list count was read from — without them a sign-in wall compacts into
+  // "an empty watch list".
+  'signedIn',
+  'currentPage',
+  'totalCountSource',
   // Kijiji's removed-ad marker: a deleted ad's VIP URL 302s to its category
   // search page carrying ?adRemoved=<id>. Compacting it away would turn
   // "this ad was removed" back into "an ordinary search page".
@@ -547,13 +591,18 @@ export function compactSearchPage(
     );
   }
 
+  const pageKind = readString(source.pageKind);
   const allowed =
     options.fields ??
     (site === 'kijiji'
       ? DEFAULT_KIJIJI_CANDIDATE_FIELDS
       : site === 'zazzle'
         ? DEFAULT_ZAZZLE_CANDIDATE_FIELDS
-        : DEFAULT_EBAY_CANDIDATE_FIELDS);
+        : pageKind === 'watchlist'
+          ? DEFAULT_EBAY_WATCHLIST_FIELDS
+          : pageKind === 'offers'
+            ? DEFAULT_EBAY_OFFERS_FIELDS
+            : DEFAULT_EBAY_CANDIDATE_FIELDS);
 
   // B3: a caller-named field that resolves to NO key on any scanned row —
   // directly or through an alias — is a typo or a wrong-profile name, and

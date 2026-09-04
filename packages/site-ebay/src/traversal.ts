@@ -57,17 +57,34 @@ const RESULT_LINK_SELECTOR_GROUPS = [
 ];
 
 const CARD_CONTAINER_SELECTOR = '.s-item, .str-item-card, li, article';
-const CARD_TITLE_SELECTOR = '.s-item__title, .str-item-card__title, .s-card__title, h3';
-const CARD_PRICE_SELECTOR = '.s-item__price, .str-item-card__price, .s-card__price';
+export const CARD_TITLE_SELECTOR = '.s-item__title, .str-item-card__title, .s-card__title, h3';
+export const CARD_PRICE_SELECTOR = '.s-item__price, .str-item-card__price, .s-card__price';
 const CARD_BID_SELECTOR = '.s-item__bids, .s-item__bidCount, .s-card__bids';
-const CARD_SHIPPING_SELECTOR =
+export const CARD_SHIPPING_SELECTOR =
   '.s-item__shipping, .s-item__logisticsCost, .s-card__shipping, .s-card__logisticsCost';
-const CARD_LOCATION_SELECTOR = '.s-item__location, .s-item__itemLocation, .s-card__location';
+export const CARD_LOCATION_SELECTOR = '.s-item__location, .s-item__itemLocation, .s-card__location';
 const CARD_FORMAT_SELECTOR =
   '.s-item__purchase-options-with-icon, .s-item__dynamic, .s-item__formatBuyItNow, .s-item__bids, .s-item__bidCount, .s-card__purchase-options, .s-card__bids';
 const CARD_NEW_LISTING_SELECTOR = '.s-item__title--tag, .s-card__title--tag, .LIGHT_HIGHLIGHT';
 
-export type EbayPageKind = 'listing' | 'search' | 'store' | 'other';
+/**
+ * 'watchlist' and 'offers' are the signed-in My eBay surfaces the deals
+ * routine walks: the watch list (every item the operator is watching) and
+ * the bids/offers page (offers sellers sent, offers the operator made). Both
+ * render item cards that link /itm/ pages, so they extract as candidate
+ * lists with extra per-row fields (time left, seller offer, offer status)
+ * and never as canonical listing evidence — the item page still decides.
+ */
+export type EbayPageKind = 'listing' | 'search' | 'store' | 'watchlist' | 'offers' | 'other';
+
+/**
+ * My eBay path shapes, both the current experience (/mye/myebay/…) and the
+ * classic one (/myb/…). Case-insensitive: eBay itself links /myb/WatchList
+ * and /myb/BidsOffers with capitals. The offers test runs first because a
+ * bids-and-offers URL can also mention the watch list in a query string.
+ */
+const MYEBAY_OFFERS_RE = /^\/(?:mye\/myebay(?:\/v\d+)?|myb)\/(?:bids?(?:and|&|-)?offers?|offers?(?:received|sent)?|bidsoffers)(?:\/|$)/i;
+const MYEBAY_WATCHLIST_RE = /^\/(?:mye\/myebay(?:\/v\d+)?|myb)\/watch-?list(?:\/|$)/i;
 
 export function classifyEbayPage(pageUrl: string): EbayPageKind {
   try {
@@ -76,17 +93,19 @@ export function classifyEbayPage(pageUrl: string): EbayPageKind {
     if (/\/itm\//.test(path)) return 'listing';
     if (/\/sch\//.test(path)) return 'search';
     if (/\/str\//.test(path) || /\/usr\//.test(path)) return 'store';
+    if (MYEBAY_OFFERS_RE.test(path)) return 'offers';
+    if (MYEBAY_WATCHLIST_RE.test(path)) return 'watchlist';
     return 'other';
   } catch {
     return 'other';
   }
 }
 
-function normalizeText(raw: string | null | undefined): string {
+export function normalizeText(raw: string | null | undefined): string {
   return (raw ?? '').replace(/[\u00a0\u202f]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function cardText(card: Element, selector: string): string | null {
+export function cardText(card: Element, selector: string): string | null {
   let el: Element | null = null;
   try {
     el = card.querySelector(selector);
@@ -115,7 +134,7 @@ function distinctItemIds(root: Element): number {
  * it would reach the results list and read the next card's title as this
  * one's, which is worse than the null it replaces.
  */
-function cardRootFor(anchor: Element): Element {
+export function cardRootFor(anchor: Element): Element {
   let known: Element | null = null;
   try {
     known = anchor.closest(CARD_CONTAINER_SELECTOR);
@@ -162,7 +181,7 @@ function cardFormatText(card: Element, rawTitle: string | null): string {
   return rawTitle === null ? whole : whole.split(rawTitle).join(' ');
 }
 
-function detectCardFormat(
+export function detectCardFormat(
   card: Element,
   rawTitle: string | null,
   hasSnippetPrice: boolean,
@@ -196,7 +215,7 @@ function detectCardFormat(
   return { sellingFormat: 'unknown', bidCount: null };
 }
 
-function isNewListingCard(card: Element, rawTitle: string | null): boolean {
+export function isNewListingCard(card: Element, rawTitle: string | null): boolean {
   const badge = cardText(card, CARD_NEW_LISTING_SELECTOR);
   if (badge !== null && /new\s+listing/i.test(badge)) return true;
   // The badge usually lives inside the title element, where textContent

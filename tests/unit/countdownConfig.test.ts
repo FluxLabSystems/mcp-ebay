@@ -13,6 +13,16 @@ const BASE_ENV = {
 const KEYED_ENV = { ...BASE_ENV, COUNTDOWN_API_KEY: 'cd-test-key' };
 
 describe('gateway Countdown API configuration', () => {
+  it('runs the source as a secondary pathway by default, and only primary or off when told', () => {
+    expect(loadGatewayConfig(KEYED_ENV).countdown?.role).toBe('secondary');
+    expect(loadGatewayConfig({ ...KEYED_ENV, COUNTDOWN_ROLE: '' }).countdown?.role).toBe('secondary');
+    expect(loadGatewayConfig({ ...KEYED_ENV, COUNTDOWN_ROLE: ' Secondary ' }).countdown?.role).toBe('secondary');
+    expect(loadGatewayConfig({ ...KEYED_ENV, COUNTDOWN_ROLE: 'primary' }).countdown?.role).toBe('primary');
+    // 'off' unregisters the tools while the key stays in place for a later flip.
+    expect(loadGatewayConfig({ ...KEYED_ENV, COUNTDOWN_ROLE: 'off' }).countdown).toBeNull();
+    expect(() => loadGatewayConfig({ ...KEYED_ENV, COUNTDOWN_ROLE: 'fallback' })).toThrow(/COUNTDOWN_ROLE must be primary, secondary or off/);
+  });
+
   it('is null when COUNTDOWN_API_KEY is unset', () => {
     expect(loadGatewayConfig(BASE_ENV).countdown).toBeNull();
   });
@@ -29,6 +39,7 @@ describe('gateway Countdown API configuration', () => {
     const config = loadGatewayConfig(KEYED_ENV);
     expect(config.countdown).toEqual({
       apiKey: 'cd-test-key',
+      role: 'secondary',
       baseUrl: 'https://api.countdownapi.com',
       // Percent of the plan's credit limit by default: an absolute figure
       // outgrew the trial on the first fire (500 against a one-time 100).

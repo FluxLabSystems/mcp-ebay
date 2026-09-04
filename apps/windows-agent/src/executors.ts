@@ -54,6 +54,8 @@ import {
   EBAY_GALLERY_SELECTORS,
   extractListing,
   extractListingCandidates,
+  extractOffersPage,
+  extractWatchlistPage,
   isListingPage,
   normalizeEbayImageUrl,
   EBAY_SITE_PROFILE_ID,
@@ -237,8 +239,15 @@ function extractionFingerprint(html: string, pageUrl: string): string {
       return JSON.stringify(extractSearchResults(doc, pageUrl, { observedAt: FINGERPRINT_EPOCH }));
     }
     if (site === 'ebay') {
-      if (classifyEbayPage(pageUrl) === 'listing') {
+      const kind = classifyEbayPage(pageUrl);
+      if (kind === 'listing') {
         return JSON.stringify(extractListing(doc, pageUrl, { observedAt: FINGERPRINT_EPOCH }).record);
+      }
+      if (kind === 'watchlist') {
+        return JSON.stringify(extractWatchlistPage(doc, pageUrl, { observedAt: FINGERPRINT_EPOCH }).candidates);
+      }
+      if (kind === 'offers') {
+        return JSON.stringify(extractOffersPage(doc, pageUrl, { observedAt: FINGERPRINT_EPOCH }).candidates);
       }
       return JSON.stringify(extractListingCandidates(doc, pageUrl));
     }
@@ -801,12 +810,61 @@ async function executeExtract(
   // Page kind selects an extractor; it never refuses a page. Anything that
   // is not an item page gets the /itm/-link scan, including 'other'.
   const kind = site === 'ebay' ? classifyEbayPage(pageUrl) : ('listing' as const);
+  if (kind === 'watchlist' || kind === 'offers') {
+    // The signed-in My eBay surfaces the deals routine walks (Track W, the
+    // watch list; Track O, offers sellers sent). Both are candidate pages —
+    // item cards linking /itm/ pages — with per-row fields the search
+    // scanner has no reason to read (time left, a seller's offer, an
+    // offer's status), and both are read only in the eBay research profile
+    // that holds the operator's session. A sign-in wall, an empty list and
+    // an unrecognised template each get their own warning from the
+    // extractor, so the routine never reads silence as "nothing watched".
+    const observedAt = source.capturedAt;
+    const page =
+      kind === 'watchlist'
+        ? extractWatchlistPage(document, pageUrl, { observedAt })
+        : extractOffersPage(document, pageUrl, { observedAt });
+    const warnings = [...intentWarnings, ...page.warnings];
+    const record: Record<string, unknown> = {
+      siteProfile: EBAY_SITE_PROFILE_ID,
+      pageKind: kind,
+      pageUrl,
+      pageTitle: page.pageTitle,
+      observedAt: observedAt.toISOString(),
+      signedIn: page.signedIn,
+      candidateCount: page.candidates.length,
+      candidates: page.candidates,
+      hasNextPage: page.hasNextPage,
+      nextPageUrl: page.nextPageUrl,
+      note:
+        kind === 'watchlist'
+          ? 'Watch-list cards are traversal hints: the countdown, price and status are what the card said, and the item page decides. A sellerOffer on a row is the evidence Track O reads first; open the item page before valuing it.'
+          : 'Offer rows are what the bids/offers page rendered: direction and status are read from the row text and each row carries its snippet for audit. Open the item page before valuing an offer.',
+    };
+    if (kind === 'watchlist') {
+      const watchlist = page as ReturnType<typeof extractWatchlistPage>;
+      record.totalResults = watchlist.totalCount;
+      record.totalCountSource = watchlist.totalCountSource;
+      record.currentPage = watchlist.currentPage;
+    }
+    const myEbayPage = applySearchCompaction(record, searchOptions, warnings);
+    return {
+      result: {
+        siteProfile: EBAY_SITE_PROFILE_ID,
+        pageRevision: tab.revision,
+        record: myEbayPage.record,
+        warnings: myEbayPage.warnings,
+      },
+      pageRevision: tab.revision,
+      artifacts: [],
+    };
+  }
   if (kind === 'search' || kind === 'store' || kind === 'other') {
     const candidates = extractListingCandidates(document, pageUrl);
     const warnings = [...intentWarnings];
     if (kind === 'other') {
       warnings.push(
-        `UNCLASSIFIED_PAGE: ${pageUrl} is not an item (/itm/), search (/sch/) or store (/str/, /usr/) URL; returned a best-effort /itm/-link scan. An empty candidate list here may mean the page has no listings, not that extraction failed.`,
+        `UNCLASSIFIED_PAGE: ${pageUrl} is not an item (/itm/), search (/sch/), store (/str/, /usr/), watch-list (/mye/myebay/watchlist, /myb/WatchList) or offers (/mye/myebay/bidsoffers, /myb/BidsOffers) URL; returned a best-effort /itm/-link scan. An empty candidate list here may mean the page has no listings, not that extraction failed.`,
       );
     }
     const pageTitle = normalizeTitle(document.querySelector('title')?.textContent);

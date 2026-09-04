@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<!--
+  AUTHORED fixture (2026-09-03): what the watch-list URL renders when the
+  research profile's eBay session has expired — a sign-in form and no item
+  cards. The extractor must report SIGN_IN_REQUIRED, never an empty list.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sign in or Register | eBay</title>
+</head>
+<body>
+  <main>
+    <h1>Hello</h1>
+    <p>Sign in to your account to see your Watch list.</p>
+    <form id="signin-form" action="https://signin.ebay.ca/ws/eBayISAPI.dll?SignIn" method="post">
+      <label for="userid">Email or username</label>
+      <input id="userid" name="userid" type="text">
+      <label for="pass">Password</label>
+      <input id="pass" name="pass" type="password" autocomplete="current-password">
+      <button type="submit">Sign in</button>
+    </form>
+  </main>
+</body>
+</html>

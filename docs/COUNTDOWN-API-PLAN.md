@@ -281,12 +281,50 @@ Keycloak realm change. Record this in the ADR.
 | Variable | Default | Meaning |
 |---|---|---|
 | `COUNTDOWN_API_KEY` | unset | When unset or empty the `ebay_api_*` tools are not registered (same behaviour as `DASHBOARD_API_BASE_URL`). Empty string must parse as unset: FluxLab's `ensure_env_keys` copies `.env.example` lines verbatim and refuses `CHANGE_ME` placeholders, so the example line is `COUNTDOWN_API_KEY=`. |
+| `COUNTDOWN_ROLE` | `secondary` | The source's standing in a run (§2.1). `secondary`: tools registered, `ebay_api_status` free, every charged call needs a `fallbackReason`. `primary`: the credit gate alone admits a charged call. `off`: no `ebay_api_*` tools registered, key kept. Blank is the default |
 | `COUNTDOWN_API_BASE_URL` | `https://api.countdownapi.com` | Overridable for the integration stub only |
 | `COUNTDOWN_CREDIT_RESERVE` | `5%` | The credits the gate holds back: a percentage of the plan's `credits_limit` (`N%`, an integer 0–50, resolved from the free account endpoint: 5 on the 100-request trial, 25 on Hobbyist, 500 on Starter) or an absolute count (`500`). Search and item calls are refused with `SOURCE_CREDITS_EXHAUSTED` (`details.reason` `below_reserve`) once the last observed `credits_remaining` is below it; seller-profile calls (one credit, rare) are still allowed. An absolute reserve at or above the plan's limit can never be satisfied and is refused as such (`reserve_not_below_plan_limit`, the 2026-09-03 zero-coverage fire). Blank is the default; any other spelling fails validation naming the two forms |
 | `COUNTDOWN_MAX_CONCURRENCY` | `4` | Parallel product requests inside one `ebay_api_items` call |
 | `COUNTDOWN_TIMEOUT_MS` | `45000` | Per vendor request, at most 48000: the 50 s search/items deadline less 2 s, so a request times out on its own before the tool does (§1.4: the MCP client allows 60 s) |
 | `EBAY_FORWARDER_ZIPCODE` | `34249` | The MyUS Sarasota suite from `data/deals/multi-path-shipping-policy.json`; paired with `EBAY_DESTINATION_POSTAL_CODE` (`M6H 2W9`) as the only two zip codes the gateway will ever send |
 | `GATEWAY_BUILD_SHA` | `unknown` | The commit the gateway image was built from, set by the Dockerfile from a build argument and reported by `ebay_api_status` as `build.gateway`; never an active line in an env file (it would override the image's value) |
+
+### 2.1 Role: a secondary pathway until the operator says otherwise (2026-09-03)
+
+The operator's instruction of 2026-09-03: the vendor account is not being
+paid for yet, so the API is **not** the first route for Track A. It stays
+fully wired — the tools, the gate, the status probe, the skill's rules —
+but as a fallback the run reaches for only when the Browser Bridge cannot
+do a step. `COUNTDOWN_ROLE` makes that a gateway fact rather than a skill
+promise:
+
+- **`secondary` (default).** `registerSourceTools` still installs all four
+  tools and `ebay_api_status` stays free, but `CountdownSource` refuses a
+  charged call that carries no `fallbackReason` — before the account probe,
+  before any credit, before the suspension memory is consulted — with
+  `SOURCE_REJECTED`, `details.reason: 'secondary_role'`, `details.gate:
+  true` and `details.acceptedFallbackReasons`. The three charged inputs
+  gain two optional fields: `fallbackReason` (`device_offline`,
+  `bridge_unreachable`, `challenge_blocked`, `extractor_gap`,
+  `operator_request`) and a free-text `fallbackNote` (≤ 200 chars: the
+  error code seen, the URL walled, the improvement-queue fingerprint). A
+  declared call then passes through the credit gate exactly as before, and
+  both fields ride on its audit row, so `audit_events` shows why the vendor
+  was asked. `ebay_api_status` reports `role {name,
+  chargedCallsRequireFallbackReason, acceptedFallbackReasons}` and warns
+  `SECONDARY_ROLE`; its `gate.spendable` is what a declared fallback could
+  spend, not a figure to plan a fire against.
+- **`primary`.** The pre-2026-09-03 behaviour: the credit gate alone admits
+  a charged call. A `fallbackReason` is accepted and audited when given.
+- **`off`.** `GatewayConfig.countdown` is null and no `ebay_api_*` tool is
+  registered, exactly as a blank key — but the key stays in `.env` so the
+  flip back is one line.
+
+Flipping the role is one env line and a gateway restart; nothing in the
+skill, the routine prompt or the dashboards changes with it, because the
+skill already routes every `SOURCE_REJECTED` to the Bridge. The seller
+lookup is not exempt: it is the one call the reserve gate spares, but a
+secondary source spares nothing without a declared reason.
 
 **Destinations are named, never free text.** Tool inputs take
 `destination: 'toronto' | 'forwarder' | 'domain_default'`, mapped in the

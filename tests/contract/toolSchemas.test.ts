@@ -854,10 +854,18 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
       credits: { used: 18, remaining: 82 },
       reserve: { configured: '5%', effective: 5, basis: 'plan_limit' },
       gate: { open: true, reason: null, spendable: 77 },
+      role: {
+        name: 'secondary',
+        chargedCallsRequireFallbackReason: true,
+        acceptedFallbackReasons: ['device_offline', 'bridge_unreachable', 'challenge_blocked', 'extractor_gap', 'operator_request'],
+      },
       build: { gateway: '03acf1d' },
       warnings: [],
     };
     const schema = getSourceToolEntry('ebay_api_status')!.outputSchema;
+    // The role block is part of the strict shape: a status without it is a gateway bug.
+    expect(schema.safeParse({ ...output, role: undefined }).success).toBe(false);
+    expect(schema.safeParse({ ...output, role: { ...output.role, name: 'off' } }).success).toBe(false);
     expect(schema).toBe(EbayApiStatusOutput);
     expect(schema.safeParse(output).success).toBe(true);
     // A failed probe with remembered figures, and one with nothing known but a configured reserve.
@@ -915,6 +923,13 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
       // Every charged tool names its deadline, in seconds, under the client's 60 s.
       expect(description, name).toMatch(/answers inside its \d+ s tool deadline/);
     }
+    // 2026-09-03: the operator's secondary-pathway instruction is on every charged tool.
+    for (const name of ['ebay_api_search', 'ebay_api_items', 'ebay_api_seller']) {
+      expect(byName.get(name), name).toMatch(/SECONDARY pathway by default/);
+      expect(byName.get(name), name).toMatch(/fallbackReason/);
+      expect(byName.get(name), name).toMatch(/details\.reason 'secondary_role'/);
+    }
+    expect(byName.get('ebay_api_status')).toMatch(/role\.name/);
     expect(byName.get('ebay_api_search')).toMatch(/two vendor requests/);
     expect(byName.get('ebay_api_search')).toMatch(/Bridge item page/);
     expect(byName.get('ebay_api_seller')).toMatch(/SELLER_FIELDS_ABSENT_FROM_SOURCE/);

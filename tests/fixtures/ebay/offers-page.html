@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<!--
+  AUTHORED fixture, not a live capture (2026-09-03): the bids/offers page
+  of the current My eBay experience as the site-ebay myebay.ts comments
+  describe it — one row per offer linking the /itm/ page, with the offer
+  amount, who sent it, its state and its expiry as plain text. Replace with
+  a live capture on the first Track O pass (improvement queue, component
+  site-ebay, stableKey offers-template-unpinned).
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Bids and offers | My eBay</title>
+</head>
+<body>
+  <main class="mye-bidsoffers">
+    <h1 class="page-title">Bids and offers</h1>
+    <div class="filter-menu" role="tablist">
+      <button role="tab">Bids (0)</button>
+      <button role="tab" aria-selected="true">Offers (3)</button>
+    </div>
+    <ul class="offer-list">
+      <li class="offer-card" data-item-id="127905836341">
+        <a class="offer-card__title" href="https://www.ebay.com/itm/127905836341">Mellanox SX1012 12-Port 40GbE QSFP+ 1U Network Switch MSX1012B-2BFS</a>
+        <div class="offer-card__price">Listed at US $189.00</div>
+        <div class="offer-card__offer">Seller sent you an offer: US $165.00</div>
+        <div class="offer-card__status">Pending · Expires in 1d 22h</div>
+        <div class="offer-card__seller">From seller <a href="https://www.ebay.com/usr/serverpartsdepot">serverpartsdepot</a></div>
+      </li>
+      <li class="offer-card" data-item-id="115641809410">
+        <a class="offer-card__title" href="https://www.ebay.com/itm/115641809410">IBM LTO-8 HH SAS TAPE DRIVE FOR TS3100/TS3200 3573-8547</a>
+        <div class="offer-card__price">Listed at US $1,149.00</div>
+        <div class="offer-card__offer">You offered US $950.00</div>
+        <div class="offer-card__status">Declined by seller</div>
+        <div class="offer-card__seller">Seller: tapeworks_usa (883)</div>
+      </li>
+      <li class="offer-card" data-item-id="331982822376">
+        <a class="offer-card__title" href="https://www.ebay.ca/itm/331982822376">Assorted Genuine LEGO Printed/Decorated Tiles</a>
+        <div class="offer-card__offer">Counteroffer from seller: C $2.75</div>
+        <div class="offer-card__status">Expired</div>
+        <div class="offer-card__seller">From seller <a href="https://www.ebay.ca/usr/bluebirdbricks">bluebirdbricks</a></div>
+      </li>
+    </ul>
+  </main>
+</body>
+</html>

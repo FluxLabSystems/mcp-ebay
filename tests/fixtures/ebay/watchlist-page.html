@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<!--
+  AUTHORED fixture, not a live capture (2026-09-03): the Windows agent was
+  offline when the watch-list page kind was built, so this page follows the
+  current My eBay experience as documented in the site-ebay myebay.ts
+  comments — item cards linking /itm/ pages, a tab strip carrying the list
+  count, a pagination widget — using class names the extractor tries first
+  and enough plain text that the regex fallbacks are exercised too. The
+  first live pass must replace it with a capture (improvement queue,
+  component site-ebay, stableKey watchlist-template-unpinned).
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Watch list | My eBay</title>
+</head>
+<body>
+  <header class="gh">
+    <a href="https://www.ebay.ca/">eBay</a>
+    <a href="https://www.ebay.ca/mye/myebay/summary">My eBay</a>
+  </header>
+  <main class="mye-watchlist">
+    <h1 class="page-title">Watch list</h1>
+    <div class="filter-menu" role="tablist">
+      <button role="tab" aria-selected="true">All (312)</button>
+      <button role="tab">Active (298)</button>
+      <button role="tab">Ended (14)</button>
+    </div>
+    <div class="sort-menu">Sort: <span>Ending soonest</span></div>
+    <ul class="m-item-list">
+      <li class="m-item" data-item-id="198589141532">
+        <div class="m-item__image"><a href="https://www.ebay.ca/itm/198589141532?_trkparms=watchlist"><img src="https://i.ebayimg.com/images/g/a/s-l225.jpg" alt=""></a></div>
+        <div class="m-item__body">
+          <a class="m-item__title" href="https://www.ebay.ca/itm/198589141532?_trkparms=watchlist">Arista DCS-7050QX-32S-F 32x 40GbE QSFP+ 4x SFP+ Switch Tested<span class="clipped">Opens in a new window or tab</span></a>
+          <div class="m-item__condition">Pre-Owned</div>
+          <div class="m-item__price">C $412.00</div>
+          <div class="m-item__bids">7 bids</div>
+          <div class="m-item__time-left">1d 04h 12m left</div>
+          <div class="m-item__shipping">+C $38.20 shipping</div>
+          <div class="m-item__seller">Seller: <a href="https://www.ebay.ca/usr/netgear_liquidators">netgear_liquidators</a> (4,812) 99.6%</div>
+        </div>
+      </li>
+      <li class="m-item" data-item-id="127905836341">
+        <div class="m-item__image"><a href="https://www.ebay.com/itm/127905836341"><img src="https://i.ebayimg.com/images/g/b/s-l225.jpg" alt=""></a></div>
+        <div class="m-item__body">
+          <a class="m-item__title" href="https://www.ebay.com/itm/127905836341">Mellanox SX1012 12-Port 40GbE QSFP+ 1U Network Switch MSX1012B-2BFS</a>
+          <div class="m-item__condition">Used</div>
+          <div class="m-item__price">US $189.00</div>
+          <div class="m-item__purchase-options">Buy It Now or Best Offer</div>
+          <div class="m-item__offer">Seller sent you an offer: US $165.00 · Expires in 1d 22h</div>
+          <div class="m-item__shipping">+US $63.25 shipping</div>
+          <div class="m-item__seller">Seller: <a href="https://www.ebay.com/usr/serverpartsdepot">serverpartsdepot</a> (12,004) 99.9%</div>
+        </div>
+      </li>
+      <li class="m-item" data-item-id="115641809410">
+        <div class="m-item__image"><a href="https://www.ebay.com/itm/115641809410"><img src="https://i.ebayimg.com/images/g/c/s-l225.jpg" alt=""></a></div>
+        <div class="m-item__body">
+          <a class="m-item__title" href="https://www.ebay.com/itm/115641809410">IBM LTO-8 HH SAS TAPE DRIVE FOR TS3100/TS3200 3573-8547</a>
+          <div class="m-item__condition">Used</div>
+          <div class="m-item__price">US $1,149.00</div>
+          <div class="m-item__price-drop">Price drop: was US $1,299.00</div>
+          <div class="m-item__shipping">Free shipping</div>
+          <div class="m-item__seller">Seller: tapeworks_usa (883) 100%</div>
+        </div>
+      </li>
+      <li class="m-item m-item--ended" data-item-id="336429205380">
+        <div class="m-item__image"><a href="https://www.ebay.com/itm/336429205380"><img src="https://i.ebayimg.com/images/g/d/s-l225.jpg" alt=""></a></div>
+        <div class="m-item__body">
+          <a class="m-item__title" href="https://www.ebay.com/itm/336429205380">Fujifilm LTO-8 Ultrium Tape Cartridge - 12TB (Lot of 5)</a>
+          <div class="m-item__status">This listing has ended</div>
+          <div class="m-item__price">US $255.00</div>
+          <div class="m-item__seller">Seller: mediahub_direct (2,301) 99.2%</div>
+        </div>
+      </li>
+      <li class="m-item" data-item-id="331982822376">
+        <div class="m-item__image"><a href="https://www.ebay.ca/itm/331982822376"><img src="https://i.ebayimg.com/images/g/e/s-l225.jpg" alt=""></a></div>
+        <div class="m-item__body">
+          <a class="m-item__title" href="https://www.ebay.ca/itm/331982822376"><span class="m-item__badge">New Listing</span>Assorted Genuine LEGO Printed/Decorated Tiles</a>
+          <div class="m-item__price">C $3.19</div>
+          <div class="m-item__shipping">Shipping not specified</div>
+          <div class="m-item__seller">Seller: <a href="https://www.ebay.ca/usr/bluebirdbricks">bluebirdbricks</a> (9,511) 99.8%</div>
+        </div>
+      </li>
+    </ul>
+    <nav class="pagination" aria-label="Pagination">
+      <a class="pagination__item pagination__item--selected" aria-current="page" href="https://www.ebay.ca/mye/myebay/watchlist?page=1">1</a>
+      <a class="pagination__item" href="https://www.ebay.ca/mye/myebay/watchlist?page=2">2</a>
+      <a class="pagination__item" href="https://www.ebay.ca/mye/myebay/watchlist?page=3">3</a>
+      <a class="pagination__next" rel="next" aria-label="Next page" href="https://www.ebay.ca/mye/myebay/watchlist?page=2">Next</a>
+    </nav>
+  </main>
+</body>
+</html>

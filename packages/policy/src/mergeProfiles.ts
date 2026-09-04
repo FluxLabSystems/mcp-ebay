@@ -61,6 +61,7 @@ export function mergeSiteProfiles(profiles: readonly SitePolicyProfile[]): SiteP
     blockedActionPatterns: union(profiles.map((profile) => profile.blockedActionPatterns)),
     blockedFieldAutocomplete: union(profiles.map((profile) => profile.blockedFieldAutocomplete)),
     transactionEndpointPatterns: union(profiles.map((profile) => profile.transactionEndpointPatterns)),
+    mutationEndpointPatterns: union(profiles.map((profile) => profile.mutationEndpointPatterns ?? [])),
     // Deny data, like the other deny lists: every profile's auth surfaces
     // and denied hosts stay blocked on every site in the composite.
     authPathPatterns: union(profiles.map((profile) => profile.authPathPatterns ?? [])),

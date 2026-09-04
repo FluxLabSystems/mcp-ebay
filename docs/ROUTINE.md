@@ -48,10 +48,26 @@ plan above stands at 12.
 
 ## The budget with the eBay API tools
 
+**Role first (2026-09-03).** The gateway runs the Countdown source as a
+**secondary pathway** by default (`COUNTDOWN_ROLE=secondary`, the
+operator's standing instruction until they say otherwise): the Browser
+Bridge table above is the plan for every fire, and an `ebay_api_search`,
+`ebay_api_items` or `ebay_api_seller` call is admitted only when it
+declares `fallbackReason` — `device_offline`, `bridge_unreachable`,
+`challenge_blocked`, `extractor_gap` or `operator_request`, with the detail
+in `fallbackNote` — naming why the Bridge could not do that step. An
+undeclared call is refused with `SOURCE_REJECTED` (`details.reason`
+`secondary_role`) at no cost, and the answer is the Bridge. `ebay_api_status`
+reports `role.name`; read it once, free, and treat the table below as the
+plan only when it says `primary`. Under `secondary` the table is what a
+declared fallback follows for the steps the Bridge genuinely could not do,
+and `gate.spendable` is that fallback's ceiling, never the fire's budget.
+
 When the gateway serves `ebay_api_search`, `ebay_api_items`,
 `ebay_api_seller` and `ebay_api_status` — they exist only while
-`COUNTDOWN_API_KEY` is set, so probe for them; an unloaded schema is not
-absence — Track A's sweeps and its first validation pass leave the browser
+`COUNTDOWN_API_KEY` is set and `COUNTDOWN_ROLE` is not `off`, so probe for
+them; an unloaded schema is not absence — and runs them as `primary`,
+Track A's sweeps and its first validation pass leave the browser
 entirely. The table above stays the plan for a run without them and for
 Kijiji. Target: **first write by call 6**, with the browser session opened
 only for the shipping pass. Every API call answers within 50 s (the client

@@ -562,3 +562,75 @@ describe('the credit reserve gate over the live MCP surface (the 2026-09-03 zero
     }
   });
 });
+
+describe('the secondary role over the live MCP surface (the operator\'s 2026-09-03 instruction)', () => {
+  function secondaryHarness() {
+    const calls: string[] = [];
+    const key = 'cd-secondary-role-key';
+    const vendor: typeof fetch = (async (input: RequestInfo | URL) => {
+      const { url, query } = parseVendorRequest(input);
+      calls.push(url.pathname);
+      if (url.pathname === '/account') return accountResponse({ plan: 'hobbyist', creditsLimit: 500, creditsUsed: 20, creditsRemaining: 480, resetAt: '2026-10-01T00:00:00Z' }, key);
+      if (query.get('type') === 'seller_profile') return served(fixture('keyed/seller-profile-ca-usr-tweedsidesales.json'));
+      return new Response(JSON.stringify({ request_info: { success: false, message: 'a charged request went out' } }), { status: 400 });
+    }) as typeof fetch;
+    const gateway = buildGatewayHarness({ countdownApiKey: key, countdownFetch: vendor, countdownRole: 'secondary' });
+    const client = new ModernMcpClient('https://browser-mcp.test.example/mcp', gateway.fetch);
+    return { gateway, client, calls, key };
+  }
+
+  it('still lists every source tool, reports the role from ebay_api_status, and refuses an undeclared charged call at no cost', async () => {
+    const { gateway, client, calls, key } = secondaryHarness();
+    try {
+      const listed = (await client.listTools()).body.result?.tools as { name: string }[];
+      for (const name of SOURCE_TOOL_NAMES) expect(listed.map((tool) => tool.name)).toContain(name);
+
+      const status = await client.callTool('ebay_api_status', {});
+      const structured = EbayApiStatusOutput.parse(status.body.result?.structuredContent);
+      expect(structured.role).toEqual({
+        name: 'secondary',
+        chargedCallsRequireFallbackReason: true,
+        acceptedFallbackReasons: ['device_offline', 'bridge_unreachable', 'challenge_blocked', 'extractor_gap', 'operator_request'],
+      });
+      expect(structured.gate).toEqual({ open: true, reason: null, spendable: 455 });
+      expect(structured.warnings.some((warning) => warning.startsWith('SECONDARY_ROLE'))).toBe(true);
+      expect(calls).toEqual(['/account']);
+
+      for (const [tool, args] of [
+        ['ebay_api_search', { searchTerm: 'lego', listingType: 'auction' }],
+        ['ebay_api_items', { items: [{ itemId: '287557851282' }] }],
+        ['ebay_api_seller', { loginId: 'tweedsidesales' }],
+      ] as const) {
+        const response = await client.callTool(tool, args);
+        expect(response.body.result?.isError, tool).toBe(true);
+        const error = errorOf(response)!;
+        expect(error.code, tool).toBe('SOURCE_REJECTED');
+        expect(error.details, tool).toMatchObject({ reason: 'secondary_role', role: 'secondary', gate: true });
+        expect(error.message, tool).toMatch(/Browser Bridge first/);
+      }
+      // Nothing else reached the vendor.
+      expect(calls).toEqual(['/account']);
+      expect(JSON.stringify(status.body)).not.toContain(key);
+    } finally {
+      await gateway.close();
+    }
+  });
+
+  it('admits a charged call that declares its fallback, and the seller lookup then resolves as before', async () => {
+    const { gateway, client, calls } = secondaryHarness();
+    try {
+      const seller = await client.callTool('ebay_api_seller', { loginId: 'tweedsidesales', fallbackReason: 'device_offline', fallbackNote: 'DEVICE_OFFLINE: desktop last seen 2026-09-03T15:08Z' });
+      expect(seller.body.result?.isError).not.toBe(true);
+      const structured = seller.body.result?.structuredContent as { resolved: boolean; seller: { loginId: string | null } };
+      expect(structured.resolved).toBe(true);
+      expect(structured.seller.loginId).toBe('tweedsidesales');
+      expect(calls).toEqual(['/request']);
+      // The schema refuses a reason outside the enum before the gateway sees it.
+      const bad = await client.callTool('ebay_api_seller', { loginId: 'tweedsidesales', fallbackReason: 'because' });
+      expect(bad.body.result?.isError).toBe(true);
+      expect(calls).toEqual(['/request']);
+    } finally {
+      await gateway.close();
+    }
+  });
+});

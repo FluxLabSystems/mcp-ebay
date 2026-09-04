@@ -99,9 +99,49 @@ describe('protected actions (§19.2, Appendix C)', () => {
       'https://www.ebay.ca/sch/i.html?_nkw=lego',
       'https://i.ebayimg.com/images/g/abc/s-l1600.jpg',
       'https://www.ebay.ca/str/brickdeals',
+      // The signed-in surfaces the deals routine reads are pages, not APIs.
+      'https://www.ebay.ca/mye/myebay/watchlist?page=2',
+      'https://www.ebay.ca/mye/myebay/bidsoffers',
     ];
     for (const url of allowed) {
       expect(isProtectedEndpoint(url, ebaySiteProfile), url).toBe(false);
     }
+  });
+
+  // 2026-09-03: the watch-list walk. The signed-in watch-list page reads the
+  // operator's list through the same API family its add/remove controls
+  // post to, so the watch/follow APIs are mutation endpoints: a GET or
+  // HEAD passes, every other method — and a request whose method is not
+  // known — is aborted exactly as before. The legacy any-method add
+  // endpoints stay transaction endpoints.
+  it('network layer exempts a GET read of the watch-list API and aborts every mutation of it', () => {
+    const api = 'https://www.ebay.ca/mye/myebay/watchlist/api/v1/items?page=1';
+    expect(isProtectedEndpoint(api, ebaySiteProfile, 'GET')).toBe(false);
+    expect(isProtectedEndpoint(api, ebaySiteProfile, 'head')).toBe(false);
+    expect(isProtectedEndpoint(api, ebaySiteProfile, 'POST')).toBe(true);
+    expect(isProtectedEndpoint(api, ebaySiteProfile, 'DELETE')).toBe(true);
+    expect(isProtectedEndpoint(api, ebaySiteProfile, 'PUT')).toBe(true);
+    expect(isProtectedEndpoint(api, ebaySiteProfile)).toBe(true);
+    expect(isProtectedEndpoint('https://www.ebay.ca/follow/api/v1/follow', ebaySiteProfile, 'GET')).toBe(false);
+    expect(isProtectedEndpoint('https://www.ebay.ca/follow/api/v1/follow', ebaySiteProfile, 'POST')).toBe(true);
+    // Legacy any-method mutators are aborted on a GET too.
+    expect(isProtectedEndpoint('https://www.ebay.ca/ws/eBayISAPI.dll?AddToWatchList&item=1', ebaySiteProfile, 'GET')).toBe(true);
+    expect(isProtectedEndpoint('https://www.ebay.ca/myb/watch/add?item=1', ebaySiteProfile, 'GET')).toBe(true);
+    // A transaction endpoint never has a read exemption.
+    expect(isProtectedEndpoint('https://pay.ebay.ca/rxo?action=view', ebaySiteProfile, 'GET')).toBe(true);
+  });
+
+  it('blocks a click whose target is a mutation endpoint whatever the method would be', () => {
+    const decision = evaluateProtectedAction(
+      {
+        accessibleName: 'Remove',
+        role: 'link',
+        href: 'https://www.ebay.ca/mye/myebay/watchlist/api/v1/remove?item=1',
+        pageUrl: 'https://www.ebay.ca/mye/myebay/watchlist',
+      },
+      ebaySiteProfile,
+    );
+    expect(decision.blocked).toBe(true);
+    expect(decision.matchedPattern).toMatch(/watchlist\/api/);
   });
 });

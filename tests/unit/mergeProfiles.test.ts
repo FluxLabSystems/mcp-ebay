@@ -25,7 +25,12 @@ describe('mergeSiteProfiles', () => {
       for (const endpoint of source.transactionEndpointPatterns) {
         expect(merged.transactionEndpointPatterns).toContain(endpoint);
       }
+      for (const endpoint of source.mutationEndpointPatterns ?? []) {
+        expect(merged.mutationEndpointPatterns).toContain(endpoint);
+      }
     }
+    // eBay's watch/follow mutation rules survive the merge; Kijiji adds none.
+    expect(merged.mutationEndpointPatterns).toEqual(ebaySiteProfile.mutationEndpointPatterns);
     // The shared autocomplete tokens deduplicate instead of doubling.
     expect(merged.blockedFieldAutocomplete.filter((token) => token === 'cc-number')).toHaveLength(1);
     // The eBay destination survives; Kijiji contributes none.

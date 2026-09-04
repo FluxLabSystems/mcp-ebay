@@ -455,9 +455,14 @@ function isoFromTimestamp(raw: string): string | null {
 /** "5d 04h left", "Ends in 2d 03h 15m", "Time left: 1h 12m 30s". */
 const COUNTDOWN_CONTEXT_RE = /\bleft\b|\bends?\s+in\b|\btime\s+left\b|\bending\s+in\b/i;
 
-function countdownMs(text: string): number | null {
-  // Without a countdown phrase the digits are a clock time or a date, not a
-  // duration, and adding them to now would invent an end.
+/**
+ * Milliseconds a rendered countdown ("5d 04h left", "Ends in 2d 03h 15m")
+ * has to run; null when the text carries no countdown phrase, because
+ * without one the digits are a clock time or a date, not a duration, and
+ * adding them to now would invent an end. Exported for the My eBay
+ * watchlist cards, which render the same countdown vocabulary.
+ */
+export function countdownMs(text: string): number | null {
   if (!COUNTDOWN_CONTEXT_RE.test(text)) return null;
   const days = /(\d+)\s*d(?:ays?)?\b/i.exec(text);
   const hours = /(\d+)\s*h(?:ours?|rs?)?\b/i.exec(text);

@@ -33,6 +33,8 @@ describe.skipIf(!process.env.COUNTDOWN_LIVE || !process.env.COUNTDOWN_API_KEY)('
       PUBLIC_BASE_URL: 'https://browser-mcp.test.example',
       DATABASE_URL: 'postgres://unused-in-live-smoke',
       COUNTDOWN_API_KEY: process.env.COUNTDOWN_API_KEY,
+      // An operator running the smoke has decided to spend; the role gate is not what it tests.
+      COUNTDOWN_ROLE: 'primary',
       // The reserve is the deployment's business; the smoke spends three credits whatever the balance.
       COUNTDOWN_CREDIT_RESERVE: '0',
     });

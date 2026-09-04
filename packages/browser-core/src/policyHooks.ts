@@ -21,8 +21,12 @@ export interface PagePolicy {
   assertActionAllowed(action: ActionContext): void;
   /** Throws BridgeError SECRET_FIELD_BLOCKED for secret fields. */
   assertFieldAllowed(field: FieldContext): void;
-  /** True when a request URL matches transaction/account endpoint deny rules. */
-  isProtectedEndpoint(url: string): boolean;
+  /**
+   * True when a request URL matches transaction/account endpoint deny rules.
+   * `method` lets a mutation-endpoint rule exempt a GET/HEAD read; a caller
+   * that omits it gets the strict answer.
+   */
+  isProtectedEndpoint(url: string, method?: string): boolean;
   /** Non-throwing secret check used by snapshot redaction. */
   isSecretField(field: FieldContext): boolean;
 }

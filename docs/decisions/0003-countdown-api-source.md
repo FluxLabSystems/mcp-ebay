@@ -204,3 +204,23 @@ on its own terms — 8 s, no retry, one in flight shared by concurrent
 callers, and the account never asked more than once a minute — because
 awaiting a probe on the charged request's 90 s terms and retry ladder is
 what held three consecutive searches past the client's 60 s.
+
+## Addendum 2026-09-03 (b) — secondary pathway by operator instruction
+
+The operator's instruction, given the day the trial account was
+suspended: the API is not to be paid for yet, so it must not be Track A's
+first route, but the framework stays in place for the day it is.
+Decision: a gateway-level role, `COUNTDOWN_ROLE` (§2.1 of the plan),
+defaulting to `secondary`. Under it every charged call must declare a
+`fallbackReason` naming what the Browser Bridge could not do (device
+offline, Bridge unreachable, challenge wall, extractor gap, operator
+request) and is otherwise refused with `SOURCE_REJECTED` /
+`secondary_role` before any probe or credit; the declaration is audited.
+`primary` restores the behaviour this ADR originally described; `off`
+unregisters the tools while keeping the key. The role is reported by
+`ebay_api_status` so a deploy is verifiable without SSH, and the deals
+skill's existing "`SOURCE_REJECTED` means take the Bridge path" rule makes
+the flip invisible to a run. Cost of the addendum: two optional input
+fields, one config line, one gate check — and the Track A plan the plan
+document's ROUTINE.md tables describe now applies in full only under
+`primary`.
