@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<!-- Browser-integration fixture: a vendor product page (PDP) shaped the way
+     the 2026-09-04 wardrobe fire saw Printful and Spreadshirt render one
+     (gateway+connector_defect+snapshot-omits-pdp-own-price-node). The
+     subject product's price is styled text inside generic containers with
+     no role, label or interactive ancestor; the recommendation cards carry
+     THEIR prices inside their links. A hidden price and a struck-through
+     old price are here so the collector's visibility and depth rules are
+     exercised too. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Unisex Heavy Blend Hoodie | Fixture Vendor</title></head>
+<body>
+  <main>
+    <h1>Unisex Heavy Blend Hoodie | Gildan 18500</h1>
+    <section class="buy-box">
+      <fieldset>
+        <legend>Technique</legend>
+        <label><input type="radio" name="technique" value="dtg" checked> DTG printing</label>
+        <label><input type="radio" name="technique" value="emb"> Embroidery</label>
+      </fieldset>
+      <div class="sizes">
+        <button type="button">S</button>
+        <button type="button">M</button>
+        <button type="button">L</button>
+      </div>
+      <div class="price-module">
+        <div class="price-label">Price *</div>
+        <div class="price"><span class="currency">C$</span> <span class="amount">32.90</span></div>
+        <div class="price-note">One print included</div>
+        <div class="old-price" hidden>C$ 39.90</div>
+        <div class="promo">Save 15% with code FIXTURE</div>
+      </div>
+      <button type="button" id="start-designing">Start designing</button>
+    </section>
+    <section class="recommendations">
+      <h2>You may also like</h2>
+      <ul>
+        <li><a href="/pages/second.html"><span class="card-price">$59.99</span> Unisex Crewneck Sweatshirt</a></li>
+        <li><a href="/pages/second.html"><span class="card-price">$29.99</span> 20 oz Water Bottle</a></li>
+      </ul>
+    </section>
+    <p>Shipping is calculated at checkout. Prices shown in Canadian dollars.</p>
+  </main>
+</body>
+</html>

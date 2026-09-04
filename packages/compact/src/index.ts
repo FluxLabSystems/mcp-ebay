@@ -390,6 +390,10 @@ const PRESERVED_ROOT_FIELDS = [
   // search page carrying ?adRemoved=<id>. Compacting it away would turn
   // "this ad was removed" back into "an ordinary search page".
   'removedAdId',
+  // The keyword a Kijiji search page states it applied (2026-09-02
+  // b-keyword-path-silently-drops-keyword): the one field that tells a run
+  // the site searched for something other than what its URL asked for.
+  'searchTerm',
   // Zazzle's empty-results shell marker: a /s/ deep link can render "did
   // not match any products" for a query the search box answers with a full
   // page. Compacting it away would turn "retry via the search box" back

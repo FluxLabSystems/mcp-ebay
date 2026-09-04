@@ -174,3 +174,95 @@ describe('candidate snippets carry enough to triage without opening the row (def
     expect(candidate?.isNewListing).toBe(true);
   });
 });
+
+// 2026-09-04 deals fire (site-ebay+extractor_defect+store-page-snippetprice-
+// null-on-every-row): on https://www.ebay.ca/str/lapennaco every one of 50
+// cards came back with itemId, url and title but snippetPrice null,
+// shippingSnippetText null and sellingFormat 'unknown', while the same
+// items on a /sch/ page and their /itm/ pages priced normally. The store
+// grid renders its price under class names none of the price selectors
+// know, and a selector miss was silently a null. The price is still on
+// the card as text; when no element names it, the card's own text does.
+describe('store cards whose price element has no known class (2026-09-04)', () => {
+  function storeCandidates(html: string): ListingCandidate[] {
+    const { document } = parseHTML(`<div class="str-search-results">${html}</div>`);
+    return extractListingCandidates(document as unknown as Document, 'https://www.ebay.ca/str/lapennaco?_sop=10&_ipg=240');
+  }
+
+  it('reads snippetPrice and the shipping line from the card text and says where they came from', () => {
+    const candidates = storeCandidates(
+      `<div class="str-grid-item">
+         <a href="https://www.ebay.ca/itm/800106302072"><h3>Cisco C9130AXE-A Catalyst 9130 Access Point</h3></a>
+         <div class="str-grid-item__attributes"><span>Pre-Owned</span></div>
+         <div class="str-grid-item__price-line"><span>C $59.99</span></div>
+         <div class="str-grid-item__shipping-line"><span>+C $12.00 shipping</span></div>
+       </div>
+       <div class="str-grid-item">
+         <a href="https://www.ebay.ca/itm/800348101076"><h3>Cisco Galvanized Outdoor Wall Mounting Bracket</h3></a>
+         <div class="str-grid-item__price-line"><span>C $24.50</span><span class="strike">C $30.00</span></div>
+         <div class="str-grid-item__shipping-line"><span>Free shipping</span></div>
+       </div>`,
+    );
+    expect(candidates).toHaveLength(2);
+    expect(candidates[0]).toMatchObject({
+      itemId: '800106302072',
+      snippetPrice: { value: 59.99, currency: 'CAD' },
+      snippetPriceSource: 'text',
+      shippingSnippetText: '+C $12.00 shipping',
+      sellingFormat: 'fixed_price',
+    });
+    expect(candidates[1]).toMatchObject({
+      itemId: '800348101076',
+      snippetPrice: { value: 24.5, currency: 'CAD' },
+      snippetPriceSource: 'text',
+      shippingSnippetText: 'Free shipping',
+    });
+  });
+
+  it('does not read the shipping amount as the price when it is the only amount on the card', () => {
+    const [candidate] = storeCandidates(
+      `<div class="str-grid-item">
+         <a href="https://www.ebay.ca/itm/800106302073"><h3>Cisco AIR-ANT2513P4M-N Antenna</h3></a>
+         <div class="str-grid-item__shipping-line"><span>+C $12.00 shipping</span></div>
+       </div>`,
+    );
+    expect(candidate?.snippetPrice).toBeNull();
+    expect(candidate?.snippetPriceSource).toBeNull();
+    expect(candidate?.shippingSnippetText).toBe('+C $12.00 shipping');
+    expect(candidate?.sellingFormat).toBe('unknown');
+  });
+
+  it('reads the price after a shipping line that is not followed by a period', () => {
+    const [candidate] = storeCandidates(
+      `<div class="str-grid-item">
+         <a href="https://www.ebay.ca/itm/800106302075"><h3>Cisco AIR-AP1852I</h3></a>
+         <div><span>+C $12.00 shipping</span></div><div><span>C $45.00</span></div>
+       </div>`,
+    );
+    expect(candidate?.snippetPrice).toEqual({ value: 45, currency: 'CAD' });
+    expect(candidate?.shippingSnippetText).toBe('+C $12.00 shipping');
+  });
+
+  it('a price element the selectors know still wins, and is labelled as such', () => {
+    const [candidate] = storeCandidates(
+      `<div class="str-item-card">
+         <a href="https://www.ebay.ca/itm/555666777888"><span class="str-item-card__title">LEGO Minifigure Accessory Bulk Bag</span></a>
+         <span class="str-item-card__price">C $19.99</span>
+         <span>Was C $25.00</span>
+       </div>`,
+    );
+    expect(candidate?.snippetPrice).toEqual({ value: 19.99, currency: 'CAD' });
+    expect(candidate?.snippetPriceSource).toBe('element');
+  });
+
+  it('a card with no amount at all stays null', () => {
+    const [candidate] = storeCandidates(
+      `<div class="str-grid-item">
+         <a href="https://www.ebay.ca/itm/800106302074"><h3>Cisco bracket</h3></a>
+         <div><span>See price in cart</span></div>
+       </div>`,
+    );
+    expect(candidate?.snippetPrice).toBeNull();
+    expect(candidate?.snippetPriceSource).toBeNull();
+  });
+});
