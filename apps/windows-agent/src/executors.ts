@@ -6,6 +6,7 @@
 import { parseHTML } from 'linkedom';
 import {
   click,
+  dismissConsent,
   enumerateImages,
   fetchImage,
   handoff,
@@ -25,6 +26,7 @@ import {
   BridgeError,
   ClickInput,
   DEFAULT_SEARCH_COMPACTION,
+  DismissConsentInput,
   ExtractInput,
   ExtractManyInput,
   FillInput,
@@ -438,6 +440,15 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
         const outcome = await click(session, tabId, input.elementRef, budget);
         return { result: { ...outcome }, pageRevision: outcome.pageRevision, artifacts: [] };
       }
+      case 'dismiss_consent': {
+        const input = DismissConsentInput.parse({
+          browserSessionHandle: envelope.browserSessionHandle,
+          tabId,
+          ...(args as object),
+        });
+        const outcome = await dismissConsent(session, input.tabId, budget);
+        return { result: { ...outcome }, pageRevision: outcome.pageRevision, artifacts: [] };
+      }
       case 'fill': {
         const input = FillInput.parse({
           browserSessionHandle: envelope.browserSessionHandle,
@@ -538,6 +549,7 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
             ...outcome.result,
             finalUrl: nav.finalUrl,
             navigationStatus: nav.navigationStatus,
+            blockedSubresources: nav.blockedSubresources,
           },
           pageRevision: outcome.pageRevision,
           artifacts: [],
@@ -661,8 +673,9 @@ async function executeExtract(
   if (site === 'kijiji') {
     const kind = classifyKijijiPage(pageUrl);
     // 'other' is not a refusal: run the same ad-link scan the search pages
-    // use. Worst case it finds nothing and says so.
-    if (kind === 'search' || kind === 'other') {
+    // use. Worst case it finds nothing and says so. 'seller' (the poster's
+    // /o-profile/ listings page every VIP links) is read the same way.
+    if (kind === 'search' || kind === 'seller' || kind === 'other') {
       const searchPage = extractSearchResults(document, pageUrl, { observedAt: source.capturedAt });
       // radius=/address= are ignored by kijiji.ca (2026-09-02, isolated
       // live); a URL that still carries them must not be read as a radius
@@ -681,6 +694,16 @@ async function executeExtract(
       if (kind === 'other') {
         warnings.push(
           `UNCLASSIFIED_PAGE: ${pageUrl} is not a Kijiji ad or search URL; returned a best-effort ad-link scan. An empty candidate list here may mean the page has no ads, not that extraction failed.`,
+        );
+      }
+      if (kind === 'seller') {
+        // 2026-09-02 deals fire (kijiji-no-seller-inventory-surface). The
+        // ad scan depends on no card markup, but no live /o-profile/ page
+        // is captured, so the page's count, pagination and any rendered
+        // empty state are unverified — the first fire on it says what it
+        // rendered.
+        warnings.push(
+          `SELLER_PAGE_UNVERIFIED: ${pageUrl} is a Kijiji seller listings page (/o-profile/<posterId>/<page>), read with the same ad-link scan as a search page; no live capture of this page kind exists (NEEDS-LIVE-VERIFICATION), so totalResults and hasNextPage are best-effort — compare candidateCount with the ad record's sellerListingCount, walk nextPageUrl (the trailing page number) while candidates keep appearing, and if the page renders no ad links spend one browser_snapshot (maxNodes 120) on it and quote what it shows in the report.`,
         );
       }
       if (searchPage.results.length === 0) {

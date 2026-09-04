@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<!-- Browser-integration fixture (2026-09-03 wardrobe fire, gateway+
+     coverage_gap+spreadshirt-onetrust-overlay-blocks-all-clicks): a
+     consent SDK's dark-filter div covers the whole viewport and intercepts
+     every pointer event, with no dialog in the accessibility tree. The
+     "transient" variant clears itself after 800 ms, the way a loading
+     veil does. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Overlay fixture</title>
+<style>
+  .onetrust-pc-dark-filter { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,.35); }
+</style>
+</head>
+<body>
+  <h1>Overlay fixture</h1>
+  <button id="redeem" aria-label="Redeem Code Now" onclick="document.getElementById('state').textContent = 'redeemed'">20% off everything Redeem Code Now</button>
+  <span id="state">idle</span>
+  <span id="consent-state">pending</span>
+  <div id="onetrust-consent-sdk" aria-hidden="true">
+    <div class="onetrust-pc-dark-filter ot-fade-in"></div>
+  </div>
+  <script>
+    var params = new URLSearchParams(location.search);
+    var sdk = document.getElementById('onetrust-consent-sdk');
+    function settle(state) {
+      document.getElementById('consent-state').textContent = state;
+      sdk.parentNode.removeChild(sdk);
+    }
+    if (params.get('transient') === '1') {
+      setTimeout(function () { sdk.parentNode.removeChild(sdk); }, 800);
+    }
+    // ?dialog=reject — the banner renders both controls (OneTrust ids).
+    // ?dialog=accept — only an "Agree" control with no known id: text match.
+    if (params.get('dialog') === 'reject') {
+      sdk.removeAttribute('aria-hidden');
+      var d = document.createElement('div');
+      d.id = 'onetrust-banner-sdk'; d.setAttribute('role', 'alertdialog');
+      d.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:10000;background:#fff;padding:12px';
+      d.innerHTML = 'We Want to Improve Your Experience. This site uses cookies. '
+        + '<button id="onetrust-reject-all-handler">Reject All</button> '
+        + '<button id="onetrust-accept-btn-handler">Accept All Cookies</button>';
+      sdk.appendChild(d);
+      document.getElementById('onetrust-reject-all-handler').onclick = function () { settle('rejected'); };
+      document.getElementById('onetrust-accept-btn-handler').onclick = function () { settle('accepted'); };
+    }
+    if (params.get('dialog') === 'accept') {
+      sdk.removeAttribute('aria-hidden');
+      var a = document.createElement('div');
+      a.setAttribute('role', 'alertdialog');
+      a.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:10000;background:#fff;padding:12px';
+      a.innerHTML = 'We use cookies to improve your experience. <button id="agree-btn">Agree</button> <button id="settings-btn">Cookies Settings</button>';
+      sdk.appendChild(a);
+      document.getElementById('agree-btn').onclick = function () { settle('accepted'); };
+    }
+    // ?overlay=modal — an ordinary modal veil with no consent signature.
+    if (params.get('overlay') === 'modal') {
+      sdk.parentNode.removeChild(sdk);
+      var v = document.createElement('div');
+      v.className = 'modal-veil';
+      v.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.35)';
+      document.body.appendChild(v);
+    }
+  </script>
+</body>
+</html>

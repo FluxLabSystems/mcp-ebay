@@ -109,12 +109,35 @@ export const NavigateInput = z.strictObject({
   url: z.url(),
   waitUntil: z.enum(['domcontentloaded', 'load']).default('domcontentloaded'),
 });
+/**
+ * One origin the local network policy refused subresource requests from
+ * (an image, script, frame or fetch the page issued) since the tab's last
+ * main-frame navigation. 2026-09-03 wardrobe fire: a vendor's price module
+ * rendered as a skeleton because its data host was outside the allowlist
+ * and the run could not name the host the roster rule would have added.
+ * NOTE: adding this field to the navigate, open_and_extract and wait
+ * outputs changed the advertised tool schema — a gateway redeploy plus a
+ * claude.ai connector reconnect applies, and the Windows agent must be
+ * rebuilt to populate it (an older agent omits it; the default keeps the
+ * gateway's output validation green until then).
+ */
+export const BlockedSubresourceSchema = z.strictObject({
+  origin: z.string(),
+  code: z.enum(['ORIGIN_DENIED', 'PRIVATE_NETWORK_DENIED', 'SCHEME_DENIED', 'ACTION_BLOCKED']),
+  /** Requests refused from this origin under this code. */
+  requests: z.int().min(1),
+  /** The first refused URL, so the resource can be named, not only the host. */
+  exampleUrl: z.string(),
+});
+export type BlockedSubresource = z.infer<typeof BlockedSubresourceSchema>;
+
 export const NavigateOutput = z.strictObject({
   finalUrl: z.string(),
   title: z.string(),
   origin: z.string(),
   pageRevision: z.int().min(0),
   navigationStatus: z.enum(['committed', 'same_document', 'blocked']),
+  blockedSubresources: z.array(BlockedSubresourceSchema).default([]),
 });
 
 export const SnapshotInput = z.strictObject({
@@ -208,6 +231,42 @@ export const ClickOutput = z.strictObject({
    */
   openedTab: z.object({ tabId: z.string(), url: z.string() }).nullable(),
   popupDenied: z.string().nullable(),
+  /**
+   * A consent banner that intercepted the click and was dismissed before the
+   * click was retried (operator decision 2026-09-04); null when none was in
+   * the way. Same shape as browser_dismiss_consent's method/sdk/control.
+   * NOTE: schema change — gateway redeploy + connector reconnect.
+   */
+  consentDismissed: z
+    .object({
+      method: z.enum(['rejected', 'closed', 'accepted', 'removed']),
+      sdk: z.string().nullable(),
+      control: z.string().nullable(),
+    })
+    .nullable()
+    .default(null),
+});
+
+/**
+ * Clear a cookie/consent banner on the current page. Operator decision
+ * 2026-09-04: the agent may dismiss consent banners on the read-only roster
+ * hosts. Preference order reject → close → accept → remove a known SDK's
+ * overlay elements; every control is checked against the site policy's
+ * protected-action rules before it is pressed.
+ */
+export const DismissConsentInput = z.strictObject({
+  browserSessionHandle: z.string(),
+  tabId: z.string(),
+});
+export const DismissConsentOutput = z.strictObject({
+  pageRevision: z.int(),
+  /** False when no consent surface was found, or one was found and nothing cleared it. */
+  dismissed: z.boolean(),
+  method: z.enum(['rejected', 'closed', 'accepted', 'removed']).nullable(),
+  /** onetrust, cookiebot, trustarc, didomi, quantcast, osano, generic; null when none was recognised. */
+  sdk: z.string().nullable(),
+  /** The control pressed (accessible name / text) or, for removed, the selectors removed. */
+  control: z.string().nullable(),
 });
 
 export const FillInput = z.strictObject({
@@ -301,6 +360,8 @@ export const WaitOutput = z.strictObject({
   satisfied: z.boolean(),
   pageRevision: z.int(),
   elapsedMs: z.int(),
+  /** Same tally as browser_navigate's, read after the wait (see BlockedSubresourceSchema). */
+  blockedSubresources: z.array(BlockedSubresourceSchema).default([]),
 });
 
 
@@ -656,6 +717,7 @@ export const OpenAndExtractOutput = z.strictObject({
   warnings: z.array(z.string()),
   finalUrl: z.string(),
   navigationStatus: z.enum(['committed', 'same_document', 'blocked']),
+  blockedSubresources: z.array(BlockedSubresourceSchema).default([]),
 });
 
 /**

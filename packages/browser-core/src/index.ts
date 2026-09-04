@@ -6,5 +6,6 @@ export * from './actions.js';
 export * from './screenshot.js';
 export * from './images.js';
 export * from './wait.js';
+export * from './consent.js';
 export * from './handoff.js';
 export * from './imageMeta.js';

@@ -59,6 +59,20 @@ export const KijijiExtractionRecordSchema = z.strictObject({
   postedText: z.string().nullable(),
   sellerName: stringField.nullable(),
   sellerType: KijijiSellerTypeSchema,
+  /**
+   * The poster's numeric Kijiji id (hydration posterInfo.posterId, or the
+   * /o-profile/<id>/ link). Observed on both live VIP captures (2026-08-29);
+   * added 2026-09-04 so a seller found through one good ad can be swept.
+   */
+  sellerId: stringField.nullable(),
+  /**
+   * Absolute URL of the poster's listings page — the "View all listings (N)"
+   * anchor the VIP renders (/o-profile/<posterId>/1). Open it with
+   * browser_open_and_extract: it dispatches as pageKind "seller".
+   */
+  sellerListingsUrl: stringField.nullable(),
+  /** The N in "View all listings (N)"; null when the anchor states none. */
+  sellerListingCount: z.int().nullable(),
   /** Description excerpt, whitespace-collapsed and capped at 500 chars. */
   description: z
     .strictObject({

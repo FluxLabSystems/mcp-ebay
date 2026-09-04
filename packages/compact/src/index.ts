@@ -145,6 +145,10 @@ export interface CompactKijijiAd {
   location: string | null;
   postedAt: string | null;
   sellerName: string | null;
+  /** The poster's id and listings page (2026-09-04): the Track B seller drill-down starts here. */
+  sellerId: string | null;
+  sellerListingsUrl: string | null;
+  sellerListingCount: number | null;
   description: string | null;
   imageCount: number | null;
   listingStatus: string | null;
@@ -167,6 +171,9 @@ export function compactKijijiAd(record: unknown): CompactKijijiAd {
     location: readString(ad.location),
     postedAt: readString(ad.postedAt),
     sellerName: readString(ad.sellerName),
+    sellerId: readString(ad.sellerId),
+    sellerListingsUrl: readString(ad.sellerListingsUrl),
+    sellerListingCount: readNumber(ad.sellerListingCount),
     description: readString(ad.description),
     imageCount: readNumber(ad.imageCount),
     listingStatus: readString(ad.listingStatus),

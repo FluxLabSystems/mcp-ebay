@@ -3,12 +3,19 @@
  * the deadline fail with CONDITION_TIMEOUT (§17, retryable).
  */
 import { BridgeError, parseElementRef, type WaitCondition } from '@browser-bridge/protocol';
-import type { BrowserSessionRuntime } from './session.js';
+import { blockedSubresourcesOf, type BlockedSubresource, type BrowserSessionRuntime } from './session.js';
 
 export interface WaitResult {
   satisfied: boolean;
   pageRevision: number;
   elapsedMs: number;
+  /**
+   * Subresource origins the network policy has refused since the tab's
+   * last main-frame navigation — the same tally browser_navigate returns,
+   * read again after the wait, so a price module that fetches its data
+   * after load can be seen asking a host the allowlist refused.
+   */
+  blockedSubresources: BlockedSubresource[];
 }
 
 export async function waitFor(
@@ -76,6 +83,7 @@ export async function waitFor(
     satisfied: true,
     pageRevision: tab.revision,
     elapsedMs: Date.now() - started,
+    blockedSubresources: blockedSubresourcesOf(tab),
   };
 }
 

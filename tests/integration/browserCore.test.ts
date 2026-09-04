@@ -19,6 +19,7 @@ import {
   fetchImage,
   fill,
   launchPersistent,
+  dismissConsent,
   navigate,
   pressKey,
   preflightBrowser,
@@ -182,6 +183,142 @@ describe('navigation + revisions + snapshot (FR-02/03, §14)', () => {
     const order = snap.snapshot.map((node) => node.name);
     expect(order.indexOf('L')).toBeLessThan(order.indexOf('C$ 32.90'));
     expect(order.indexOf('C$ 32.90')).toBeLessThan(order.indexOf('Start designing'));
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
+  });
+
+  // 2026-09-03 wardrobe fire (gateway+coverage_gap+vistaprint-pricing-
+  // module-never-hydrates): Vistaprint's "Size and quantity" module rendered
+  // as a skeleton that never hydrated and no price appeared anywhere. The
+  // route layer refuses every subresource from a host outside the
+  // allowlist (packages/policy checkUrl, context 'subresource'), logs it
+  // at the agent, and tells the caller nothing — so the run could not name
+  // the host the roster rule would have added. The tally now rides on the
+  // navigate result and on browser_wait.
+  it('navigate names the subresource origins the policy refused, grouped by origin', async () => {
+    const result = await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/blocked-assets.html`, 'load', 20_000);
+    expect(result.navigationStatus).toBe('committed');
+    const origins = result.blockedSubresources.map((entry) => entry.origin).sort();
+    expect(origins).toEqual(['https://cdn.example.net', 'https://example.com']);
+    const images = result.blockedSubresources.find((entry) => entry.origin === 'https://example.com');
+    expect(images).toMatchObject({ code: 'ORIGIN_DENIED', requests: 2 });
+    expect(images?.exampleUrl).toMatch(/^https:\/\/example\.com\/pixel-[12]\.png$/);
+    // The local image loaded and is not listed.
+    expect(result.blockedSubresources.some((entry) => entry.origin === fixtures.baseUrl)).toBe(false);
+  });
+
+  it('browser_wait reports refusals that happened after the navigation settled', async () => {
+    const waited = await waitFor(harness.session, tabId, { networkIdleMs: 400 }, 10_000);
+    expect(waited.satisfied).toBe(true);
+    const late = waited.blockedSubresources.find((entry) => entry.origin === 'https://api.example.org');
+    expect(late).toMatchObject({ code: 'ORIGIN_DENIED', requests: 1, exampleUrl: 'https://api.example.org/prices' });
+    // The earlier refusals are still in the tally: it resets on the next
+    // main-frame navigation, not per call.
+    expect(waited.blockedSubresources.some((entry) => entry.origin === 'https://example.com')).toBe(true);
+  });
+
+  it('the tally resets on the next navigation and is empty on a page that loads clean', async () => {
+    const result = await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
+    expect(result.blockedSubresources).toEqual([]);
+    const waited = await waitFor(harness.session, tabId, { text: 'Interaction fixture' }, 5_000);
+    expect(waited.blockedSubresources).toEqual([]);
+  });
+
+  // 2026-09-03 wardrobe fire (gateway+coverage_gap+spreadshirt-onetrust-
+  // overlay-blocks-all-clicks): every browser_click on spreadshirt.ca burned
+  // ~15 s and came back INTERNAL_ERROR, with the cause — "<div
+  // class="onetrust-pc-dark-filter"> … intercepts pointer events" — buried
+  // in Playwright's call log. The overlay outlived the visible dialog and
+  // was not in the accessibility tree, so no snapshot could warn the run.
+  it('a click a persistent non-consent overlay intercepts fails fast with CLICK_INTERCEPTED naming the overlay', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/overlay.html?overlay=modal`, 'load', 20_000);
+    const snap = await snapshot(harness.session, tabId, 3000);
+    const button = snap.snapshot.find((node) => node.name === 'Redeem Code Now');
+    expect(button?.elementRef).toBeTruthy();
+    const started = Date.now();
+    let caught: BridgeError | null = null;
+    try {
+      await click(harness.session, tabId, button!.elementRef!, 15_000);
+    } catch (err) {
+      caught = err as BridgeError;
+    }
+    const elapsed = Date.now() - started;
+    expect(caught?.code).toBe('CLICK_INTERCEPTED');
+    expect(caught?.retryable).toBe(false);
+    expect(String(caught?.details.interceptor)).toContain('modal-veil');
+    expect(caught?.message).toContain('modal-veil');
+    expect(caught?.details.consentDismissal).toBeNull();
+    // Well inside the 15 s the fire paid per click.
+    expect(elapsed).toBeLessThan(8_000);
+    // The click never landed.
+    expect(await harness.session.getTab(tabId).page.textContent('#state')).toBe('idle');
+  });
+
+  it('an overlay that clears itself within the probe window does not fail the click', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/overlay.html?transient=1`, 'load', 20_000);
+    const snap = await snapshot(harness.session, tabId, 3000);
+    const button = snap.snapshot.find((node) => node.name === 'Redeem Code Now');
+    const result = await click(harness.session, tabId, button!.elementRef!, 15_000);
+    expect(result.changed).toBe(false);
+    expect(await harness.session.getTab(tabId).page.textContent('#state')).toBe('redeemed');
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
+  });
+
+  // Operator decision 2026-09-04 ("yes the agent may dismiss consent
+  // banners"), the policy half of the same wardrobe report: a consent SDK's
+  // overlay is cleared rather than reported, in the order reject → close →
+  // accept → remove, and the result says which.
+  it('browser_dismiss_consent prefers a reject control and reports it', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/overlay.html?dialog=reject`, 'load', 20_000);
+    const result = await dismissConsent(harness.session, tabId, 10_000);
+    expect(result).toMatchObject({ dismissed: true, method: 'rejected', sdk: 'onetrust', control: 'Reject All' });
+    expect(await harness.session.getTab(tabId).page.textContent('#consent-state')).toBe('rejected');
+    // The page is usable afterwards.
+    const snap = await snapshot(harness.session, tabId, 3000);
+    const button = snap.snapshot.find((node) => node.name === 'Redeem Code Now');
+    const clicked = await click(harness.session, tabId, button!.elementRef!, 15_000);
+    expect(clicked.consentDismissed).toBeNull();
+    expect(await harness.session.getTab(tabId).page.textContent('#state')).toBe('redeemed');
+  });
+
+  it('browser_dismiss_consent accepts only when no reject or close control exists, by wording', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/overlay.html?dialog=accept`, 'load', 20_000);
+    const result = await dismissConsent(harness.session, tabId, 10_000);
+    expect(result).toMatchObject({ dismissed: true, method: 'accepted', sdk: 'onetrust', control: 'Agree' });
+    expect(await harness.session.getTab(tabId).page.textContent('#consent-state')).toBe('accepted');
+  });
+
+  it('browser_dismiss_consent removes a known SDK overlay that rendered no control (the Spreadshirt shape)', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/overlay.html`, 'load', 20_000);
+    const result = await dismissConsent(harness.session, tabId, 10_000);
+    expect(result.dismissed).toBe(true);
+    expect(result.method).toBe('removed');
+    expect(result.sdk).toBe('onetrust');
+    expect(result.control).toContain('onetrust');
+    // Nothing was consented to: the fixture's consent state never settled.
+    expect(await harness.session.getTab(tabId).page.textContent('#consent-state')).toBe('pending');
+    expect(await harness.session.getTab(tabId).page.locator('.onetrust-pc-dark-filter').count()).toBe(0);
+  });
+
+  it('browser_dismiss_consent reports nothing to dismiss on a page without a banner', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
+    const result = await dismissConsent(harness.session, tabId, 5_000);
+    expect(result).toMatchObject({ dismissed: false, method: null, sdk: null, control: null });
+  });
+
+  it('a click a consent banner intercepts dismisses the banner, retries once, and says so', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/overlay.html?dialog=reject`, 'load', 20_000);
+    const snap = await snapshot(harness.session, tabId, 3000);
+    const button = snap.snapshot.find((node) => node.name === 'Redeem Code Now');
+    const result = await click(harness.session, tabId, button!.elementRef!, 15_000);
+    expect(result.consentDismissed).toMatchObject({ method: 'rejected', sdk: 'onetrust', control: 'Reject All' });
+    expect(await harness.session.getTab(tabId).page.textContent('#state')).toBe('redeemed');
+    // The control-less overlay is removed on the way to the click, too.
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/overlay.html`, 'load', 20_000);
+    const snap2 = await snapshot(harness.session, tabId, 3000);
+    const button2 = snap2.snapshot.find((node) => node.name === 'Redeem Code Now');
+    const result2 = await click(harness.session, tabId, button2!.elementRef!, 15_000);
+    expect(result2.consentDismissed?.method).toBe('removed');
+    expect(await harness.session.getTab(tabId).page.textContent('#state')).toBe('redeemed');
     await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
   });
 

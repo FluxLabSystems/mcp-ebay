@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<!-- Browser-integration fixture (2026-09-03 wardrobe fire, gateway+
+     coverage_gap+vistaprint-pricing-module-never-hydrates): a page whose
+     own document is allowed but which pulls subresources from hosts the
+     site allowlist refuses. The route layer aborts those silently; the
+     navigate result has to name them so a run can report the exact host. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Blocked assets fixture</title>
+  <script src="https://cdn.example.net/pricing-widget.js"></script>
+</head>
+<body>
+  <h1>Blocked assets fixture</h1>
+  <img id="local-img" src="/img/gallery-2.png" alt="Local image">
+  <img id="denied-img-1" src="https://example.com/pixel-1.png" alt="Denied image one">
+  <img id="denied-img-2" src="https://example.com/pixel-2.png" alt="Denied image two">
+  <div id="price-module" aria-label="Size and quantity">skeleton</div>
+  <button id="late-fetch" onclick="fetch('https://api.example.org/prices').catch(function () {})">Load prices later</button>
+  <script>
+    // A widget that fetches its data AFTER load, the way a hydrated price
+    // module does; browser_wait networkIdleMs is what a run has by then.
+    window.addEventListener('load', function () {
+      setTimeout(function () { fetch('https://api.example.org/prices').catch(function () {}); }, 150);
+    });
+  </script>
+</body>
+</html>

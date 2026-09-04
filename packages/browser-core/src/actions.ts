@@ -7,6 +7,7 @@ import type { Locator, Page } from 'playwright';
 import type { ActionContext, FieldContext } from '@browser-bridge/policy';
 import { BridgeError, parseElementRef, ALLOWED_KEYS } from '@browser-bridge/protocol';
 import type { BrowserSessionRuntime, TabState } from './session.js';
+import { consentSdkOf, dismissConsent, type ConsentDismissal } from './consent.js';
 
 interface LiveElementInfo {
   accessibleName: string;
@@ -100,6 +101,13 @@ export interface ClickResult {
   openedTab: { tabId: string; url: string } | null;
   /** A popup the URL policy refused (host outside the site allowlist) and closed. */
   popupDenied: string | null;
+  /**
+   * A consent banner that intercepted the click and was dismissed before the
+   * click was retried (operator decision 2026-09-04); null when no banner was
+   * in the way. Carries the same method/sdk/control browser_dismiss_consent
+   * reports, so the run records what was pressed.
+   */
+  consentDismissed: Pick<ConsentDismissal, 'method' | 'sdk' | 'control'> | null;
 }
 
 /**
@@ -125,6 +133,57 @@ function announcesPopup(info: LiveElementInfo): boolean {
   return info.target === '_blank' || ANNOUNCES_NEW_TAB_RE.test(info.accessibleName) || ANNOUNCES_NEW_TAB_RE.test(info.text);
 }
 
+/** Budget for clearing a consent banner that intercepted a click before the click is retried once. */
+const CONSENT_DISMISS_MS = 5000;
+
+/**
+ * How long an overlay may sit over the target before the click is refused
+ * as CLICK_INTERCEPTED. A loading veil or a fade-in clears well inside
+ * this; a consent SDK's dark filter never does (2026-09-03 wardrobe fire:
+ * the same interception on every retry for the full 15 s timeout).
+ */
+const INTERCEPT_PROBE_MS = 3000;
+
+/**
+ * Playwright's actionability log for a covered target reads
+ * `<div class="onetrust-pc-dark-filter ot-fade-in"></div> from <div
+ * id="onetrust-consent-sdk">…</div> subtree intercepts pointer events`.
+ * The element before "intercepts pointer events" is the interceptor.
+ */
+const INTERCEPTS_RE = /(<[^\n]*?)\s+(?:from\s+<[^\n]*?\s+subtree\s+)?intercepts pointer events/i;
+
+function interceptorOf(err: unknown): string | null {
+  const message = err instanceof Error ? err.message : String(err);
+  if (!/intercepts pointer events/i.test(message)) return null;
+  const match = INTERCEPTS_RE.exec(message);
+  const snippet = (match?.[1] ?? message).replace(/\s+/g, ' ').trim();
+  return snippet.slice(0, 300);
+}
+
+function clickIntercepted(
+  elementRef: string,
+  interceptor: string,
+  probedMs: number,
+  consent: ConsentDismissal | null = null,
+): BridgeError {
+  const consentNote =
+    consent === null
+      ? 'Not a recognised consent banner, so it was not dismissed; traverse by href instead (browser_snapshot link nodes carry it, browser_navigate follows it).'
+      : consent.dismissed
+        ? `A ${consent.sdk} consent banner was dismissed (${consent.method}: ${consent.control}) and the target is still covered.`
+        : `It looks like a ${consent.sdk ?? 'consent'} banner but browser_dismiss_consent found no control to press and nothing to remove.`;
+  return new BridgeError(
+    'CLICK_INTERCEPTED',
+    `Click on ${elementRef} cannot land: ${interceptor} intercepts pointer events at the target (still covering it after ${probedMs} ms). ${consentNote}`,
+    {
+      elementRef,
+      interceptor,
+      probedMs,
+      consentDismissal: consent === null ? null : { dismissed: consent.dismissed, method: consent.method, sdk: consent.sdk, control: consent.control },
+    },
+  );
+}
+
 export async function click(
   session: BrowserSessionRuntime,
   tabId: string,
@@ -137,6 +196,36 @@ export async function click(
   if (info.field !== null) {
     // Clicking into a secret field is also blocked (focus/interaction).
     session.policy.assertFieldAllowed(info.field as FieldContext);
+  }
+  // A trial click runs every actionability check (visible, stable, enabled,
+  // receives events) without clicking. When the hit-target check is what
+  // fails, and keeps failing for INTERCEPT_PROBE_MS, the click is refused
+  // as a typed error here instead of retrying inside Playwright until the
+  // full timeout and surfacing as INTERNAL_ERROR. Any other trial failure
+  // falls through to the real click, which behaves exactly as before.
+  const probeMs = Math.min(timeoutMs, INTERCEPT_PROBE_MS);
+  let consentDismissed: ClickResult['consentDismissed'] = null;
+  try {
+    await locator.first().click({ trial: true, timeout: probeMs });
+  } catch (err) {
+    const interceptor = interceptorOf(err);
+    if (interceptor !== null) {
+      // A consent SDK's overlay (operator decision 2026-09-04: the agent may
+      // dismiss consent banners) is cleared and the probe run once more; any
+      // other overlay, or a banner that would not clear, is the typed error.
+      const sdk = consentSdkOf(interceptor);
+      const cleared = sdk === null ? null : await dismissConsent(session, tabId, CONSENT_DISMISS_MS);
+      if (cleared === null || !cleared.dismissed) {
+        throw clickIntercepted(elementRef, interceptor, probeMs, cleared);
+      }
+      consentDismissed = { method: cleared.method, sdk: cleared.sdk, control: cleared.control };
+      try {
+        await locator.first().click({ trial: true, timeout: probeMs });
+      } catch (again) {
+        const still = interceptorOf(again);
+        if (still !== null) throw clickIntercepted(elementRef, still, probeMs, cleared);
+      }
+    }
   }
   const beforeRevision = tab.revision;
   const beforeUrl = tab.page.url();
@@ -163,7 +252,14 @@ export async function click(
   });
   let popup: Page | null = null;
   try {
-    await locator.first().click({ timeout: timeoutMs });
+    try {
+      await locator.first().click({ timeout: timeoutMs });
+    } catch (err) {
+      // An overlay that appeared between the probe and the click.
+      const interceptor = interceptorOf(err);
+      if (interceptor !== null) throw clickIntercepted(elementRef, interceptor, timeoutMs);
+      throw err;
+    }
     await tab.page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => undefined);
     const popupWait = announcesPopup(info) ? POPUP_WAIT_ANNOUNCED_MS : POPUP_WAIT_GRACE_MS;
     popup = await Promise.race([
@@ -191,7 +287,7 @@ export async function click(
       session.getTab(tabId);
     }
   }
-  return { pageRevision: tab.revision, url: tab.page.url(), changed, openedTab, popupDenied };
+  return { pageRevision: tab.revision, url: tab.page.url(), changed, openedTab, popupDenied, consentDismissed };
 }
 
 export interface FillResult {
