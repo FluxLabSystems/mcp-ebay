@@ -144,7 +144,36 @@ function collectInPage(args: { revision: number; maxNodes: number }): { nodes: R
     }
   };
 
-  const elements = Array.from(document.querySelectorAll(SELECTOR));
+  // Money-like text outside any interactive element. The selector above
+  // collects what a page lets you DO; a product page's own price is
+  // something it merely SAYS, as styled text in a generic container with no
+  // role, label or link around it (2026-09-04 wardrobe fire: Printful and
+  // Spreadshirt PDPs snapshotted their whole buy box — technique radios,
+  // colours, sizes, "Start designing" — and no price node, while sibling
+  // recommendation cards' prices came through inside their links). Such
+  // text is collected as role "text": the deepest visible element whose
+  // text carries a currency amount, skipped when an ancestor is already an
+  // interactive node (its text carries the amount) or a child carries the
+  // amount itself (that child is the node). textContent is checked before
+  // anything that forces layout, so a page of ten thousand spans costs one
+  // regex each, not one style resolution each.
+  const TEXT_SELECTOR = 'p,span,div,dd,dt,td,th,li,strong,b,em,i,s,del,ins,bdi,data,output,label,small,mark';
+  const MONEY_RE =
+    /(?:[$€£¥]|\b(?:C|CA|US|AU|NZ|A)\s?\$|\b(?:CAD|USD|EUR|GBP|AUD|CHF)\b)\s?\d[\d,]*(?:[.,]\d{1,2})?|\d[\d,]*(?:[.,]\d{1,2})?\s?(?:[€£]|\b(?:CAD|USD|EUR|GBP|AUD|CHF)\b)/i;
+  const moneyLike = (value: string | null | undefined): boolean =>
+    typeof value === 'string' && value.length <= 400 && MONEY_RE.test(value);
+  const isPriceText = (el: Element): boolean => {
+    if (el.matches(SELECTOR)) return false;
+    if (!moneyLike(el.textContent)) return false;
+    const parent = el.parentElement;
+    if (parent !== null && parent.closest(SELECTOR) !== null) return false;
+    for (const child of Array.from(el.children)) {
+      if (moneyLike(child.textContent)) return false;
+    }
+    return true;
+  };
+
+  const elements = Array.from(document.querySelectorAll(`${SELECTOR},${TEXT_SELECTOR}`));
   const nodes: RawSnapshotNode[] = [];
   let truncated = false;
   let ordinal = 0;
@@ -153,11 +182,14 @@ function collectInPage(args: { revision: number; maxNodes: number }): { nodes: R
       truncated = true;
       break;
     }
+    const priceText = !el.matches(SELECTOR);
+    if (priceText && !isPriceText(el)) continue;
     if (!visible(el)) continue;
-    const role = roleOf(el);
-    const name = nameOf(el);
     const html = el as HTMLElement;
     const text = (html.innerText ?? '').trim().replace(/\s+/g, ' ').slice(0, 200);
+    if (priceText && !moneyLike(text)) continue;
+    const role = priceText ? 'text' : roleOf(el);
+    const name = priceText ? text.slice(0, 120) : nameOf(el);
     const isFormField =
       el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement;
     let field: RawSnapshotNode['field'] = null;

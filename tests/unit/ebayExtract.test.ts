@@ -392,3 +392,77 @@ describe('item location rejects the delivery-estimate disclaimer (C3)', () => {
     expect(record.itemLocationText).toBeNull();
   });
 });
+
+// 2026-09-04 deals fire (site-ebay+extractor_defect+item-endsat-null-on-live-
+// auctions): endsAt came back null on 326 of 328 item pages, live auctions
+// with 17–22 bids included, and timeLeftText was null beside it — so no
+// timer selector matched the common template at all, while the bid count
+// (read from the same buy box) did. The countdown was on the page; the
+// extractor only knew how to find it under a timer class.
+describe('auction end time when no timer element matches (2026-09-04)', () => {
+  it('reads a countdown phrase out of the buy-box text and computes an end time from it', () => {
+    const document = parseHTML(
+      `<div class="x-buybox">
+         <h1 class="x-item-title__mainTitle">LEGO Minifigure Lot</h1>
+         <div class="x-price-primary">C $41.00</div>
+         <div class="x-bid-count">17 bids</div>
+         <div class="x-end-time"><span>Ends in 1d 3h 22m</span><span>(Sat, 05:24 p.m.)</span></div>
+         <div class="x-bid-action"><a href="https://www.ebay.ca/bidflow?item=407119899015" role="button">Place bid</a></div>
+       </div>`,
+    ).document as unknown as Document;
+    const { record, warnings } = extractListing(document, 'https://www.ebay.ca/itm/407119899015', {
+      observedAt: new Date('2026-09-04T07:30:00.000Z'),
+    });
+    expect(record.sellingFormat.bidCount).toBe(17);
+    expect(record.timeLeftText?.value).toBe('Ends in 1d 3h 22m');
+    // Read from unlabelled text, so it says so and trusts itself less than a
+    // timer element (0.95) would.
+    expect(record.timeLeftText!.confidence).toBeLessThan(0.95);
+    expect(record.endsAt).toMatchObject({ value: '2026-09-05T10:52:00.000Z', source: 'computed' });
+    expect(record.endsAt!.confidence).toBeLessThan(0.6);
+    expect(warnings.some((warning) => warning.startsWith('END_TIME_FROM_TEXT'))).toBe(true);
+  });
+
+  it('accepts the "Nd Nh left" form too', () => {
+    const document = parseHTML(
+      `<div class="x-buybox">
+         <div class="x-price-primary">C $12.50</div>
+         <div>19 bids</div>
+         <div>2d 05h left</div>
+       </div>`,
+    ).document as unknown as Document;
+    const { record } = extractListing(document, 'https://www.ebay.ca/itm/158149563572', {
+      observedAt: new Date('2026-09-04T07:30:00.000Z'),
+    });
+    expect(record.timeLeftText?.value).toBe('2d 05h left');
+    expect(record.endsAt?.value).toBe('2026-09-06T12:30:00.000Z');
+  });
+
+  it('does not read a promo countdown outside the buy box as the auction end', () => {
+    const document = parseHTML(
+      `<div id="mainContent">
+         <div class="x-buybox">
+           <h1 class="x-item-title__mainTitle">LEGO Minifigure Lot</h1>
+           <div class="x-price-primary">C $41.00</div>
+           <div class="x-bid-count">22 bids</div>
+         </div>
+         <div class="x-similar-items"><span>Sale ends in 2d 04h — shop the event</span></div>
+       </div>`,
+    ).document as unknown as Document;
+    const { record, warnings } = extractListing(document, 'https://www.ebay.ca/itm/267747547748');
+    expect(record.sellingFormat.bidCount).toBe(22);
+    expect(record.endsAt).toBeNull();
+    expect(record.timeLeftText).toBeNull();
+    expect(warnings.some((warning) => warning.startsWith('END_TIME_FROM_TEXT'))).toBe(false);
+  });
+
+  it('a timer element still wins over the text scan', () => {
+    const { record, warnings } = extractListing(
+      loadFixture('auction-live-timer.html'),
+      'https://www.ebay.ca/itm/366630546269',
+    );
+    expect(record.endsAt).toMatchObject({ value: '2026-09-03T18:30:00.000Z', source: 'dom' });
+    expect(record.timeLeftText?.confidence).toBe(0.95);
+    expect(warnings.some((warning) => warning.startsWith('END_TIME_FROM_TEXT'))).toBe(false);
+  });
+});

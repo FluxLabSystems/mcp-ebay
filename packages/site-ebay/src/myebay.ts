@@ -513,7 +513,8 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
     const title = rawTitle === null ? null : cleanTitle(rawTitle);
     const blob = normalizeText(card.textContent);
     const priceText = cardText(card, MYEBAY_PRICE_SELECTOR);
-    const snippetPrice = money(priceText) ?? firstMoneyIn(blob);
+    const elementPrice = money(priceText);
+    const snippetPrice = elementPrice ?? firstMoneyIn(blob);
     const { sellingFormat, bidCount } = detectCardFormat(card, rawTitle, snippetPrice !== null);
     const timeLeftText = readTimeLeft(card);
     const status = readStatus(blob, snippetPrice !== null, timeLeftText);
@@ -527,6 +528,7 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
       url,
       title: title !== null && title.length > 0 ? title : null,
       snippetPrice,
+      snippetPriceSource: elementPrice !== null ? 'element' : snippetPrice !== null ? 'text' : null,
       sellingFormat: sellingFormat as SellingFormatKind,
       bidCount,
       shippingSnippetText: shipping ?? (shippingMatch === null ? null : normalizeText(shippingMatch[1]!)),

@@ -152,6 +152,39 @@ describe('navigation + revisions + snapshot (FR-02/03, §14)', () => {
     expect(result.selectedValue).toBe('used'); // read back from el.checked/el.value
   });
 
+  // 2026-09-04 wardrobe fire (gateway+connector_defect+snapshot-omits-pdp-
+  // own-price-node): on Printful and Spreadshirt product pages the subject
+  // product's price is styled text in a generic container, so the
+  // interactive-element collector never saw it, while recommendation cards'
+  // prices (inside their links) came back normally. Every price the run
+  // recorded had to be read off a screenshot.
+  it('a product page snapshot carries the subject price rendered as plain text (role text)', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/pdp-price.html`, 'load', 20_000);
+    const snap = await snapshot(harness.session, tabId, 3000);
+    expect(snap.truncated).toBe(false);
+    const priceNodes = snap.snapshot.filter((node) => node.text.includes('32.90'));
+    // Exactly one node: the deepest element whose text is the amount, not
+    // the price module, section and main that also contain it.
+    expect(priceNodes).toHaveLength(1);
+    expect(priceNodes[0]).toMatchObject({ role: 'text', text: 'C$ 32.90', href: null });
+    expect(priceNodes[0]!.elementRef).toMatch(new RegExp(`^el_${snap.pageRevision}_`));
+    // The hidden old price is not visible and stays out.
+    expect(snap.snapshot.some((node) => node.text.includes('39.90'))).toBe(false);
+    // Prose without an amount is not collected; the collector is for money-
+    // like text, not every paragraph on the page.
+    expect(snap.snapshot.some((node) => node.text.startsWith('Shipping is calculated'))).toBe(false);
+    expect(snap.snapshot.some((node) => node.text === 'One print included')).toBe(false);
+    // Card prices inside links are carried by the link node as before, once.
+    const cardNodes = snap.snapshot.filter((node) => node.text.includes('59.99'));
+    expect(cardNodes).toHaveLength(1);
+    expect(cardNodes[0]!.role).toBe('link');
+    // The interactive nodes are still there in document order around it.
+    const order = snap.snapshot.map((node) => node.name);
+    expect(order.indexOf('L')).toBeLessThan(order.indexOf('C$ 32.90'));
+    expect(order.indexOf('C$ 32.90')).toBeLessThan(order.indexOf('Start designing'));
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
+  });
+
   it('the tab automation last touched reports active=true (F-11)', async () => {
     await snapshot(harness.session, tabId, 3000);
     const tabs = await harness.session.listTabs();

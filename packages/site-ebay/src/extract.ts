@@ -473,6 +473,44 @@ export function countdownMs(text: string): number | null {
   return ((unit(days) * 24 + unit(hours)) * 60 + unit(minutes)) * 60_000 + unit(seconds) * 1000;
 }
 
+/**
+ * A rendered countdown phrase, bounded to the units and the word that makes
+ * them a countdown: "Ends in 1d 3h 22m", "2d 05h left", "Time left: 1h 12m".
+ * The context word is required — bare "1d 3h" is a duration in a shipping
+ * estimate as easily as in an auction. Kept to one phrase so a text scan
+ * never returns a module.
+ */
+const COUNTDOWN_UNITS = String.raw`(?:\d{1,3}\s*(?:d(?:ays?)?|h(?:ours?|rs?)?|m(?:in(?:ute)?s?)?|s(?:ec(?:ond)?s?)?)\b\s*)+`;
+const COUNTDOWN_PHRASE_RE = new RegExp(
+  String.raw`\b(?:(?:ends?|ending|closes?)\s+in\s*:?\s*${COUNTDOWN_UNITS}|time\s+left\s*:?\s*${COUNTDOWN_UNITS}|${COUNTDOWN_UNITS}left\b)`,
+  'i',
+);
+
+/**
+ * The countdown as text inside the modules that describe THIS listing's
+ * sale, for pages where no timer element matches. The 2026-09-04 deals fire
+ * extracted 328 item pages and got endsAt null on 326 of them — live
+ * auctions with 17–22 bids included, their bid counts read from the very
+ * buy box the countdown renders in — because the timer selectors name
+ * templates the common one no longer uses. The buy box is scanned first;
+ * failing that, the price/format modules, but never #mainContent, whose
+ * similar-items and promo strips say "ends in" about other things.
+ * NEEDS-LIVE-VERIFICATION: the common template's timer markup has not been
+ * captured; when it is, a selector goes into TIMER_SELECTORS and this scan
+ * stops being the path that finds it.
+ */
+const COUNTDOWN_TEXT_SCOPE_SELECTORS = FORMAT_SCOPE_SELECTORS.filter((selector) => selector !== '#mainContent');
+
+function scanCountdownText(document: Document): string | null {
+  for (const scope of [BUYBOX_SCOPE_SELECTORS, COUNTDOWN_TEXT_SCOPE_SELECTORS]) {
+    const text = scopedText(document, scope).replace(/[\u00a0\u202f]/g, ' ');
+    if (text.trim().length === 0) continue;
+    const match = COUNTDOWN_PHRASE_RE.exec(text);
+    if (match !== null) return match[0].replace(/\s+/g, ' ').trim();
+  }
+  return null;
+}
+
 function timerElements(document: Document): Element[] {
   const found: Element[] = [];
   for (const selector of TIMER_SELECTORS) {
@@ -498,7 +536,12 @@ function readEndTime(
   document: Document,
   jsonld: JsonLdProduct | null,
   observedAt: string,
-): { endsAt: ExtractionRecord['endsAt']; timeLeftText: ExtractionRecord['timeLeftText'] } {
+): {
+  endsAt: ExtractionRecord['endsAt'];
+  timeLeftText: ExtractionRecord['timeLeftText'];
+  /** True when the countdown came from a text scan, not a timer element. */
+  fromText: boolean;
+} {
   const timers = timerElements(document);
 
   let timeLeftText: ExtractionRecord['timeLeftText'] = null;
@@ -511,12 +554,23 @@ function readEndTime(
       break;
     }
   }
+  // No timer element on this template: the countdown, if the buy box
+  // renders one, is unlabelled text. Read from text it trusts itself less
+  // than a timer element and the end time derived from it less again.
+  let fromText = false;
+  if (timers.length === 0) {
+    const phrase = scanCountdownText(document);
+    if (phrase !== null) {
+      timeLeftText = { value: phrase, source: 'dom', confidence: 0.8 };
+      fromText = true;
+    }
+  }
 
   for (const el of timers) {
     for (const attribute of END_TIME_ATTRIBUTES) {
       const raw = el.getAttribute(attribute);
       const iso = raw === null ? null : (isoFromEpoch(raw) ?? isoFromTimestamp(raw));
-      if (iso !== null) return { endsAt: { value: iso, source: 'dom', confidence: 0.97 }, timeLeftText };
+      if (iso !== null) return { endsAt: { value: iso, source: 'dom', confidence: 0.97 }, timeLeftText, fromText };
     }
     let time: Element | null = null;
     try {
@@ -525,14 +579,16 @@ function readEndTime(
       time = null;
     }
     const iso = time === null ? null : isoFromTimestamp(time.getAttribute('datetime') ?? '');
-    if (iso !== null) return { endsAt: { value: iso, source: 'dom', confidence: 0.97 }, timeLeftText };
+    if (iso !== null) return { endsAt: { value: iso, source: 'dom', confidence: 0.97 }, timeLeftText, fromText };
   }
 
   // priceValidUntil is the closest thing schema.org gives an auction close,
   // and only counts when it carries a time of day.
   const validUntil = jsonld?.offers?.priceValidUntil;
   const fromJsonLd = validUntil === undefined ? null : isoFromTimestamp(validUntil);
-  if (fromJsonLd !== null) return { endsAt: { value: fromJsonLd, source: 'jsonld', confidence: 0.85 }, timeLeftText };
+  if (fromJsonLd !== null) {
+    return { endsAt: { value: fromJsonLd, source: 'jsonld', confidence: 0.85 }, timeLeftText, fromText };
+  }
 
   const delta = timeLeftText === null ? null : countdownMs(timeLeftText.value);
   if (delta !== null) {
@@ -540,12 +596,13 @@ function readEndTime(
       endsAt: {
         value: new Date(Date.parse(observedAt) + delta).toISOString(),
         source: 'computed',
-        confidence: 0.6,
+        confidence: fromText ? 0.5 : 0.6,
       },
       timeLeftText,
+      fromText,
     };
   }
-  return { endsAt: null, timeLeftText };
+  return { endsAt: null, timeLeftText, fromText };
 }
 
 /**
@@ -844,7 +901,12 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
   const offerAvailable = detectOfferAvailable(document);
 
   // --- close time, location, watchers, quantity ---
-  const { endsAt, timeLeftText } = readEndTime(document, jsonld, observedAt);
+  const { endsAt, timeLeftText, fromText: endTimeFromText } = readEndTime(document, jsonld, observedAt);
+  if (endTimeFromText && timeLeftText !== null) {
+    warnings.push(
+      `END_TIME_FROM_TEXT: no timer element matched this template; the countdown "${timeLeftText.value}" was read from the buy-box text and endsAt is computed from it (minute-wide at best). Capture the countdown element (browser_snapshot of the buy box) so the selector can be pinned.`,
+    );
+  }
   const { quantityAvailable, quantitySold } = readQuantities(document);
 
   // --- variants (msku) ---

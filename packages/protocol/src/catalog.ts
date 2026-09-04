@@ -189,7 +189,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'read',
     timeoutMs: SNAPSHOT_TIMEOUT_MS,
     description:
-      'Semantic page snapshot with stable elementRef values scoped to the returned pageRevision. Link-like nodes carry their resolved absolute href (null on everything else), so a listing grid on a host with no extractor can be traversed by browser_navigate instead of by clicking. Secret field values are redacted.',
+      'Semantic page snapshot with stable elementRef values scoped to the returned pageRevision. Link-like nodes carry their resolved absolute href (null on everything else), so a listing grid on a host with no extractor can be traversed by browser_navigate instead of by clicking. Visible text that carries a currency amount and sits outside every interactive element (a product page\'s own price, rendered as styled text) is returned as a role "text" node in document order, so a price never has to be read off a screenshot. Secret field values are redacted.',
     inputSchema: SnapshotInput,
     outputSchema: SnapshotOutput,
   },
