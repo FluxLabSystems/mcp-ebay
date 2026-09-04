@@ -90,7 +90,13 @@ export interface WatchlistPage {
 }
 
 export type OfferDirection = 'from_seller' | 'from_you' | 'unknown';
-export type OfferStatus = 'open' | 'accepted' | 'declined' | 'expired' | 'countered' | 'retracted' | 'unknown';
+/**
+ * 'none' is a row that carries only the listing's Best Offer control ("Make
+ * Best offer") and no offer wording at all: the listing accepts offers and
+ * nobody has made one. Observed 2026-09-04 on the live bids/offers page,
+ * where 25 such rows had their ask read as an offer amount.
+ */
+export type OfferStatus = 'open' | 'accepted' | 'declined' | 'expired' | 'countered' | 'retracted' | 'none' | 'unknown';
 
 export interface OfferCandidate {
   itemId: string;
@@ -118,6 +124,9 @@ export interface OffersPage {
   candidates: OfferCandidate[];
   pageTitle: string;
   signedIn: boolean | null;
+  /** The count the page states for its rows ("All (39)"); null when it states none. */
+  totalCount: number | null;
+  totalCountSource: string | null;
   hasNextPage: boolean;
   nextPageUrl: string | null;
   warnings: string[];
@@ -342,9 +351,15 @@ function detectSignedIn(document: Document, cardCount: number): boolean | null {
  * The count the page states for the list. Tab and heading labels carry it
  * as "All (312)"; older templates say "312 items". Read from the labels
  * first, because a card's own text can also say "3 items" about a lot.
+ *
+ * The "(N)" form outranks the "N items" form wherever both render: on the
+ * live 2026-09-04 watch list a heading reading "1 item" was taken as the
+ * list total over 34 reads of a 328-row list (it labels one row, not the
+ * list). The caller still checks the chosen count against the rows the
+ * page rendered — a stated total below them is no total at all.
  */
 function readTotalCount(document: Document): { count: number | null; source: string | null } {
-  const labelled: Array<{ count: number; source: string }> = [];
+  const labelled: Array<{ count: number; source: string; form: 'label' | 'items' }> = [];
   try {
     const labels = Array.from(
       document.querySelectorAll('h1, h2, [role="tab"], [role="tablist"] a, [role="tablist"] button, .tabs a, .tabs button, .m-tabs a, .filter-menu a, .filter-menu button'),
@@ -352,23 +367,44 @@ function readTotalCount(document: Document): { count: number | null; source: str
     for (const el of labels) {
       const text = normalizeText(el.textContent);
       if (text.length === 0 || text.length > 80) continue;
-      const match = COUNT_IN_LABEL_RE.exec(text) ?? COUNT_ITEMS_RE.exec(text);
+      const inLabel = COUNT_IN_LABEL_RE.exec(text);
+      const match = inLabel ?? COUNT_ITEMS_RE.exec(text);
       if (match === null) continue;
-      labelled.push({ count: Number.parseInt(match[1]!.replace(/,/g, ''), 10), source: text });
+      labelled.push({ count: Number.parseInt(match[1]!.replace(/,/g, ''), 10), source: text, form: inLabel !== null ? 'label' : 'items' });
     }
   } catch {
     // fall through
   }
-  if (labelled.length > 0) {
+  for (const form of ['label', 'items'] as const) {
+    const entries = labelled.filter((entry) => entry.form === form);
+    if (entries.length === 0) continue;
     // "All" is the whole list; failing a tab that says so, the largest label
     // is the widest filter the page offers.
-    const all = labelled.find((entry) => /^all\b/i.test(entry.source));
-    const chosen = all ?? labelled.reduce((best, entry) => (entry.count > best.count ? entry : best));
+    const all = entries.find((entry) => /^all\b/i.test(entry.source));
+    const chosen = all ?? entries.reduce((best, entry) => (entry.count > best.count ? entry : best));
     return { count: chosen.count, source: chosen.source };
   }
   const lead = bodyText(document, 4000);
   const match = COUNT_ITEMS_RE.exec(lead);
   if (match !== null) return { count: Number.parseInt(match[1]!.replace(/,/g, ''), 10), source: bounded(match[0], 40) };
+  return { count: null, source: null };
+}
+
+/**
+ * A stated total below the rows the page itself rendered cannot be the
+ * list's total; it is some other label ("1 item" on one row). Drop it and
+ * say so, rather than hand the audit a count it will compare rows against.
+ */
+function checkedTotalCount(
+  read: { count: number | null; source: string | null },
+  renderedRows: number,
+  prefix: string,
+  warnings: string[],
+): { count: number | null; source: string | null } {
+  if (read.count === null || read.count >= renderedRows) return read;
+  warnings.push(
+    `${prefix}: the page's count label "${read.source ?? ''}" reads ${read.count}, below the ${renderedRows} rows this page rendered, so it is not the list total and totalResults is null; audit rows read against a count the page has not stated, and file the label through the improvement queue with a browser_snapshot so the real list-count element can be pinned.`,
+  );
   return { count: null, source: null };
 }
 
@@ -548,7 +584,12 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
 
   const pageTitle = documentTitle(document);
   const signedIn = detectSignedIn(document, candidates.length);
-  const { count: totalCount, source: totalCountSource } = readTotalCount(document);
+  const { count: totalCount, source: totalCountSource } = checkedTotalCount(
+    readTotalCount(document),
+    candidates.length,
+    'WATCHLIST_TOTAL_REJECTED',
+    warnings,
+  );
   const pagination = readPagination(document, pageUrl, warnings);
 
   if (candidates.length === 0) {
@@ -606,11 +647,25 @@ const OFFER_STATUS_RES: ReadonlyArray<[OfferStatus, RegExp]> = [
  * "offer: US $165.00", "You offered US $950.00", "Counteroffer from seller:
  * C $2.75", "offer of $12". The who-sent-it phrase between the offer word
  * and the amount is skipped, never read here (direction has its own rules).
+ *
+ * "Best Offer" is the listing FEATURE, not an offer: "Make Best offer
+ * C $65.00" and "or Best Offer C $65.00" put the listing's ask right after
+ * the word, and on 2026-09-04 every one of 25 live rows had its ask read
+ * as offerPrice that way (proven against the item pages: offerPrice ==
+ * itemPrice to the cent). The lookbehind keeps the feature label out.
  */
 const OFFER_AMOUNT_RE = new RegExp(
-  String.raw`(?:counter\s*offer|offer(?:ed)?(?:\s+price)?)\s*(?:from\s+(?:the\s+)?seller|from\s+you|to\s+you|sent)?\s*[:\-–]?\s*(?:of\s+|for\s+|at\s+)?(${MONEY_SOURCE})`,
+  String.raw`(?<!\bbest\s)(?:counter\s*offer|offer(?:ed)?(?:\s+price)?)\s*(?:from\s+(?:the\s+)?seller|from\s+you|to\s+you|sent)?\s*[:\-–]?\s*(?:of\s+|for\s+|at\s+)?(${MONEY_SOURCE})`,
   'i',
 );
+/**
+ * The listing's Best Offer control as My eBay renders it: an invitation,
+ * not an offer. No leading word boundary: adjacent elements concatenate
+ * with no whitespace in textContent ("…shippingMake Best offer").
+ */
+const BEST_OFFER_CONTROL_RE = /make\s+(?:an?\s+)?(?:best\s+)?offer\b|\bor\s+best\s+offer\b|\bbest\s+offer\s+(?:available|accepted\s+here)\b/i;
+/** A row that holds an offer thread the template shows only as a link into it. */
+const OFFER_THREAD_RE = /view\s+offers?\s+details?\b|\boffer\s+details\b|view\s+offers?\b|respond\s+to\s+offer\b/i;
 const DURATION_SOURCE = String.raw`(?:\d+\s*(?:d(?:ays?)?|h(?:ours?|rs?)?|m(?:in(?:ute)?s?)?)\s*)+`;
 /**
  * "Expires in 1d 22h", "expires on Sep 5, 2026 at 3:00 pm", "1d 4h left".
@@ -659,6 +714,19 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
         break;
       }
     }
+    // A row that renders the Best Offer control and nothing about an offer
+    // — no amount, no sender, no thread link, no state — has no offer on
+    // it. The 2026-09-04 fires reported 25 such rows as received offers
+    // priced at the seller's own ask; 'none' is the honest state.
+    if (
+      offerStatus === 'unknown' &&
+      offerPrice === null &&
+      direction === 'unknown' &&
+      BEST_OFFER_CONTROL_RE.test(blob) &&
+      !OFFER_THREAD_RE.test(blob)
+    ) {
+      offerStatus = 'none';
+    }
     const expires = EXPIRES_RE.exec(blob);
     const expiresText = expires === null ? null : bounded(normalizeText(expires[1]!), 60);
     const { seller, sellerText } = sellerFrom(card);
@@ -684,6 +752,12 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
 
   const pageTitle = documentTitle(document);
   const signedIn = detectSignedIn(document, candidates.length);
+  const { count: totalCount, source: totalCountSource } = checkedTotalCount(
+    readTotalCount(document),
+    candidates.length,
+    'OFFERS_TOTAL_REJECTED',
+    warnings,
+  );
   const pagination = readPagination(document, pageUrl, warnings);
 
   if (candidates.length === 0) {
@@ -697,7 +771,20 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
       );
     }
   } else {
-    const unknownDirection = candidates.filter((row) => row.direction === 'unknown').length;
+    const noOffer = candidates.filter((row) => row.offerStatus === 'none');
+    if (noOffer.length > 0) {
+      warnings.push(
+        `OFFERS_NO_OFFER_THREAD: ${noOffer.length} of ${candidates.length} row(s) carry only the listing's Best Offer control ("Make Best offer") and no offer wording, so no offer exists on them (offerStatus none); the figure beside the control is the listing's ask (listPrice), never an offer amount.`,
+      );
+    }
+    const threadUnread = candidates.filter((row) => row.offerStatus !== 'none' && row.offerPrice === null && OFFER_THREAD_RE.test(row.snippet));
+    if (threadUnread.length > 0) {
+      const ids = threadUnread.slice(0, 10).map((row) => row.itemId).join(', ');
+      warnings.push(
+        `OFFERS_THREAD_UNREAD: ${threadUnread.length} row(s) link an offer thread ("View offer details") but this template renders neither its amount, direction nor expiry in the row (ids: ${ids}${threadUnread.length > 10 ? ', …' : ''}); open the thread by hand or take a browser_snapshot of one such row and file it under site-ebay extractor_defect offers-template-unpinned so the selectors can be pinned.`,
+      );
+    }
+    const unknownDirection = candidates.filter((row) => row.direction === 'unknown' && row.offerStatus !== 'none').length;
     if (unknownDirection > 0) {
       warnings.push(
         `OFFERS_DIRECTION_UNKNOWN: ${unknownDirection} of ${candidates.length} row(s) carry no seller-sent/you-sent wording; read each row's snippet before treating it as a received offer.`,
@@ -709,12 +796,19 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
       'OFFERS_FIELDS_NULL',
     );
     if (nullNote !== null) warnings.push(nullNote);
+    if (totalCount !== null && totalCount > candidates.length && !pagination.hasNextPage) {
+      warnings.push(
+        `OFFERS_PAGINATION_UNKNOWN: the page states ${totalCount} rows ("${totalCountSource ?? ''}") but rendered ${candidates.length} and no next-page control was recognised. The remaining rows may sit behind a page-size control at the foot of the list or a filter tab; report the read as ${candidates.length} of ${totalCount}, never as complete.`,
+      );
+    }
   }
 
   return {
     candidates,
     pageTitle,
     signedIn,
+    totalCount,
+    totalCountSource,
     hasNextPage: pagination.hasNextPage,
     nextPageUrl: pagination.nextPageUrl,
     warnings,

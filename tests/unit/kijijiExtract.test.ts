@@ -274,6 +274,85 @@ describe('VIP location rejects the neighbourhood blurb (G0)', () => {
   });
 });
 
+// 2026-09-04 00:16Z office fire (site-kijiji+extractor_defect+kijiji-sort-
+// param-suppresses-pagination-metadata-and-does-not-sort): the same City of
+// Toronto category page (c40l1700273, 1579 ads) read minutes apart returned
+// hasNextPage:true / nextPageUrl / totalResults 1579 without a query string
+// and hasNextPage:false / nextPageUrl:null / totalResults:null WITH
+// ?sort=dateDesc — the same shape a genuine last page emits, so the caller
+// could not tell "one page of 1579" from "all of them". The sorted page was
+// also not date-ordered: postedAt ran 2025-10-03, 2025-10-03, 2026-08-11,
+// 2026-09-03. Neither can be fixed from here (the site renders no count and
+// no pagination on a sorted URL), but both must be SAID.
+describe('sorted category pages (2026-09-04 office fire)', () => {
+  const observedAt = new Date('2026-09-04T00:10:00Z');
+  function categoryPage(postedTexts: readonly string[]): Document {
+    const cards = postedTexts
+      .map(
+        (posted, index) => `
+        <li data-testid="listing-card-${index}">
+          <a href="/v-commercial-office-space/city-of-toronto/office-${index}/17429729${String(index).padStart(2, '0')}">
+            <h3 data-testid="listing-title">Office ${index}</h3>
+          </a>
+          <div data-testid="listing-price">$1,${index}00.00</div>
+          <div data-testid="listing-details"><span data-testid="listing-location">City of Toronto</span> • ${posted}</div>
+        </li>`,
+      )
+      .join('');
+    const { document } = parseHTML(
+      `<html><head><title>Best Commercial &amp; Office Spaces For Rent in City of Toronto | Kijiji</title></head><body><ul>${cards}</ul></body></html>`,
+    );
+    return document as unknown as Document;
+  }
+
+  it('names the pagination metadata a sorted page withholds instead of reporting a last page silently', () => {
+    const page = extractSearchResults(
+      categoryPage(['2 hours ago', '3 hours ago', '5 hours ago']),
+      'https://www.kijiji.ca/b-commercial-office-space/city-of-toronto/c40l1700273?sort=dateDesc',
+      { observedAt },
+    );
+    expect(page.results).toHaveLength(3);
+    expect(page.totalResults).toBeNull();
+    expect(page.nextPageUrl).toBeNull();
+    expect(page.hasNextPage).toBe(false);
+    const absent = page.warnings.find((warning) => warning.startsWith('PAGINATION_METADATA_ABSENT'));
+    expect(absent).toBeDefined();
+    expect(absent).toMatch(/totalResults/);
+    expect(absent).toMatch(/nextPageUrl/);
+    expect(absent).toMatch(/hasNextPage:false/);
+    // The verified path is the same category without the sort parameter.
+    expect(absent).toContain('https://www.kijiji.ca/b-commercial-office-space/city-of-toronto/c40l1700273');
+    expect(absent).not.toMatch(/sort=dateDesc[^ ]* and extract/);
+  });
+
+  it('says when a sort=dateDesc page is not date-ordered', () => {
+    const page = extractSearchResults(
+      categoryPage(['11 months ago', '11 months ago', '3 weeks ago', '1 hour ago']),
+      'https://www.kijiji.ca/b-commercial-office-space/city-of-toronto/c40l1700273?sort=dateDesc',
+      { observedAt },
+    );
+    const notSorted = page.warnings.find((warning) => warning.startsWith('SORT_NOT_HONOURED'));
+    expect(notSorted).toBeDefined();
+    expect(notSorted).toMatch(/sort=dateDesc/);
+    expect(notSorted).toMatch(/newest/);
+  });
+
+  it('stays quiet on an unsorted page that states its count and on a sorted page that is in order', () => {
+    const counted = extractSearchResults(
+      loadFixture('search-results-count-only.html'),
+      'https://www.kijiji.ca/b-buy-sell/city-of-toronto/lego/c10l1700273',
+    );
+    expect(counted.warnings).toEqual([]);
+
+    const ordered = extractSearchResults(
+      categoryPage(['1 hour ago', '3 hours ago', '2 days ago']),
+      'https://www.kijiji.ca/b-commercial-office-space/city-of-toronto/c40l1700273?sort=dateDesc',
+      { observedAt },
+    );
+    expect(ordered.warnings.some((warning) => warning.startsWith('SORT_NOT_HONOURED'))).toBe(false);
+  });
+});
+
 // 2026-09-02 deals fire (site-kijiji+extractor_defect+b-keyword-path-silently-
 // drops-keyword): /b-lego/gta-greater-toronto-area/k0l1700273 came back as an
 // ordinary search page — totalResults 77, 40 candidates, no warning — and

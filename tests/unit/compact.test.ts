@@ -258,14 +258,53 @@ describe('search compaction', () => {
     expect(page2.candidates[0]!.itemId).toBe('226100000235');
   });
 
-  it('maxScanned lifts the 240-row scan cap for a caller that merged pages itself', () => {
+  // 2026-09-04 deals fire (gateway+connector_defect+search-offset-and-filters-
+  // apply-after-candidate-truncation): the signed-in watch list rendered 328
+  // rows on one page. search.offset 240 returned nothing and a price split
+  // (maxPrice 49.99 / minPrice 50) summed to exactly 240, because the scan
+  // cap sliced the page BEFORE the filters and the window ran — the last 88
+  // rows were unreachable through any argument of the call.
+  it('offset and include filters reach every row the page rendered, not only the first 240', () => {
+    const page = searchRecord(328);
+    const tail = compactSearchPage(page, SearchCompactionInput.parse({ limit: 240, offset: 240 })).record as {
+      matchedCount: number;
+      returnedCount: number;
+      hasMore: boolean;
+      candidates: { itemId: string }[];
+    };
+    expect(tail.matchedCount).toBe(328);
+    expect(tail.returnedCount).toBe(88);
+    expect(tail.hasMore).toBe(false);
+    expect(tail.candidates[0]!.itemId).toBe('226100000240');
+    expect(tail.candidates[87]!.itemId).toBe('226100000327');
+
+    const cheap = compactSearchPage(page, SearchCompactionInput.parse({ limit: 240, include: { maxPrice: 49.99 } })).record as {
+      matchedCount: number;
+    };
+    const dear = compactSearchPage(page, SearchCompactionInput.parse({ limit: 240, include: { minPrice: 50 } })).record as {
+      matchedCount: number;
+    };
+    expect(cheap.matchedCount + dear.matchedCount).toBe(328);
+    expect(cheap.matchedCount).toBe(40);
+  });
+
+  it('a page past the hard scan ceiling is truncated, and the warning says offset and filters cannot reach past it', () => {
+    const huge = searchRecord(1200);
+    const capped = compactSearchPage(huge, SearchCompactionInput.parse({ limit: 240, offset: 1000 }));
+    expect(capped.record).toMatchObject({ matchedCount: 1000, returnedCount: 0, hasMore: false });
+    const truncated = capped.warnings.find((warning) => warning.startsWith('CANDIDATES_TRUNCATED'));
+    expect(truncated).toBeDefined();
+    expect(truncated).toMatch(/1200 candidates/);
+    expect(truncated).toMatch(/search\.offset and search\.include cannot reach/);
+  });
+
+  it('maxScanned still bounds the scan for a caller that asks for a smaller one', () => {
     // The gateway's ebay_api_search merges two vendor pages (buy-it-now rows
-    // first, auction-only rows last) before compacting. Under the cap the
-    // tail was never scanned: a format filter matched no auction, and the
-    // window past row 240 came back empty with hasMore false.
+    // first, auction-only rows last) before compacting and passes the merged
+    // row count; the option stays honoured in both directions.
     const merged = searchRecord(300);
     const tail = SearchCompactionInput.parse({ limit: 240, offset: 240 });
-    const capped = compactSearchPage(merged, tail);
+    const capped = compactSearchPage(merged, { ...tail, maxScanned: 240 });
     expect(capped.record).toMatchObject({ matchedCount: 240, returnedCount: 0, hasMore: false });
     expect(capped.warnings.some((warning) => warning.startsWith('CANDIDATES_TRUNCATED'))).toBe(true);
 
