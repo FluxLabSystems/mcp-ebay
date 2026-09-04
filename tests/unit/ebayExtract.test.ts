@@ -393,6 +393,54 @@ describe('item location rejects the delivery-estimate disclaimer (C3)', () => {
   });
 });
 
+// 2026-09-04 deals fire (site-ebay+extractor_defect+shipping-currency-
+// mislabelled-on-foreign-quotes): 293552114051 returned shipping {value 5,
+// currency 'CAD'} while the cell read "AU $5.00 (approx C $4.97)"; GBP quotes
+// (398228632090, 389699863267) did the same. A landed figure built from
+// those fields was wrong by the FX rate, and only observedText showed it.
+describe('shipping quoted in a foreign currency (2026-09-04)', () => {
+  function pageWithShipping(cell: string): Document {
+    return parseHTML(
+      `<h1 class="x-item-title__mainTitle">LEGO Bulk Lot</h1>
+       <div class="x-price-primary">C $30.00</div>
+       <div class="ux-labels-values--shipping">
+         <div class="ux-labels-values__values">${cell}</div>
+       </div>`,
+    ).document as unknown as Document;
+  }
+
+  it('records the page\'s own CAD conversion, never the foreign amount under a CAD label', () => {
+    const { record, warnings } = extractListing(
+      pageWithShipping('AU $5.00 (approx C $4.97) Australia Post International Standard'),
+      'https://www.ebay.ca/itm/293552114051',
+    );
+    expect(record.shipping?.value).toBe(4.97);
+    expect(record.shipping?.currency).toBe('CAD');
+    expect(record.shipping?.observedText).toContain('AU $5.00');
+    expect(warnings.some((w) => w.startsWith('SHIPPING_CONVERTED_BY_PAGE') && w.includes('AUD 5'))).toBe(true);
+  });
+
+  it('keeps the quoted currency when the page renders no conversion', () => {
+    const { record, warnings } = extractListing(
+      pageWithShipping('GBP 33.05 Royal Mail International Tracked'),
+      'https://www.ebay.ca/itm/398228632090',
+    );
+    expect(record.shipping?.value).toBe(33.05);
+    expect(record.shipping?.currency).toBe('GBP');
+    expect(warnings.some((w) => w.startsWith('SHIPPING_FOREIGN_CURRENCY') && w.includes('GBP'))).toBe(true);
+  });
+
+  it('leaves a domestic quote untouched and unwarned', () => {
+    const { record, warnings } = extractListing(
+      pageWithShipping('C $18.00 Standard Shipping'),
+      'https://www.ebay.ca/itm/128056737473',
+    );
+    expect(record.shipping?.value).toBe(18);
+    expect(record.shipping?.currency).toBe('CAD');
+    expect(warnings.some((w) => w.startsWith('SHIPPING_CONVERTED_BY_PAGE') || w.startsWith('SHIPPING_FOREIGN_CURRENCY'))).toBe(false);
+  });
+});
+
 // 2026-09-04 deals fire (site-ebay+extractor_defect+item-endsat-null-on-live-
 // auctions): endsAt came back null on 326 of 328 item pages, live auctions
 // with 17–22 bids included, and timeLeftText was null beside it — so no

@@ -67,6 +67,46 @@ describe('money parsing (§20.3)', () => {
     });
   });
 
+  // 2026-09-04 deals fire (site-ebay+extractor_defect+shipping-currency-
+  // mislabelled-on-foreign-quotes): an Australian seller's "AU $5.00 (approx
+  // C $4.97)" shipping cell came back {value 5, currency 'CAD'} — the bare
+  // "$" alternative matched inside "AU $" and took the .ca default, so the
+  // foreign figure wore the domestic label and landed-cost maths was off by
+  // the FX rate. GBP quotes ("GBP 33.05 (approx C $61.66)") carry no "$" at
+  // all, so the only match was the conversion, silently.
+  describe('foreign quotes keep their currency and surface the page conversion', () => {
+    it('reads AU $ as AUD and carries the approx CAD conversion beside it', () => {
+      expect(parseMoney('AU $5.00 (approx C $4.97)')).toEqual({
+        value: 5,
+        currency: 'AUD',
+        approximate: false,
+        ambiguousFree: false,
+        conversion: { value: 4.97, currency: 'CAD' },
+      });
+    });
+    it('reads an ISO-coded quote (GBP, EUR) as that currency', () => {
+      expect(parseMoney('GBP 33.05 (approx C $61.66)')).toEqual({
+        value: 33.05,
+        currency: 'GBP',
+        approximate: false,
+        ambiguousFree: false,
+        conversion: { value: 61.66, currency: 'CAD' },
+      });
+      expect(parseMoney('£22.77')).toMatchObject({ value: 22.77, currency: 'GBP' });
+      expect(parseMoney('EUR 10.00')).toMatchObject({ value: 10, currency: 'EUR' });
+      expect(parseMoney('AU $11.00')).toMatchObject({ value: 11, currency: 'AUD' });
+      expect(parseMoney('AU $11.00')).not.toHaveProperty('conversion');
+    });
+    it('does not read a three-letter word before a number as a currency code', () => {
+      // "LOT 5" is a quantity; only ISO codes eBay renders count.
+      expect(parseMoney('LOT 5 C $3.00')).toMatchObject({ value: 3, currency: 'CAD' });
+    });
+    it('leaves domestic amounts exactly as before', () => {
+      expect(parseMoney('C $35.00')).toEqual({ value: 35, currency: 'CAD', approximate: false, ambiguousFree: false });
+      expect(parseMoney('$10.99')).toEqual({ value: 10.99, currency: 'CAD', approximate: false, ambiguousFree: false });
+    });
+  });
+
   it('still takes free when the word actually modifies shipping, and flags a mixed cell', () => {
     expect(parseMoney('Free standard shipping')).toEqual({
       value: 0,

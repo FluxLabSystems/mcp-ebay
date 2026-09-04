@@ -435,7 +435,12 @@ const QUANTIFIER_CHARS = new Set(['*', '+', '?', '{']);
  * would miss. Quantifiers on a single atom or character class (`.*`,
  * `\d+`, `[a-z]{2,4}`) stay allowed: those are what real filters use.
  */
-export function screenTitleRegex(pattern: string): string | null {
+export function screenTitleRegex(rawPattern: string): string | null {
+  const flagGroup = INLINE_FLAG_GROUP_RE.exec(rawPattern);
+  if (flagGroup !== null && flagGroup[1] !== 'i') {
+    return `titleRegex is always case-insensitive and JavaScript has no inline flag groups: remove the leading (?${flagGroup[1]}) and pass the bare pattern`;
+  }
+  const pattern = stripInlineCaseFlag(rawPattern);
   if (pattern.length === 0) return 'pattern is empty';
   if (pattern.length > SEARCH_TITLE_REGEX_MAX_LENGTH) {
     return `pattern exceeds ${SEARCH_TITLE_REGEX_MAX_LENGTH} characters`;
@@ -539,7 +544,24 @@ function containsQuantifierOrAlternation(body: string): boolean {
 export function compileTitleRegex(pattern: string): RegExp {
   const reason = screenTitleRegex(pattern);
   if (reason !== null) throw new Error(`titleRegex rejected: ${reason}`);
-  return new RegExp(pattern, 'i');
+  return new RegExp(stripInlineCaseFlag(pattern), 'i');
+}
+
+/**
+ * A leading inline flag group, `(?i)` / `(?im)` / `(?s)`: valid in Python,
+ * Go and PCRE, an "Invalid group" in JavaScript. Callers write `(?i)` by
+ * reflex because nothing told them the filter is already case-insensitive
+ * (2026-09-02 and 2026-09-04 deals fires, two wasted calls each). `(?i)`
+ * is redundant here rather than wrong, so it is stripped before screening
+ * and compiling; any other flag would change the match and is refused by
+ * name.
+ */
+const INLINE_FLAG_GROUP_RE = /^\(\?([a-zA-Z-]+)\)/;
+
+/** The pattern without a leading `(?i)`; anything else is returned as is. */
+export function stripInlineCaseFlag(pattern: string): string {
+  const flagGroup = INLINE_FLAG_GROUP_RE.exec(pattern);
+  return flagGroup !== null && flagGroup[1] === 'i' ? pattern.slice(flagGroup[0].length) : pattern;
 }
 
 /**
@@ -617,7 +639,7 @@ function searchCompactionInput(defaultLimit: number) {
           });
         } else {
           try {
-            new RegExp(include.titleRegex, 'i');
+            new RegExp(stripInlineCaseFlag(include.titleRegex), 'i');
           } catch (err) {
             ctx.issues.push({
               code: 'custom',
