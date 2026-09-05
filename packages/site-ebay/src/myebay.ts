@@ -39,9 +39,12 @@ export interface MyEbayExtractContext {
 }
 
 /**
- * What the card says about the listing's state. 'active' is inferred from
- * a price or countdown on a card with no ended/sold marker; 'unknown' is a
- * card that shows neither, which the item page must settle.
+ * What the card says about the listing's state. 'active' is read only from
+ * a live countdown on a card with no ended/sold marker; 'unknown' is a card
+ * that states nothing, which the item page must settle. A price alone is
+ * NOT a tell: on the 2026-09-04 ?page=99 overflow render every card was
+ * priced and 81 of the 118 validated had ended, so reading price as
+ * 'active' manufactured 83 phantom reactivations in one walk.
  */
 export type WatchlistItemStatus = 'active' | 'ended' | 'sold' | 'unknown';
 
@@ -102,7 +105,15 @@ export interface OfferCandidate {
   itemId: string;
   url: string;
   title: string | null;
-  /** The offered amount; null when the row shows no readable offer figure. */
+  /**
+   * The offered amount; null when the row shows no readable offer figure.
+   * On a row that is an offer (a status prefix or sender wording) and
+   * carries two amounts, this is the LOWER one: an offer is never above the
+   * ask. Proven 2026-09-04 against three item pages, where the higher
+   * figure on every row was the listing's own ask (267676402924 C $84.99 /
+   * C $72.24, 168360507031, 128028063251; 25 of 25 rows the same way) —
+   * the page-level OFFERS_AMOUNTS_ORDERED_BY_VALUE names the rows read so.
+   */
   offerPrice: { value: number; currency: string } | null;
   /** The listing's asking price when the row shows a second figure; null otherwise. */
   listPrice: { value: number; currency: string } | null;
@@ -205,7 +216,12 @@ const SIGN_IN_SELECTOR = [
 const TIME_LEFT_RE =
   /(?:time\s+left:?\s*)?(?:(?:\d+\s*d(?:ays?)?\s*)?(?:\d+\s*h(?:ours?|rs?)?\s*)?(?:\d+\s*m(?:in(?:ute)?s?)?\s*)?(?:\d+\s*s(?:ec(?:ond)?s?)?\s*)?\bleft\b|\bends?\s+(?:in|today|tonight|soon)\b[^|•·\n]{0,40}|\bending\s+(?:today|soon)\b[^|•·\n]{0,40})/i;
 const ENDED_RE = /\b(?:listing\s+(?:has\s+)?ended|this\s+listing\s+ended|item\s+(?:has\s+)?ended|\bended\b|no\s+longer\s+available|bidding\s+(?:has\s+)?ended|out\s+of\s+stock)\b/i;
-const SOLD_RE = /\b(?:this\s+item\s+sold|item\s+sold|sold\s+out|\bsold\b(?!\s+by))/i;
+/**
+ * A sold STATE, never a sold COUNT: "12 sold" / "1,204+ sold" is the
+ * quantity badge on a live multi-quantity listing (137295398934 read 'sold'
+ * from it on 2026-09-04 while its item page was live at C $35.00).
+ */
+const SOLD_RE = /\b(?:this\s+item\s+sold|item\s+sold|sold\s+out|(?<![\d,+]\s?)\bsold\b(?!\s+by))/i;
 const MONEY_SOURCE = String.raw`(?:C\s?\$|US\s?\$|CA\s?\$|\$)\s?\d[\d,]*(?:\.\d{2})?`;
 /**
  * A seller named by a label. The colon form ("Seller: name (883) 99%") and
@@ -508,10 +524,10 @@ function readTimeLeft(card: Element): string | null {
   return text.length > 0 && text.length <= 80 ? text : null;
 }
 
-function readStatus(cardBlob: string, hasPrice: boolean, timeLeft: string | null): WatchlistItemStatus {
+function readStatus(cardBlob: string, timeLeft: string | null): WatchlistItemStatus {
   if (SOLD_RE.test(cardBlob)) return 'sold';
   if (ENDED_RE.test(cardBlob)) return 'ended';
-  if (hasPrice || timeLeft !== null) return 'active';
+  if (timeLeft !== null) return 'active';
   return 'unknown';
 }
 
@@ -551,9 +567,14 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
     const priceText = cardText(card, MYEBAY_PRICE_SELECTOR);
     const elementPrice = money(priceText);
     const snippetPrice = elementPrice ?? firstMoneyIn(blob);
-    const { sellingFormat, bidCount } = detectCardFormat(card, rawTitle, snippetPrice !== null);
+    // A watch-list card that states no format is 'unknown': the overflow
+    // render carries no format element, and inferring fixed_price from the
+    // price labelled 44 live auctions that way on 2026-09-04.
+    const { sellingFormat, bidCount } = detectCardFormat(card, rawTitle, snippetPrice !== null, {
+      inferFixedPriceFromPrice: false,
+    });
     const timeLeftText = readTimeLeft(card);
-    const status = readStatus(blob, snippetPrice !== null, timeLeftText);
+    const status = readStatus(blob, timeLeftText);
     const { seller, sellerText } = sellerFrom(card);
     const shipping = cardText(card, MYEBAY_SHIPPING_SELECTOR);
     const shippingMatch = /((?:free\s+(?:shipping|delivery)|(?:\+\s*)?(?:C\s?\$|US\s?\$|\$)\s?\d[\d,]*(?:\.\d{2})?\s*(?:shipping|delivery|postage)))/i.exec(blob);
@@ -605,6 +626,20 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
       );
     }
   } else {
+    // Say how much of the page's state and format is unstated, so a walk
+    // diffs status and format from item pages, never from these cards.
+    const unstatedStatus = candidates.filter((row) => row.watchlistStatus === 'unknown').length;
+    if (unstatedStatus > 0) {
+      warnings.push(
+        `WATCHLIST_STATUS_UNSTATED: ${unstatedStatus} of ${candidates.length} row(s) carry neither an ended/sold badge nor a live countdown, so watchlistStatus is unknown on them — a price is not a status; the item page decides whether each is live, and a diff must never read these rows as active or as a status change.`,
+      );
+    }
+    const unstatedFormat = candidates.filter((row) => row.sellingFormat === 'unknown').length;
+    if (unstatedFormat > 0) {
+      warnings.push(
+        `WATCHLIST_FORMAT_UNSTATED: ${unstatedFormat} of ${candidates.length} row(s) state neither bids nor Buy It Now, so sellingFormat is unknown and bidCount null on them (this template shows no format element; live auctions with bids render exactly like fixed-price rows here) — read format and bids from the item page.`,
+      );
+    }
     const nullNote = nullCountsWarning(
       candidates as unknown as Record<string, unknown>[],
       ['title', 'snippetPrice', 'timeLeftText', 'seller', 'sellerText', 'shippingSnippetText'],
@@ -635,6 +670,50 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
 const OFFER_FROM_SELLER_RE =
   /\b(?:seller\s+sent|offer\s+from\s+(?:the\s+)?seller|seller'?s?\s+(?:counter)?offer|counter\s*offer\s+from\s+(?:the\s+)?seller|you\s+(?:received|got)\s+an?\s+offer|new\s+offer\s+from)\b/i;
 const OFFER_FROM_YOU_RE = /\b(?:you\s+(?:offered|sent|made)|your\s+offer|offer\s+sent|you\s+countered)\b/i;
+/**
+ * The status token the current bids/offers template puts at the head of
+ * every offer row ("OFFER RECEIVED", "OFFER EXPIRED" — 25 of 31 live rows on
+ * 2026-09-04, none of which carried any other direction or state wording).
+ * Read only at the start of the row's text, where the template renders it;
+ * a title is free to contain the words.
+ */
+const OFFER_PREFIX_RE = /^\s*offer\s+(received|expired|accepted|declined|sent|countered|retracted|withdrawn)\b/i;
+const PREFIX_STATUS: Readonly<Record<string, OfferStatus>> = {
+  received: 'open',
+  expired: 'expired',
+  accepted: 'accepted',
+  declined: 'declined',
+  sent: 'open',
+  countered: 'countered',
+  retracted: 'retracted',
+  withdrawn: 'retracted',
+};
+/**
+ * The operator's own auction bid, which the bids/offers page lists beside
+ * the offers ("Your max bid: US $41.00"; 6 of 31 rows on 2026-09-04, exactly
+ * the rows with no offer prefix and no offer figure). A bid is not an offer.
+ */
+const BID_ROW_RE = /\byour\s+max(?:imum)?\s+bid\b/i;
+/** A shipping figure on the row, never an offer or an ask. */
+const ROW_SHIPPING_FIGURE_RE = new RegExp(String.raw`(?:\+\s*)?${MONEY_SOURCE}\s*(?:shipping|delivery|postage)\b`, 'gi');
+const MONEY_GLOBAL_RE = new RegExp(MONEY_SOURCE, 'g');
+
+/** Every distinct non-shipping amount on the row, in order. */
+function rowFigures(blob: string): Array<{ value: number; currency: string }> {
+  const figures: Array<{ value: number; currency: string }> = [];
+  const seen = new Set<string>();
+  const text = blob.replace(ROW_SHIPPING_FIGURE_RE, ' ');
+  for (const match of text.matchAll(MONEY_GLOBAL_RE)) {
+    const parsed = money(match[0]);
+    if (parsed === null) continue;
+    const key = `${parsed.currency} ${parsed.value}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    figures.push(parsed);
+    if (figures.length === 4) break;
+  }
+  return figures;
+}
 const OFFER_STATUS_RES: ReadonlyArray<[OfferStatus, RegExp]> = [
   ['accepted', /\baccepted\b/i],
   ['declined', /\b(?:declined|rejected)\b/i],
@@ -687,6 +766,8 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
   const warnings: string[] = [];
   const observedAt = (context.observedAt ?? new Date()).toISOString();
   const candidates: OfferCandidate[] = [];
+  const bidRowIds: string[] = [];
+  let orderedByValue = 0;
 
   for (const { anchor, itemId, url } of itemAnchors(document, pageUrl)) {
     const card = myEbayCardRoot(anchor);
@@ -695,24 +776,40 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
     const title = rawTitle === null ? null : cleanTitle(rawTitle);
     const blob = normalizeText(card.textContent);
     const amount = OFFER_AMOUNT_RE.exec(blob);
-    const offerPrice = amount === null ? null : money(amount[1]!);
+    let offerPrice = amount === null ? null : money(amount[1]!);
     // The listing's own price is whatever other figure the row renders.
     let listPrice: { value: number; currency: string } | null = null;
     const rest = amount === null ? blob : blob.replace(amount[0], ' ');
     const priceCell = cardText(card, MYEBAY_PRICE_SELECTOR);
     listPrice = money(priceCell) ?? firstMoneyIn(rest);
-    if (offerPrice === null && listPrice !== null && priceCell === null) {
-      // Only one figure on the row and no labelled offer: it is the offer
-      // itself on an offers page more often than a list price, but the
-      // routine must not price a deal from it either way.
-    }
-    const direction: OfferDirection = OFFER_FROM_SELLER_RE.test(blob) ? 'from_seller' : OFFER_FROM_YOU_RE.test(blob) ? 'from_you' : 'unknown';
+    const prefix = OFFER_PREFIX_RE.exec(blob)?.[1]?.toLowerCase() ?? null;
+    let direction: OfferDirection = OFFER_FROM_SELLER_RE.test(blob) ? 'from_seller' : OFFER_FROM_YOU_RE.test(blob) ? 'from_you' : 'unknown';
     let offerStatus: OfferStatus = 'unknown';
     for (const [status, re] of OFFER_STATUS_RES) {
       if (re.test(blob)) {
         offerStatus = status;
         break;
       }
+    }
+    if (prefix !== null) {
+      // The template's own status token outranks the free-text guesses.
+      offerStatus = PREFIX_STATUS[prefix] ?? offerStatus;
+      if (direction === 'unknown') {
+        // "OFFER RECEIVED" is a seller's offer to the operator by
+        // definition. "OFFER EXPIRED" was the seller's too on every one of
+        // the 19 live rows (the operator's own lapsed offers say "You
+        // offered", which the wording check above reads first). "OFFER
+        // SENT" is the operator's. Anything else keeps its direction unknown.
+        direction = prefix === 'sent' ? 'from_you' : prefix === 'received' || prefix === 'expired' ? 'from_seller' : 'unknown';
+      }
+    }
+    const isBidRow = prefix === null && offerPrice === null && direction === 'unknown' && BID_ROW_RE.test(blob);
+    if (isBidRow) {
+      // The operator's own auction bid: no offer exists on the row, and
+      // none of its figures (the max bid, the current price) is an offer.
+      direction = 'from_you';
+      offerStatus = 'none';
+      bidRowIds.push(itemId);
     }
     // A row that renders the Best Offer control and nothing about an offer
     // — no amount, no sender, no thread link, no state — has no offer on
@@ -726,6 +823,29 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
       !OFFER_THREAD_RE.test(blob)
     ) {
       offerStatus = 'none';
+    }
+    // On an offer row the offer is never the higher of two figures. The
+    // 2026-09-04 template labels neither amount ("OFFER RECEIVED … C $72.24
+    // … C $84.99 Make offer"), and an older reading took the ask for the
+    // offer on 25 of 25 rows; whichever way the figures are labelled or
+    // unlabelled, the lower is the offer and the higher the ask.
+    const isOfferRow = !isBidRow && (prefix !== null || direction !== 'unknown');
+    if (isOfferRow) {
+      const figures = rowFigures(blob);
+      if (offerPrice === null && figures.length === 2 && figures[0]!.currency === figures[1]!.currency) {
+        const [low, high] = figures[0]!.value <= figures[1]!.value ? [figures[0]!, figures[1]!] : [figures[1]!, figures[0]!];
+        offerPrice = low;
+        listPrice = high;
+        orderedByValue += 1;
+      } else if (
+        offerPrice !== null &&
+        listPrice !== null &&
+        offerPrice.currency === listPrice.currency &&
+        offerPrice.value > listPrice.value
+      ) {
+        [offerPrice, listPrice] = [listPrice, offerPrice];
+        orderedByValue += 1;
+      }
     }
     const expires = EXPIRES_RE.exec(blob);
     const expiresText = expires === null ? null : bounded(normalizeText(expires[1]!), 60);
@@ -771,7 +891,19 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
       );
     }
   } else {
-    const noOffer = candidates.filter((row) => row.offerStatus === 'none');
+    if (bidRowIds.length > 0) {
+      const ids = bidRowIds.slice(0, 10).join(', ');
+      warnings.push(
+        `OFFERS_BID_ROWS: ${bidRowIds.length} of ${candidates.length} row(s) are the operator's own auction bids ("Your max bid"; ids: ${ids}${bidRowIds.length > 10 ? ', …' : ''}) — not offers: direction from_you, offerStatus none, and no figure on them is an offer amount.`,
+      );
+    }
+    if (orderedByValue > 0) {
+      warnings.push(
+        `OFFERS_AMOUNTS_ORDERED_BY_VALUE: ${orderedByValue} of ${candidates.length} row(s) carry two amounts with no wording that labels the offer, or label the higher one as the offer; an offer is never above the ask, so on them offerPrice is the lower figure and listPrice the higher (proven 2026-09-04 against three item pages, where the higher figure was the listing's own ask).`,
+      );
+    }
+    const bidRows = new Set(bidRowIds);
+    const noOffer = candidates.filter((row) => row.offerStatus === 'none' && !bidRows.has(row.itemId));
     if (noOffer.length > 0) {
       warnings.push(
         `OFFERS_NO_OFFER_THREAD: ${noOffer.length} of ${candidates.length} row(s) carry only the listing's Best Offer control ("Make Best offer") and no offer wording, so no offer exists on them (offerStatus none); the figure beside the control is the listing's ask (listPrice), never an offer amount.`,

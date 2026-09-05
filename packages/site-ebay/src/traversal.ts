@@ -243,11 +243,26 @@ function cardFormatText(card: Element, rawTitle: string | null): string {
   return rawTitle === null ? whole : whole.split(rawTitle).join(' ');
 }
 
+export interface CardFormatOptions {
+  /**
+   * Whether a priced card with no auction vocabulary is read as
+   * fixed_price. True for search and store cards, where the 2026-09-01 run
+   * proved the inference against item pages. False for the My eBay watch
+   * list: its ?page=99 overflow render (2026-09-04) carried no format
+   * element on any of 346 cards, and the inference labelled 44 live
+   * auctions with bids as fixed_price — there a card that states nothing
+   * is 'unknown'.
+   */
+  inferFixedPriceFromPrice?: boolean;
+}
+
 export function detectCardFormat(
   card: Element,
   rawTitle: string | null,
   hasSnippetPrice: boolean,
+  options: CardFormatOptions = {},
 ): { sellingFormat: SellingFormatKind; bidCount: number | null } {
+  const inferFixedPrice = options.inferFixedPriceFromPrice ?? true;
   const blob = cardFormatText(card, rawTitle);
   const bidText = cardText(card, CARD_BID_SELECTOR);
   const bidMatch = (bidText === null ? null : CARD_BIDS_RE.exec(bidText)) ?? CARD_BIDS_RE.exec(blob);
@@ -267,6 +282,7 @@ export function detectCardFormat(
   // unknown costs a page open just to learn what the card already said.
   const whole = normalizeText(card.textContent);
   if (
+    inferFixedPrice &&
     hasSnippetPrice &&
     !CARD_BIDS_RE.test(whole) &&
     !CARD_AUCTION_RE.test(whole) &&

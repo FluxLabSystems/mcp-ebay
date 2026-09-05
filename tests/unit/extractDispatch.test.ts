@@ -175,7 +175,9 @@ describe('browser_extract dispatches by page kind instead of refusing', () => {
     expect(withOffer.url).toBe('https://www.ebay.com/itm/127905836341');
     // The offer sentence stops at the card's separator; the expiry is its own field on the offers page.
     expect(withOffer.sellerOffer).toEqual({ text: 'Seller sent you an offer: US $165.00', price: { value: 165, currency: 'USD' } });
-    expect(withOffer.watchlistStatus).toBe('active');
+    // Price plus a Best Offer control, no countdown: the card states no
+    // status (2026-09-04 overflow render), so the walk reads none from it.
+    expect(withOffer.watchlistStatus).toBe('unknown');
     const auction = record.candidates.find((row) => row.itemId === '198589141532')!;
     expect(auction.timeLeftText).toBe('1d 04h 12m left');
     expect(typeof auction.endsAt).toBe('string');
@@ -367,6 +369,83 @@ describe('browser_extract dispatches by page kind instead of refusing', () => {
     const unverified = parsed.warnings.find((warning) => warning.startsWith('SELLER_PAGE_UNVERIFIED'));
     expect(unverified).toBeDefined();
     expect(unverified).toContain('browser_snapshot');
+  });
+
+  // 2026-09-04 20:00Z deals fire (site-kijiji+extractor_defect+seller-
+  // profile-page-renders-no-listings-at-domcontentloaded): the first live
+  // read of /o-profile/1046282996/1 redirected to /o-profile/1046282996/
+  // listings/1 and returned candidateCount 0 — the bounded snapshot showed
+  // 41 nodes of site chrome and no ad link, because the listings container
+  // is client-rendered and was not in the DOM when the page was captured
+  // at domcontentloaded. Ground truth: the three ad records that led there
+  // state sellerListingCount 26. The seller page kind now waits, bounded,
+  // for the first ad link before it reads the page, and says it did.
+  describe('a Kijiji seller page whose listings render after domcontentloaded', () => {
+    const chromeOnly = `<html><head><title>Kijiji</title></head><body><header><input placeholder="Search"><button>Search</button></header>
+      <main id="listings"></main><footer><a href="/about">About</a></footer></body></html>`;
+    const hydrated = `<html><head><title>Kijiji</title></head><body><header><input placeholder="Search"><button>Search</button></header>
+      <main id="listings"><ul>
+        <li><a href="/v-other/city-of-toronto/apc-42u-netshelter-rack-cabinet/1741647474">APC 42U NetShelter rack cabinet</a><span>$300.00</span></li>
+        <li><a href="/v-other/city-of-toronto/ibm-42u-server-rack/1741647620">IBM 42U server rack</a><span>$300.00</span></li>
+        <li><a href="/v-other/city-of-toronto/36u-rack-cabinet/1741647824">36U rack cabinet</a><span>$220.00</span></li>
+      </ul></main><footer><a href="/about">About</a></footer></body></html>`;
+
+    function hydratingSession(pageUrl: string, waitOutcome: 'appears' | 'never'): { session: BrowserSessionRuntime; waits: string[] } {
+      const waits: string[] = [];
+      let html = chromeOnly;
+      const page = {
+        url: () => pageUrl,
+        content: async () => html,
+        waitForSelector: async (selector: string) => {
+          waits.push(selector);
+          if (waitOutcome === 'never') throw new Error('Timeout 4000ms exceeded');
+          html = hydrated;
+          return {};
+        },
+      };
+      const tab = { page, revision: 7 };
+      const session = {
+        policy: { profile: mergeSiteProfiles([ebaySiteProfile, kijijiSiteProfile]) },
+        enqueue: (fn: () => Promise<unknown>) => fn(),
+        getTab: () => tab,
+      } as unknown as BrowserSessionRuntime;
+      return { session, waits };
+    }
+
+    it('waits for the first ad link, re-reads the page and reports the wait', async () => {
+      const { session, waits } = hydratingSession('https://www.kijiji.ca/o-profile/1046282996/listings/1', 'appears');
+      const outcome = await executeCommand(hostFor(session), extractEnvelope('kijiji.ca.v1'));
+      const parsed = ExtractOutput.parse(outcome.result);
+      const record = parsed.record as { pageKind: string; candidateCount: number; candidates: { adId: string }[]; nextPageUrl: string | null };
+      expect(record.pageKind).toBe('seller');
+      expect(record.candidateCount).toBe(3);
+      expect(record.candidates.map((row) => row.adId)).toEqual(['1741647474', '1741647620', '1741647824']);
+      expect(waits).toEqual(['a[href*="/v-"]']);
+      const waited = parsed.warnings.find((warning) => warning.startsWith('LISTINGS_HYDRATED_AFTER_WAIT'));
+      expect(waited).toBeDefined();
+      expect(waited).toContain('domcontentloaded');
+      expect(parsed.warnings.some((warning) => warning.startsWith('NO_LISTING_CANDIDATES'))).toBe(false);
+    });
+
+    it('says when the wait expired with no ad link, and still reports the empty page', async () => {
+      const { session } = hydratingSession('https://www.kijiji.ca/o-profile/1046282996/listings/1', 'never');
+      const outcome = await executeCommand(hostFor(session), extractEnvelope('kijiji.ca.v1'));
+      const parsed = ExtractOutput.parse(outcome.result);
+      const record = parsed.record as { candidateCount: number };
+      expect(record.candidateCount).toBe(0);
+      const expired = parsed.warnings.find((warning) => warning.startsWith('LISTINGS_NOT_HYDRATED'));
+      expect(expired).toBeDefined();
+      expect(expired).toContain('browser_snapshot');
+      expect(parsed.warnings.some((warning) => warning.startsWith('NO_LISTING_CANDIDATES'))).toBe(true);
+    });
+
+    it('does not wait on a search page that rendered its cards', async () => {
+      const { session, waits } = hydratingSession('https://www.kijiji.ca/b-buy-sell/city-of-toronto/lego/c10l1700273', 'appears');
+      (session.getTab('tab-1') as unknown as { page: { content: () => Promise<string> } }).page.content = async () =>
+        fixture('kijiji', 'search-results.html');
+      await executeCommand(hostFor(session), extractEnvelope('kijiji.ca.v1'));
+      expect(waits).toEqual([]);
+    });
   });
 
   it('Kijiji ad (VIP) pages return the full extraction record', async () => {

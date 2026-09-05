@@ -224,16 +224,19 @@ function nextKijijiPageUrl(pageUrl: string): string | null {
  * The next page of a poster's listings: /o-profile/<posterId>/<n> → <n+1>,
  * and a bare /o-profile/<posterId> → /2. Null for any other path. Both live
  * VIP captures link the first page as /o-profile/<id>/1, so the trailing
- * segment is read as the page number (NEEDS-LIVE-VERIFICATION: no seller
- * page beyond the link itself has been captured).
+ * segment is read as the page number. The site answers that link with a
+ * redirect to /o-profile/<posterId>/listings/<n> (observed live 2026-09-04,
+ * poster 1046282996), and the tab ends on the redirect form, so it pages
+ * the same way and keeps its /listings/ segment. NEEDS-LIVE-VERIFICATION:
+ * no second seller page has been captured under either form.
  */
 export function nextKijijiSellerPageUrl(pageUrl: string): string | null {
   try {
     const url = new URL(pageUrl);
-    const match = /^\/o-profile\/(\d{1,16})(?:\/(\d+))?\/?$/.exec(url.pathname);
+    const match = /^\/o-profile\/(\d{1,16})(\/listings)?(?:\/(\d+))?\/?$/.exec(url.pathname);
     if (match === null) return null;
-    const page = match[2] === undefined ? 1 : toInt(match[2]);
-    url.pathname = `/o-profile/${match[1]}/${page + 1}`;
+    const page = match[3] === undefined ? 1 : toInt(match[3]);
+    url.pathname = `/o-profile/${match[1]}${match[2] ?? ''}/${page + 1}`;
     return url.toString();
   } catch {
     return null;

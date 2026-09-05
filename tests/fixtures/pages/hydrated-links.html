@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<!--
+  Fixture: a listings page whose ad links are client-rendered AFTER
+  DOMContentLoaded (the Kijiji /o-profile/ seller page shape observed live
+  2026-09-04: at domcontentloaded the DOM holds only site chrome, and the
+  listings container fills in later). ?delay=<ms> sets the render delay.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Hydrated links fixture</title>
+</head>
+<body>
+  <header><input placeholder="Search"><button type="button">Search</button></header>
+  <main id="listings"></main>
+  <footer><a href="/pages/second.html">About</a></footer>
+  <script>
+    (function () {
+      var delay = Number(new URLSearchParams(location.search).get('delay') || '600');
+      window.setTimeout(function () {
+        var main = document.getElementById('listings');
+        main.innerHTML = '<ul>' +
+          '<li><a href="/v-other/city-of-toronto/apc-42u-netshelter-rack-cabinet/1741647474">APC 42U NetShelter rack cabinet</a> <span>$300.00</span></li>' +
+          '<li><a href="/v-other/city-of-toronto/ibm-42u-server-rack/1741647620">IBM 42U server rack</a> <span>$300.00</span></li>' +
+          '<li><a href="/v-other/city-of-toronto/36u-rack-cabinet/1741647824">36U rack cabinet</a> <span>$220.00</span></li>' +
+          '</ul>';
+      }, delay);
+    })();
+  </script>
+</body>
+</html>

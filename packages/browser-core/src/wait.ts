@@ -3,7 +3,34 @@
  * the deadline fail with CONDITION_TIMEOUT (§17, retryable).
  */
 import { BridgeError, parseElementRef, type WaitCondition } from '@browser-bridge/protocol';
-import { blockedSubresourcesOf, type BlockedSubresource, type BrowserSessionRuntime } from './session.js';
+import { blockedSubresourcesOf, type BlockedSubresource, type BrowserSessionRuntime, type TabState } from './session.js';
+
+export interface AttachedWaitResult {
+  /** True when an element matching the selector was in the DOM before the deadline. */
+  found: boolean;
+  elapsedMs: number;
+}
+
+/**
+ * Wait, bounded, for a selector to be ATTACHED to the document — not
+ * visible, not stable: the caller wants to know whether the markup exists
+ * yet. A miss is an answer, not an error: the deadline returns
+ * `found:false` so an extractor can say "waited N ms, nothing rendered"
+ * instead of failing the call. Written for the Kijiji /o-profile/ seller
+ * page (2026-09-04): at domcontentloaded the DOM held only site chrome and
+ * the listings container filled in afterwards, so the page read as empty.
+ */
+export async function waitForAttached(tab: TabState, selector: string, timeoutMs: number): Promise<AttachedWaitResult> {
+  const started = Date.now();
+  try {
+    await tab.page.waitForSelector(selector, { state: 'attached', timeout: Math.max(1, timeoutMs) });
+    return { found: true, elapsedMs: Date.now() - started };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.toLowerCase().includes('timeout')) return { found: false, elapsedMs: Date.now() - started };
+    throw BridgeError.from(err);
+  }
+}
 
 export interface WaitResult {
   satisfied: boolean;
