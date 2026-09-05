@@ -126,10 +126,21 @@ export const kijijiSiteProfile: SitePolicyProfile = {
     // Kijiji image/asset CDN (equivalent of ebaystatic/ebayimg).
     'classistatic.com',
     '*.classistatic.com',
-    // NEEDS-LIVE-VERIFICATION: confirm no additional first-party asset hosts
-    // are required on live VIP/search pages (e.g. ca-kijiji-production
-    // buckets or Akamai aliases). Add here only after observing real traffic;
-    // do not preemptively widen the allowlist.
+    // Kijiji's own production app-shell buckets, observed live and added on
+    // the operator's authorization (2026-09-05, in-session): every search
+    // and ad page pulled 21–22 JS chunks and fonts from webapp-static, and
+    // the seller-profile page — which rendered NO listing region at all,
+    // only site chrome, after the bounded hydration wait — pulled 16
+    // requests from fes and 10 from box-static (master.theme.css among
+    // them), all ORIGIN_DENIED (deals fires 2026-09-05 07:20Z, 12:52Z and
+    // 14:00Z; fingerprints seller-profile-page-renders-no-listings-at-
+    // domcontentloaded and operator-override-allowlist-first-party-
+    // subresource-origins). Exact hosts, not the bucket wildcard: only the
+    // three origins real traffic named. Ad, analytics and fingerprinting
+    // origins the same fires saw denied stay denied.
+    'webapp-static.ca-kijiji-production.classifiedscloud.io',
+    'fes.ca-kijiji-production.classifiedscloud.io',
+    'box-static.ca-kijiji-production.classifiedscloud.io',
   ],
   blockedActionPatterns: KIJIJI_BLOCKED_ACTION_PATTERNS,
   blockedFieldAutocomplete: KIJIJI_BLOCKED_FIELD_AUTOCOMPLETE,

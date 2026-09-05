@@ -304,6 +304,24 @@ describe('browser_extract dispatches by page kind instead of refusing', () => {
     expect('itemId' in record).toBe(false);
   });
 
+  // office-sources.v1 (2026-09-05) is policy-only in the same way; an
+  // office provider page says so too, under its own profile id.
+  it('an office-source page reports that no extractor exists, under office-sources.v1', async () => {
+    const outcome = await runExtract(
+      'https://www.regus.com/en/ca/ontario/toronto/office-space',
+      '<html><head><title>Office Space in Toronto | Regus</title></head><body><a href="/en/ca/ontario/toronto/office-space/gladstone">Gladstone</a></body></html>',
+      'kijiji.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    expect(parsed.siteProfile).toBe('office-sources.v1');
+    const record = parsed.record as { pageKind: string; pageTitle: string; pageUrl: string };
+    expect(record.pageKind).toBe('other');
+    expect(record.pageTitle).toBe('Office Space in Toronto | Regus');
+    expect(parsed.warnings.some((warning) => warning.startsWith('NO_EXTRACTOR_FOR_HOST') && warning.includes('office-sources.v1'))).toBe(true);
+    expect(parsed.warnings.some((warning) => warning.startsWith('DECLARED_SITE_PROFILE_MISMATCH'))).toBe(true);
+    expect('itemId' in record).toBe(false);
+  });
+
   it('an unclassified Kijiji page still extracts rather than refusing', async () => {
     const outcome = await runExtract(
       'https://www.kijiji.ca/',

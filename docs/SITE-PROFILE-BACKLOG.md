@@ -3,8 +3,8 @@
 Which sites the Browser Bridge should be able to reach next, in what order, and
 what each one still needs before it can ship.
 
-Four profiles exist today: `ebay.ca.v1`, `kijiji.ca.v1`, `zazzle.com.v1` and
-`wardrobe-vendors.v1`. Everything else the five Fluxology routines read, they
+Five profiles exist today: `ebay.ca.v1`, `kijiji.ca.v1`, `zazzle.com.v1`,
+`wardrobe-vendors.v1` and `office-sources.v1` (shipped 2026-09-05, below). Everything else the five Fluxology routines read, they
 read through `WebFetch` — which means server-rendered HTML only, no pagination
 that needs a click, no JS-rendered price, no screenshot to reason over, and no
 evidence trail beyond the text that came back. Several of the defects in
@@ -67,16 +67,16 @@ reading a snapshot. Each row below says which kind it is.
 | Still needed | An `ORIGIN_DENIED` filed against a specific Indeed URL from a live session. The Indeed MCP connector failed to connect this session, so whether the Bridge is even the right path for Indeed is unresolved — do not add it on the strength of the degradation report alone. |
 | Risk | Every host here has an apply flow. `createResearchProfile` blocks `apply`, `application`, `easy apply`, `quick apply` and `submit application` by default; the test must pin that a Job Bank posting URL carrying `?applyonline=false` is **not** treated as an endpoint. |
 
-### `office-sources.v1` — policy-only
+### `office-sources.v1` — policy-only — SHIPPED 2026-09-05
 
 | | |
 | --- | --- |
 | Routine | `fluxology-office-run` |
-| Hosts | `spacelist.ca`, `regus.com`, `spacesworks.com`, `iqoffices.com`, `workhaus.ca`, `venturex.com`, `intelligentoffice.com`, `telsec.net`, `zemlar.ca`, `gtexecutivecentre.com`, `collabhive.ca`, `oneplan.ca`, `workplaceone.com` |
-| Evidence | The managed-provider roster in `fluxlab-boards/public/office-scout/data/managed-providers.json` is committed and validated in CI, so every host has a named source. No `ORIGIN_DENIED` has been filed yet. |
-| Why the Bridge | Managed-office pricing is behind a "get a quote" interaction on most of these; the all-in figure the board ranks on is the one thing WebFetch cannot see. A screenshot is also the only durable evidence for a number a provider will not put in HTML. |
-| Still needed | One `coverage_gap` from a live office fire. The roster is the strongest of any lane on this list, so this is the cheapest P1 to ship once that lands. |
-| Risk | "Book a tour" / "request info" are one click from every listing. Blocked by default; the test must cover them by accessible name, because they are JS buttons with `href="#"` on at least Regus and Spaces. |
+| Hosts | `packages/site-office/src/sources.ts` — 19 provider domains (`regus.com`, `spacesworks.com`, `hq.com`, `industriousoffice.com`, `wework.com`, `iqoffices.com`, `venturex.com`, `intelligentoffice.com`, `telsec.net`, `workhaus.ca`, `workplaceone.com`, `zemlar.com` + `zemlar.ca`, `oneplan.ca`, `collabhive.ca`, `gtexecutivecentre.com`, `studio.staples.ca` (the studio subdomain only, never the retailer apex), `workplacek.com`, `office146.com`, `thefuelingstation.com`) and 7 listing/MLS surfaces (`realtor.ca`, `liquidspace.com`, `office-hub.com`, `spacelist.ca`, `coworkingcafe.com`, `commercialcafe.com`, `loopnet.ca`) |
+| Evidence | `fluxology-office-run__2026-09-05T13-50-56` carried the live `ORIGIN_DENIED` for `www.regus.com` this row was waiting on, and the operator ratified the roster in-session on 2026-09-05 (the `source` field on every entry records it). |
+| Why the Bridge | Managed-office pricing is behind a "get a quote" interaction on most of these; the all-in figure the board ranks on is the one thing WebFetch cannot see. realtor.ca (HTTP 403 to plain fetch) is where the square footage, TMI and lease structure behind an MLS-syndicated Kijiji ad live. |
+| Walls | `createResearchProfile` defaults plus the office-specific accessible names (`get a quote`, `schedule a tour`, `book a viewing`, `enquire now`, `contact us`, …). Read and navigate only: no form submission, no message to any agent or provider — outreach stays on its human-approval path. `browser_extract` answers `NO_EXTRACTOR_FOR_HOST` on every roster host. |
+| Still needed | Live verification per provider that the quote/tour buttons (JS, `href="#"` on Regus and Spaces) are refused by accessible name; whether realtor.ca and spacelist.ca render headlessly at all. The `siteProfile` enums in `packages/protocol/src/tools.ts` are unchanged (policy-only lanes dispatch by host), so the lane needs the Windows agent rebuild only. |
 
 ### `vacation-sources.v1` — policy-only
 

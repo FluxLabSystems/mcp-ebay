@@ -1,0 +1,20 @@
+{
+  "name": "@browser-bridge/site-office",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "office-sources.v1 site profile: the operator-ratified roster of GTA managed-office provider and commercial-listing hosts the Fluxology office routine researches through the Bridge, behind the standard read-only research walls (policy only, no extractor)",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@browser-bridge/policy": "workspace:*"
+  }
+}

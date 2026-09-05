@@ -174,7 +174,7 @@ describe('buildConfigEntries', () => {
     expect(byKey.get('AGENT_GATEWAY_URL')).toMatchObject({ value: 'ws://127.0.0.1:3000/agent/ws', source: 'env' });
     expect(byKey.get('AGENT_NAME')).toMatchObject({ value: 'laptop', source: 'env' });
     expect(byKey.get('AGENT_SITE_PROFILES')).toMatchObject({
-      value: 'ebay.ca.v1,kijiji.ca.v1,zazzle.com.v1,wardrobe-vendors.v1',
+      value: 'ebay.ca.v1,kijiji.ca.v1,zazzle.com.v1,wardrobe-vendors.v1,office-sources.v1',
       source: 'default',
     });
     expect(byKey.get('AGENT_TASK_NAME')).toMatchObject({ value: DEFAULT_LOGON_TASK_NAME, source: 'default' });

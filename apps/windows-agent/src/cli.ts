@@ -23,6 +23,7 @@ import { mergeSiteProfiles, type SitePolicyProfile } from '@browser-bridge/polic
 import { BridgeError, IDEMPOTENCY_WINDOW_SECONDS } from '@browser-bridge/protocol';
 import { ebaySiteProfile } from '@browser-bridge/site-ebay';
 import { kijijiSiteProfile } from '@browser-bridge/site-kijiji';
+import { officeSourcesSiteProfile } from '@browser-bridge/site-office';
 import { wardrobeVendorsSiteProfile } from '@browser-bridge/site-vendors';
 import { zazzleSiteProfile } from '@browser-bridge/site-zazzle';
 import { RotatingNdjsonLog } from '@browser-bridge/telemetry';
@@ -40,7 +41,7 @@ import { AGENT_VERSION } from './version.js';
 
 /** Site profiles compiled into this agent build, keyed by versioned id. */
 const SITE_PROFILES: ReadonlyMap<string, SitePolicyProfile> = new Map(
-  [ebaySiteProfile, kijijiSiteProfile, zazzleSiteProfile, wardrobeVendorsSiteProfile].map((profile) => [
+  [ebaySiteProfile, kijijiSiteProfile, zazzleSiteProfile, wardrobeVendorsSiteProfile, officeSourcesSiteProfile].map((profile) => [
     profile.id,
     profile,
   ]),
