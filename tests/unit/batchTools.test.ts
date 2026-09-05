@@ -340,6 +340,57 @@ describe('browser_extract_many', () => {
     expect(progress.results[0]!.error?.message).toContain('1712345678');
   });
 
+  it('a Kijiji ad that redirects to its category page WITHOUT adRemoved is ok:false too', async () => {
+    // 2026-09-04 deals fire (removed-ad-redirect-without-adremoved-marker-
+    // not-classified-unavailable): ad 1742968008 landed on the Toronto Toys
+    // & Games category page with no adRemoved parameter and came back
+    // ok:true with a pageKind 'search' record, price null, listingStatus
+    // null — indistinguishable from a live ad the extractor failed to parse,
+    // so the audit could not retire it. An ad URL that finalises on a
+    // category (/b-…) path is never a live ad, marker or no marker.
+    const ad = 'https://www.kijiji.ca/v-toys-games/city-of-toronto/lego-ninjago-minifigure-lot/1742968008';
+    const categoryLanding = 'https://www.kijiji.ca/b-toys-games/city-of-toronto/c108l1700273';
+    const stub = buildStub({
+      profile: kijijiSiteProfile,
+      pages: { [categoryLanding]: '<html><body><h1>Toys &amp; Games in City of Toronto</h1></body></html>' },
+      redirects: { [ad]: categoryLanding },
+    });
+    const progress = (
+      await executeCommand(
+        stub.host,
+        envelope('extract_many', { urls: [ad], siteProfile: 'kijiji.ca.v1', mode: 'inline' }),
+      )
+    ).result as unknown as BatchProgress;
+    expect(progress.succeeded).toBe(0);
+    expect(progress.failed).toBe(1);
+    const slot = progress.results[0]!;
+    expect(slot.ok).toBe(false);
+    expect(slot.error?.code).toBe('LISTING_UNAVAILABLE');
+    expect(slot.error?.retryable).toBe(false);
+    expect(slot.error?.message).toContain('1742968008');
+    // The redirect target is the evidence: it stays on the slot.
+    expect(slot.finalUrl).toBe(categoryLanding);
+    expect(slot.error?.message).toContain(categoryLanding);
+    expect(slot.record?.pageKind).toBe('search');
+  });
+
+  it('a Kijiji category URL requested as such stays ok:true — only an AD that lands on one is dead', async () => {
+    const categoryPage = 'https://www.kijiji.ca/b-toys-games/city-of-toronto/c108l1700273';
+    const stub = buildStub({
+      profile: kijijiSiteProfile,
+      pages: { [categoryPage]: '<html><body><h1>Toys &amp; Games in City of Toronto</h1></body></html>' },
+    });
+    const progress = (
+      await executeCommand(
+        stub.host,
+        envelope('extract_many', { urls: [categoryPage], siteProfile: 'kijiji.ca.v1', mode: 'inline' }),
+      )
+    ).result as unknown as BatchProgress;
+    expect(progress.results[0]!.ok).toBe(true);
+    expect(progress.results[0]!.error).toBeNull();
+    expect(progress.results[0]!.record?.pageKind).toBe('search');
+  });
+
   it('POLICY: a URL outside the allowlist is denied per URL, and never loaded', async () => {
     const stub = buildStub({ pages: { [urls[0]!]: ITEM_HTML } });
     const progress = (
