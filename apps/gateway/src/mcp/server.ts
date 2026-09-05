@@ -8,6 +8,8 @@ import {
   BridgeError,
   DASHBOARD_TOOL_CATALOG,
   DashboardFeedInput,
+  DashboardRecordsInput,
+  DashboardSummaryInput,
   DashboardUpsertInput,
   dashboardScopeSatisfies,
   requiredDashboardScope,
@@ -153,7 +155,7 @@ function registerDashboardTool(
       // Re-parse defensively; unlike browser tools there is no agent-side
       // schema validation behind these.
       const structured =
-        entry.action === 'feed'
+        entry.operation === 'feed'
           ? await (async () => {
               const input = DashboardFeedInput.parse(args);
               assertDashboardScope(authInfo, input.dashboard, entry.action);
@@ -162,6 +164,19 @@ function registerDashboardTool(
                 fields: input.fields,
               });
             })()
+          : entry.operation === 'records'
+            ? await (async () => {
+                const input = DashboardRecordsInput.parse(args);
+                assertDashboardScope(authInfo, input.dashboard, entry.action);
+                const { dashboard, ...options } = input;
+                return client.records(dashboard, options);
+              })()
+            : entry.operation === 'summary'
+              ? await (async () => {
+                  const input = DashboardSummaryInput.parse(args);
+                  assertDashboardScope(authInfo, input.dashboard, entry.action);
+                  return client.summary(input.dashboard, { archiveAfterDays: input.archiveAfterDays });
+                })()
           : await (async () => {
               const input = DashboardUpsertInput.parse(args);
               assertDashboardScope(authInfo, input.dashboard, entry.action);

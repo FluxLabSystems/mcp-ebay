@@ -4,8 +4,8 @@ Status: **Proposed, ready for execution**
 Date: 2026-09-02 (revised the same evening with live demo-key captures and the
 Phase 0 keyed captures; see §1.5, `tests/fixtures/countdown/demo/` and
 `tests/fixtures/countdown/keyed/`)
-Scope: `ethanbissbort/mcp-ebay` (code), `ethanbissbort/FluxLab` (deploy),
-`ethanbissbort/fluxlab-boards` (skill and routine data)
+Scope: `FluxLabSystems/mcp-ebay` (code), `FluxLabSystems/FluxLab` (deploy),
+`FluxLabSystems/fluxlab-boards` (skill and routine data)
 Routine affected: the current **FluxLab Deals Dashboard** routine
 (`0 7,20 * * *` UTC) and its skill `.claude/skills/fluxology-deals-run/SKILL.md`.
 No other routine is in scope, and no retired routine is referenced anywhere in
