@@ -45,11 +45,17 @@ describe('wardrobe-vendors.v1 roster', () => {
       'www.spreadshirt.com',
       'www.printful.com',
       'www.gs-jj.com',
+      // 2026-09-05: GS-JJ's own image CDN and products API domain.
+      'static-oss.gs-souvenir.com',
+      'products-api-o2o-prod.gs-souvenir.com',
       'www.etsy.com',
       'i.etsystatic.com',
     ]) {
       expect(hostMatchesAllowlist(host, hosts), host).toBe(true);
     }
+    // A shared cloud-storage endpoint is not a vendor domain, roster or not.
+    expect(hostMatchesAllowlist('gs-jj-us-static.oss-accelerate.aliyuncs.com', hosts)).toBe(false);
+    expect(hostMatchesAllowlist('gs-souvenir.com.attacker.io', hosts)).toBe(false);
   });
 
   it('every roster entry names a public registrable domain and a source', () => {

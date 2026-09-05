@@ -71,10 +71,20 @@ export const WARDROBE_VENDORS: readonly WardrobeVendor[] = [
   },
   {
     vendor: 'GS-JJ',
-    hosts: ['gs-jj.com'],
+    // gs-souvenir.com is GS-JJ's own image CDN and products API domain
+    // (static-oss.gs-souvenir.com, 44–47 image requests per page;
+    // products-api-o2o-prod.gs-souvenir.com, the product-content calls),
+    // both ORIGIN_DENIED on every GS-JJ page until 2026-09-05 (wardrobe fire
+    // 12:11Z, fingerprint gateway+coverage_gap+gs-jj-asset-and-products-api-
+    // hosts-not-allowlisted). The third denied host that fire saw,
+    // gs-jj-us-static.oss-accelerate.aliyuncs.com, is a shared Alibaba
+    // Cloud OSS endpoint rather than a vendor domain and is NOT here: it
+    // fails the public-registrable-vendor-domain test and is the
+    // operator's call (a few images stay blocked).
+    hosts: ['gs-jj.com', 'gs-souvenir.com'],
     addedOn: '2026-09-02',
-    source: REPORT_2026_09_02,
-    needsLiveVerification: 'asset CDN host(s)',
+    source: `${REPORT_2026_09_02}; gs-souvenir.com added 2026-09-05 on gateway+coverage_gap+gs-jj-asset-and-products-api-hosts-not-allowlisted (2026-09-05 wardrobe fire)`,
+    needsLiveVerification: 'whether product tiles render with gs-souvenir.com allowed and the aliyuncs.com OSS host still blocked',
   },
   {
     vendor: 'Etsy',

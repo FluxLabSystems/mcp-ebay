@@ -433,3 +433,38 @@ describe('KEYWORD_NOT_APPLIED (kijijiKeywordWarnings)', () => {
     expect(warnings[0]).toContain('"lego lot"');
   });
 });
+
+// 2026-09-05 office fire (site-kijiji+extractor_defect+mls-syndicated-ad-
+// description-truncated-and-attributes-empty): browser_extract_many returned
+// a description of 490 characters ending mid-word on an MLS-syndicated
+// commercial ad, with nothing saying it was cut. The cut IS the record's own
+// 500-character excerpt bound (an untrusted-data limit that stays); the
+// defect is that it was silent, so a run could not tell a terse ad from a
+// cut one — and on that ad the cut section is where square footage and
+// lease terms sat. The empty attributes[] half of the same report needs a
+// captured MLS-template page and is not pinned here.
+describe('description excerpt says when it is cut (2026-09-05)', () => {
+  const vip = (body: string): Document =>
+    parseHTML(
+      `<html><head><title>Office space | Kijiji</title><link rel="canonical" href="https://www.kijiji.ca/v-commercial-office-space/oakville-halton-region/302-08-3390-south-service-road/1738813761"></head>
+       <body><h1>302-08 - 3390 South Service Road, Burlington</h1><div data-testid="vip-price">$730</div>
+       <div data-testid="vip-description-wrapper">${body}</div></body></html>`,
+    ).document as unknown as Document;
+  const sentence = 'Professional office suite in a well-managed building with ample parking and on-site management. ';
+
+  it('warns DESCRIPTION_TRUNCATED with the observed length when the body exceeds the 500-character excerpt', () => {
+    const body = sentence.repeat(12); // ~1,150 characters
+    const { record, warnings } = extractKijijiListing(vip(body), 'https://www.kijiji.ca/v-commercial-office-space/oakville-halton-region/x/1738813761');
+    expect(record.description?.value.length).toBe(500);
+    const cut = warnings.find((warning) => warning.startsWith('DESCRIPTION_TRUNCATED'));
+    expect(cut).toBeDefined();
+    expect(cut).toMatch(new RegExp(`${body.trim().length} characters`));
+    expect(cut).toMatch(/500/);
+  });
+
+  it('stays silent on a body that fits the excerpt', () => {
+    const { record, warnings } = extractKijijiListing(vip(sentence.repeat(3)), 'https://www.kijiji.ca/v-commercial-office-space/oakville-halton-region/x/1738813761');
+    expect(record.description?.value.length).toBeLessThan(500);
+    expect(warnings.some((warning) => warning.startsWith('DESCRIPTION_TRUNCATED'))).toBe(false);
+  });
+});

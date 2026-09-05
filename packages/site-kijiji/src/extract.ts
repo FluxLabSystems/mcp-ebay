@@ -885,6 +885,20 @@ export function extractKijijiListing(
       }
     }
   }
+  // The 500-character excerpt is the record's own untrusted-data bound and
+  // stays; what must not stay silent is the cut. 2026-09-05 office fire: an
+  // MLS-syndicated commercial ad came back as 490 characters ending
+  // mid-word with nothing saying so, and the cut section was where square
+  // footage and lease terms sat — a run could not tell a terse ad from a
+  // cut one. Name the cut and the body's full length.
+  if (descriptionBody !== null) {
+    const collapsedLength = descriptionBody.replace(/\s+/g, ' ').trim().length;
+    if (collapsedLength > 500) {
+      warnings.push(
+        `DESCRIPTION_TRUNCATED: the description excerpt is capped at 500 characters and the ad body is ${collapsedLength} characters (whitespace-collapsed) — the excerpt ends mid-text, so do not read it as the whole ad; the terms it may cut (square footage, TMI, lease structure) are read from a browser_snapshot of the description region or from the page the ad syndicates`,
+      );
+    }
+  }
 
   // --- unresolved seller: syndicated ad or selector miss? ---
   // 2026-09-03 office fire (vip-sellername-unresolved-on-mls-syndicated-ads):
