@@ -147,3 +147,8 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Organization-owned repositories need a license key for this
+          # action; it lives ONLY in the repository's Actions secrets
+          # (Settings → Secrets and variables → Actions → GITLEAKS_LICENSE),
+          # never in this file.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
