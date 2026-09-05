@@ -88,8 +88,11 @@ describe('protected actions (§19.2, Appendix C)', () => {
       'https://offer.ebay.ca/ws/bestoffer/submit',
       'https://cart.ebay.ca/api/add?item=1',
       'https://www.ebay.ca/cnt/contact_seller?item=1',
-      'https://signin.ebay.ca/ws/SignInSubmit',
       'https://www.ebay.ca/myb/watchlist/api/add?item=1',
+      // Credential CHANGE stays protected on every eBay host, sign-in hosts
+      // included. Signing in is not changing a credential.
+      'https://www.ebay.ca/cnt/change-password/',
+      'https://signin.ebay.ca/cnt/change-password/',
     ];
     for (const url of blocked) {
       expect(isProtectedEndpoint(url, ebaySiteProfile), url).toBe(true);
@@ -102,6 +105,12 @@ describe('protected actions (§19.2, Appendix C)', () => {
       // The signed-in surfaces the deals routine reads are pages, not APIs.
       'https://www.ebay.ca/mye/myebay/watchlist?page=2',
       'https://www.ebay.ca/mye/myebay/bidsoffers',
+      // Sign-in submission is NOT a protected endpoint (operator decision
+      // 2026-09-05). Aborting it would let the human reach the form and then
+      // kill the POST, which reads as eBay rejecting their password. The
+      // agent still cannot type a credential — blockedFieldAutocomplete
+      // refuses current-password/new-password/one-time-code.
+      'https://signin.ebay.ca/ws/SignInSubmit',
     ];
     for (const url of allowed) {
       expect(isProtectedEndpoint(url, ebaySiteProfile), url).toBe(false);
