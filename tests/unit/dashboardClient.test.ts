@@ -32,6 +32,65 @@ describe('DashboardClient', () => {
     expect(result.root).toEqual(root);
   });
 
+  // 2026-09-05 (dashboard-feed-has-no-projection-paging-so-narrow-reads-are-
+  // impossible): the compact read path passes the API's own query surface
+  // through and returns its counts and cursor untouched.
+  it('records builds the /records query from the options and returns the page with its counts', async () => {
+    const page = { state: 'live', total: 585, matched: 158, returned: 40, archivedCount: 120, nextCursor: 40, listings: [{ id: 'ebay-1', title: 'x' }] };
+    const client = clientWith(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      expect(url.pathname).toBe('/v1/deals/records');
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        state: 'live',
+        fields: 'id,title,active',
+        since: '2026-09-04T00:00:00Z',
+        recordType: 'candidate',
+        sort: 'discovered',
+        dir: 'asc',
+        limit: '40',
+        cursor: '0',
+      });
+      expect(init?.method).toBe('GET');
+      expect((init?.headers as Record<string, string>).authorization).toBeUndefined();
+      return jsonResponse(200, page);
+    });
+    const result = await client.records('deals', {
+      state: 'live',
+      fields: ['id', 'title', 'active'],
+      since: '2026-09-04T00:00:00Z',
+      recordType: 'candidate',
+      sort: 'discovered',
+      dir: 'asc',
+      limit: 40,
+      cursor: 0,
+    });
+    expect(result.dashboard).toBe('deals');
+    expect(result.listings).toEqual([{ id: 'ebay-1', title: 'x' }]);
+    expect(result.nextCursor).toBe(40);
+    expect(result.matched).toBe(158);
+  });
+
+  it('records with no options asks for the first page with the API defaults', async () => {
+    const client = clientWith(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe('http://dashboard-api:8082/v1/deals/records');
+      return jsonResponse(200, { total: 0, matched: 0, returned: 0, nextCursor: null, listings: [] });
+    });
+    const result = await client.records('deals');
+    expect(result.listings).toEqual([]);
+    expect(result.nextCursor).toBeNull();
+  });
+
+  it('summary reads counts only and forwards archiveAfterDays', async () => {
+    const client = clientWith(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe('http://dashboard-api:8082/v1/wardrobe/summary?archiveAfterDays=30');
+      return jsonResponse(200, { total: 12, live: 9, archived: 3, byRecordType: { offer: 12 }, byStatus: {} });
+    });
+    const result = await client.summary('wardrobe', { archiveAfterDays: 30 });
+    expect(result.dashboard).toBe('wardrobe');
+    expect(result.total).toBe(12);
+    expect('listings' in result).toBe(false);
+  });
+
   it('feed ids mode strips listings to identity/freshness fields', async () => {
     const root = {
       schemaVersion: 3,

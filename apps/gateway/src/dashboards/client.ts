@@ -36,6 +36,28 @@ export interface DashboardFeedOptions {
   fields?: readonly string[];
 }
 
+/** Query parameters for the compact read path, GET /v1/{scope}/records. */
+export interface DashboardRecordsOptions {
+  state?: 'live' | 'archived' | 'all';
+  fields?: readonly string[];
+  since?: string;
+  recordType?: string;
+  sort?: 'changed' | 'added' | 'discovered';
+  dir?: 'asc' | 'desc';
+  limit?: number;
+  cursor?: number;
+  archiveAfterDays?: number;
+}
+
+export interface DashboardRecordsResult extends Record<string, unknown> {
+  dashboard: DashboardId;
+  listings: Record<string, unknown>[];
+}
+
+export interface DashboardSummaryResult extends Record<string, unknown> {
+  dashboard: DashboardId;
+}
+
 export interface DashboardTouch {
   id: string;
   lastSeen: string;
@@ -201,6 +223,39 @@ export class DashboardClient {
       totalListingCount: listings.length,
       root: shaped,
     };
+  }
+
+  /**
+   * The compact read path: the dashboard API's own filtering, projection,
+   * ordering and paging, passed through untouched. Unlike feed(), nothing is
+   * filtered here — the API answers the narrow question, and its counts
+   * (total, matched, returned, archivedCount, nextCursor) come back as is.
+   */
+  async records(dashboard: DashboardId, options: DashboardRecordsOptions = {}): Promise<DashboardRecordsResult> {
+    const query = new URLSearchParams();
+    if (options.state !== undefined) query.set('state', options.state);
+    if (options.fields !== undefined && options.fields.length > 0) query.set('fields', options.fields.join(','));
+    if (options.since !== undefined) query.set('since', options.since);
+    if (options.recordType !== undefined) query.set('recordType', options.recordType);
+    if (options.sort !== undefined) query.set('sort', options.sort);
+    if (options.dir !== undefined) query.set('dir', options.dir);
+    if (options.limit !== undefined) query.set('limit', String(options.limit));
+    if (options.cursor !== undefined) query.set('cursor', String(options.cursor));
+    if (options.archiveAfterDays !== undefined) query.set('archiveAfterDays', String(options.archiveAfterDays));
+    const suffix = query.size > 0 ? `?${query.toString()}` : '';
+    const root = await this.request('GET', `/v1/${dashboard}/records${suffix}`, undefined, undefined, {
+      dashboard,
+      query: Object.fromEntries(query),
+    });
+    const listings = Array.isArray(root.listings) ? (root.listings as Record<string, unknown>[]) : [];
+    return { ...root, dashboard, listings };
+  }
+
+  /** Counts only, GET /v1/{scope}/summary — no records at all. */
+  async summary(dashboard: DashboardId, options: { archiveAfterDays?: number } = {}): Promise<DashboardSummaryResult> {
+    const suffix = options.archiveAfterDays === undefined ? '' : `?archiveAfterDays=${options.archiveAfterDays}`;
+    const root = await this.request('GET', `/v1/${dashboard}/summary${suffix}`, undefined, undefined, { dashboard });
+    return { ...root, dashboard };
   }
 
   async upsert(

@@ -167,6 +167,16 @@ export const ebaySiteProfile: SitePolicyProfile = {
     '*.ebaystatic.com',
     'ebayimg.com',
     '*.ebayimg.com',
+    // The item-description iframe host (itm.ebaydesc.com), eBay's own,
+    // denied on every /itm/ page until 2026-09-05 and added on the
+    // operator's in-session authorization (deals fire 14:00Z, fingerprint
+    // operator-override-allowlist-first-party-subresource-origins): with
+    // it denied the description BODY was unreadable, so a 55-piece lot
+    // could not be told to be animals or standard minifigures and
+    // enterprise spec detail was lost. Read-only: the frame is sandboxed
+    // by the page and no transaction surface lives on it.
+    'ebaydesc.com',
+    '*.ebaydesc.com',
   ],
   blockedActionPatterns: EBAY_BLOCKED_ACTION_PATTERNS,
   blockedFieldAutocomplete: EBAY_BLOCKED_FIELD_AUTOCOMPLETE,

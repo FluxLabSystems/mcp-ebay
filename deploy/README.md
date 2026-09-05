@@ -15,4 +15,4 @@ from (`${BRIDGE_SRC}`), so updating the gateway is one command there —
 never `docker compose` against this directory.
 
 Redeploy + claude.ai reconnect procedure:
-`docs/routines/CONNECTOR-APPROVALS.md` in ethanbissbort/fluxlab-boards.
+`docs/routines/CONNECTOR-APPROVALS.md` in FluxLabSystems/fluxlab-boards.

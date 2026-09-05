@@ -514,3 +514,82 @@ describe('auction end time when no timer element matches (2026-09-04)', () => {
     expect(warnings.some((warning) => warning.startsWith('END_TIME_FROM_TEXT'))).toBe(false);
   });
 });
+
+// 2026-09-05 12:57Z + 14:00Z deals fires (site-ebay+extractor_defect+seller-
+// login-id-recoverable-from-description-iframe-url): on a store-only seller card
+// the extractor raised SELLER_LOGIN_ID_UNAVAILABLE, yet the same page's item-
+// description iframe (itm.ebaydesc.com, denied as a subresource but present in
+// the DOM as an attribute) carried the login id as its seller= parameter —
+// 198591780847: /str/dealsoncisco vs seller=sunthan, verified by an _ssn=sunthan
+// search that returned the item itself; 168613737621: /str/cartridgeman07 vs
+// seller=cartridge_man07, an id no transformation of the slug yields.
+describe('seller login id recovered from the description iframe (2026-09-05)', () => {
+  const CAPTURED = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'countdown', 'keyed', 'html');
+  const iframe = (itemId: string, seller: string): string =>
+    `<iframe id="desc_ifr" title="Seller's description of item" src="https://itm.ebaydesc.com/itmdesc/${itemId}?t=0&category=51268&seller=${seller}&excSoj=1&ver=1&excTrk=1&lsite=2&domain=ebay.com"></iframe>`;
+
+  it('records the iframe seller= as the login id when the card links only a store, and says where it came from', () => {
+    const document = parseHTML(
+      `<h1 class="x-item-title__mainTitle">Cisco C9300-48P switch</h1>
+       <div class="x-price-primary">C $450.00</div>
+       <div class="x-sellercard-atf">
+         <div class="x-sellercard-atf__info__about-seller">
+           <a href="https://www.ebay.ca/str/dealsoncisco"><span>Deals On Cisco</span></a>
+         </div>
+       </div>
+       ${iframe('198591780847', 'sunthan')}`,
+    ).document as unknown as Document;
+    const { record, warnings } = extractListing(document, 'https://www.ebay.ca/itm/198591780847');
+    expect(record.seller).toEqual({ value: 'sunthan', source: 'dom', confidence: 0.9 });
+    expect(record.sellerStoreSlug?.value).toBe('dealsoncisco');
+    expect(warnings.some((w) => w.startsWith('SELLER_LOGIN_ID_UNAVAILABLE'))).toBe(false);
+    const marker = warnings.find((w) => w.startsWith('SELLER_LOGIN_ID_FROM_DESCRIPTION_IFRAME'));
+    expect(marker).toMatch(/dealsoncisco/);
+    expect(marker).toMatch(/sunthan/);
+  });
+
+  it('keeps an underscore login id exactly as the iframe gives it', () => {
+    const document = parseHTML(
+      `<h1 class="x-item-title__mainTitle">Toner lot</h1>
+       <div class="x-price-primary">C $30.00</div>
+       <div class="x-sellercard-atf"><a href="https://www.ebay.ca/str/cartridgeman07">Cartridge Man</a></div>
+       ${iframe('168613737621', 'cartridge_man07')}`,
+    ).document as unknown as Document;
+    const { record } = extractListing(document, 'https://www.ebay.ca/itm/168613737621');
+    expect(record.seller?.value).toBe('cartridge_man07');
+    expect(record.sellerStoreSlug?.value).toBe('cartridgeman07');
+  });
+
+  it('never outranks a /usr/ login id on the card, and raises no marker then', () => {
+    const document = parseHTML(
+      `<h1 class="x-item-title__mainTitle">LEGO lot</h1>
+       <div class="x-price-primary">C $25.00</div>
+       <div class="x-sellercard-atf"><a href="https://www.ebay.ca/usr/novanut74">novanut74</a></div>
+       ${iframe('257679218767', 'someone_else')}`,
+    ).document as unknown as Document;
+    const { record, warnings } = extractListing(document, 'https://www.ebay.ca/itm/257679218767');
+    expect(record.seller).toMatchObject({ value: 'novanut74', confidence: 0.99 });
+    expect(warnings.some((w) => w.startsWith('SELLER_LOGIN_ID_FROM_DESCRIPTION_IFRAME'))).toBe(false);
+  });
+
+  it('reads only eBay\'s own description host, and only a login-id-shaped value', () => {
+    const foreign = parseHTML(
+      `<h1 class="x-item-title__mainTitle">Lot</h1><div class="x-price-primary">C $1.00</div>
+       <div class="x-sellercard-atf"><a href="https://www.ebay.ca/str/somestore">Store</a></div>
+       <iframe id="desc_ifr" src="https://itm.ebaydesc.com.attacker.example/itmdesc/1?seller=evil"></iframe>
+       <iframe src="https://itm.ebaydesc.com/itmdesc/1?seller=not%20a%20login%20id%3Cscript%3E"></iframe>`,
+    ).document as unknown as Document;
+    const { record, warnings } = extractListing(foreign, 'https://www.ebay.ca/itm/100000000001');
+    expect(record.seller).toBeNull();
+    expect(warnings.some((w) => w.startsWith('SELLER_LOGIN_ID_UNAVAILABLE'))).toBe(true);
+  });
+
+  it('resolves the seller on the captured ebay.ca item page whose card links neither /usr/ nor /str/', () => {
+    const html = readFileSync(join(CAPTURED, 'ebay-ca-itm-287557851282.html'), 'utf8');
+    const document = parseHTML(html).document as unknown as Document;
+    const { record, warnings } = extractListing(document, 'https://www.ebay.ca/itm/287557851282');
+    expect(record.seller).toEqual({ value: 'bageltremors', source: 'dom', confidence: 0.9 });
+    expect(warnings).not.toContain('seller could not be resolved');
+    expect(ExtractionRecordSchema.safeParse(record).success).toBe(true);
+  });
+});

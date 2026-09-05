@@ -933,6 +933,58 @@ export const DashboardFeedOutput = z.strictObject({
   root: z.looseObject({}),
 });
 
+/**
+ * The compact read path (2026-09-05, gateway+connector_defect+dashboard-feed-
+ * has-no-projection-paging-so-narrow-reads-are-impossible): dashboard_feed
+ * can only fetch a whole feed and filter it locally, and a 585-record deals
+ * feed exceeded the tool-output cap outright. The dashboard API already
+ * serves GET /v1/{scope}/records with state, fields, since, recordType,
+ * sort/dir and limit/cursor, and GET /v1/{scope}/summary with counts only;
+ * these two tools expose them with their parameters intact.
+ */
+export const DashboardRecordsInput = z.strictObject({
+  dashboard: z.enum(DASHBOARD_IDS),
+  /** live (not archived, the default), archived, or all. Archived-ness is derived server-side, never stored. */
+  state: z.enum(['live', 'archived', 'all']).default('live'),
+  /** Field projection; `id` is always included. An unknown name yields nothing rather than an error. */
+  fields: z.array(z.string().min(1).max(64)).min(1).max(64).optional(),
+  /** ISO 8601. Keeps records whose last activity is at or after it, plus records with no timestamp at all. */
+  since: z.iso.datetime({ offset: true }).optional(),
+  /** Exact match on recordType (candidate, search_run, offer, …). */
+  recordType: z.string().min(1).max(64).optional(),
+  /** changed (last activity, the default), added (addedAt) or discovered (firstSeen). */
+  sort: z.enum(['changed', 'added', 'discovered']).default('changed'),
+  dir: z.enum(['asc', 'desc']).default('desc'),
+  /** Page size; the API's own default is 500. */
+  limit: z.int().min(1).max(500).optional(),
+  /** The nextCursor of the previous page; 0 or absent for the first page. */
+  cursor: z.int().min(0).optional(),
+  /** Override the retention window (days) used to derive archived-ness for this request. */
+  archiveAfterDays: z.int().min(1).max(3650).optional(),
+});
+export const DashboardRecordsOutput = z.looseObject({
+  dashboard: z.string(),
+  state: z.string().optional(),
+  /** Records the scope holds. */
+  total: z.int().optional(),
+  /** Records the filters kept, before paging. */
+  matched: z.int().optional(),
+  /** Records on this page. */
+  returned: z.int().optional(),
+  archivedCount: z.int().optional(),
+  /** null on the last page. */
+  nextCursor: z.union([z.int(), z.null()]).optional(),
+  listings: z.array(z.looseObject({})),
+});
+export const DashboardSummaryInput = z.strictObject({
+  dashboard: z.enum(DASHBOARD_IDS),
+  archiveAfterDays: z.int().min(1).max(3650).optional(),
+});
+/** Counts, byRecordType, byStatus and the activity range — no records at all. */
+export const DashboardSummaryOutput = z.looseObject({
+  dashboard: z.string(),
+});
+
 export const DashboardUpsertInput = z
   .strictObject({
     dashboard: z.enum(DASHBOARD_IDS),

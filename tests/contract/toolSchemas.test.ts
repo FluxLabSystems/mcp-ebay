@@ -10,6 +10,8 @@ import {
   compileTitleRegex,
   DASHBOARD_TOOL_CATALOG,
   DashboardFeedInput,
+  DashboardRecordsInput,
+  DashboardSummaryInput,
   DashboardUpsertInput,
   dashboardScopeSatisfies,
   EBAY_API_ITEMS_MAX,
@@ -310,6 +312,34 @@ describe('input schema contracts (Appendix A)', () => {
     );
   });
 
+  // 2026-09-05: the compact read path. Both tools authorise like a feed read
+  // and default to the API's own defaults, so a bare {dashboard} is a valid
+  // first page.
+  it('dashboard_records and dashboard_summary expose the compact read path with the API defaults', () => {
+    expect(DashboardRecordsInput.parse({ dashboard: 'deals' })).toEqual({ dashboard: 'deals', state: 'live', sort: 'changed', dir: 'desc' });
+    expect(
+      DashboardRecordsInput.safeParse({
+        dashboard: 'deals',
+        state: 'all',
+        fields: ['title', 'active'],
+        since: '2026-09-04T00:00:00Z',
+        recordType: 'candidate',
+        sort: 'added',
+        dir: 'asc',
+        limit: 40,
+        cursor: 40,
+        archiveAfterDays: 30,
+      }).success,
+    ).toBe(true);
+    expect(DashboardRecordsInput.safeParse({ dashboard: 'deals', state: 'ended' }).success).toBe(false);
+    expect(DashboardRecordsInput.safeParse({ dashboard: 'deals', since: 'yesterday' }).success).toBe(false);
+    expect(DashboardRecordsInput.safeParse({ dashboard: 'deals', limit: 0 }).success).toBe(false);
+    expect(DashboardSummaryInput.parse({ dashboard: 'wardrobe' })).toEqual({ dashboard: 'wardrobe' });
+    for (const entry of DASHBOARD_TOOL_CATALOG) {
+      if (entry.operation === 'records' || entry.operation === 'summary') expect(entry.action).toBe('feed');
+    }
+  });
+
   it('dashboard_feed filter and fields are optional additions', () => {
     expect(DashboardFeedInput.parse({ dashboard: 'deals' })).toEqual({ dashboard: 'deals', mode: 'full' });
     expect(
@@ -439,7 +469,12 @@ describe('zod → JSON Schema derivation sanity', () => {
 describe('deals run checkpoint tools (Phase 4)', () => {
   it('are additive: the browser and dashboard catalogs are untouched', () => {
     expect(TOOL_CATALOG).toHaveLength(19);
-    expect(DASHBOARD_TOOL_CATALOG.map((entry) => entry.name)).toEqual(['dashboard_feed', 'dashboard_upsert']);
+    expect(DASHBOARD_TOOL_CATALOG.map((entry) => entry.name)).toEqual([
+      'dashboard_feed',
+      'dashboard_records',
+      'dashboard_summary',
+      'dashboard_upsert',
+    ]);
     // The run tools live in their own catalog because they are neither
     // device commands nor dashboard records; getToolEntry, which drives the
     // agent wire, must not know them.

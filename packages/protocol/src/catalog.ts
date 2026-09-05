@@ -10,6 +10,10 @@ import {
   DismissConsentInput,
   DismissConsentOutput,
   DashboardFeedInput,
+  DashboardRecordsInput,
+  DashboardRecordsOutput,
+  DashboardSummaryInput,
+  DashboardSummaryOutput,
   DashboardFeedOutput,
   DashboardUpsertInput,
   DashboardUpsertOutput,
@@ -409,11 +413,15 @@ export const ALL_DASHBOARD_SCOPES: readonly string[] = [
 ];
 
 export type DashboardToolAction = 'feed' | 'upsert';
+/** What the gateway does for the call; the scope check keys on `action`. */
+export type DashboardToolOperation = 'feed' | 'records' | 'summary' | 'upsert';
 
 export interface DashboardToolCatalogEntry {
   /** Public MCP tool name, e.g. `dashboard_upsert`. */
   name: string;
+  /** Scope class: every read authorises like a feed read, a write like an upsert. */
   action: DashboardToolAction;
+  operation: DashboardToolOperation;
   /** Gateway tool-call deadline in milliseconds. */
   timeoutMs: number;
   description: string;
@@ -425,6 +433,7 @@ export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
   {
     name: 'dashboard_feed',
     action: 'feed',
+    operation: 'feed',
     timeoutMs: 30_000,
     description:
       'Read the current Fluxology dashboard feed (deals, office, jobs, vacation, or wardrobe) so a run can diff its findings against stored records before writing. mode "ids" returns root metadata plus per-listing identity/freshness fields (including the active retirement flag) only. filter.active reads that flag: a record is active unless retired with active:false.',
@@ -432,8 +441,29 @@ export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
     outputSchema: DashboardFeedOutput,
   },
   {
+    name: 'dashboard_records',
+    action: 'feed',
+    operation: 'records',
+    timeoutMs: 30_000,
+    description:
+      'Read a Fluxology dashboard (deals, office, jobs, vacation, or wardrobe) through the compact read path instead of the whole feed: state live|archived|all (archived is derived — inactive and quiet past the retention window, or a terminal operator decision that old; never stored, never deleted), a field projection (id always included), since (ISO 8601; undated records are kept because undated is unknown, not unchanged), recordType, sort changed|added|discovered with dir, and limit/cursor paging (nextCursor is null on the last page). The response carries total, matched, returned and archivedCount so "nothing matched" and "the scope is empty" are distinguishable. This is the read a routine makes; dashboard_feed is for a whole-board diff.',
+    inputSchema: DashboardRecordsInput,
+    outputSchema: DashboardRecordsOutput,
+  },
+  {
+    name: 'dashboard_summary',
+    action: 'feed',
+    operation: 'summary',
+    timeoutMs: 30_000,
+    description:
+      'Counts only for a Fluxology dashboard (deals, office, jobs, vacation, or wardrobe): total, live and archived record counts, byRecordType, byStatus and the activity range, and no records at all — enough to decide whether anything moved before reading anything. archiveAfterDays overrides the retention window used to derive archived-ness.',
+    inputSchema: DashboardSummaryInput,
+    outputSchema: DashboardSummaryOutput,
+  },
+  {
     name: 'dashboard_upsert',
     action: 'upsert',
+    operation: 'upsert',
     timeoutMs: 30_000,
     description:
       'Upsert listing records into a Fluxology dashboard (deals, office, jobs, vacation, or wardrobe). Records merge by stable id server-side; unrelated and historical records are preserved. Send only new or materially changed records.',

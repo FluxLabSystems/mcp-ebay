@@ -576,3 +576,86 @@ describe('watch list: an overflow card that states no status or format gets unkn
     expect(fixture.candidates[0]!.watchlistStatus).toBe('active');
   });
 });
+
+// 2026-09-05 12:52Z deals fire (windows-agent+connector_defect+offers-page-
+// fixes-absent-while-watchlist-and-kijiji-fixes-are-live): on the agent build
+// that raised WATCHLIST_STATUS_UNSTATED and LISTINGS_NOT_HYDRATED — so mcp-ebay#49
+// was deployed — the offers page still read direction 'unknown' on 31 of 31
+// rows, no OFFERS_BID_ROWS on the six "Your max bid" rows, and offerPrice above
+// listPrice on all 25 two-figure rows, although every snippet began with its
+// status token. The synthetic rows #49 was built from separated the eyebrow
+// from the title with a newline; the live template's adjacent elements
+// concatenate with no whitespace in textContent ("OFFER RECEIVEDLEGO …",
+// "12 bidsYour max bid: …"), and a \b-anchored token never matches a title
+// that runs straight on from it.
+describe('offers page: the status token and the bid label with no whitespace after them (2026-09-05 12:52Z fire)', () => {
+  function offersDoc(rows: string): Document {
+    const { document } = parseHTML(
+      `<html><head><title>Bids and offers | My eBay</title></head><body>` +
+        `<div class="filter-menu" role="tablist"><button role="tab" aria-selected="true">All (31)</button></div>` +
+        `<ul>${rows}</ul></body></html>`,
+    );
+    return document as unknown as Document;
+  }
+  // No whitespace anywhere between the elements: exactly how textContent reads the live row.
+  const received =
+    `<li class="offer-card"><span class="eyebrow">OFFER RECEIVED</span>` +
+    `<a href="https://www.ebay.ca/itm/267676402924">LEGO Star Wars 75192 Millennium Falcon manual</a>` +
+    `<div><span>C $72.24</span></div><div><span>C $84.99</span><button>Make offer</button></div></li>`;
+  const expired =
+    `<li class="offer-card"><span class="eyebrow">OFFER EXPIRED</span>` +
+    `<a href="https://www.ebay.ca/itm/168360507031">Arista DCS-7050QX-32S 32-port 40GbE</a>` +
+    `<div><span>C $10.00</span></div><div><span>C $12.50</span><button>Make offer</button></div></li>`;
+  const bid =
+    `<li class="offer-card"><a href="https://www.ebay.ca/itm/366630546269">IBM TS2900 tape autoloader</a>` +
+    `<div><span>12 bids</span><span>Your max bid: US $41.00</span></div></li>`;
+
+  it('reads OFFER RECEIVED when the title runs straight on from the token', () => {
+    const page = extractOffersPage(offersDoc(received), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    const row = page.candidates[0]!;
+    expect(row.snippet.startsWith('OFFER RECEIVEDLEGO')).toBe(true);
+    expect(row.direction).toBe('from_seller');
+    expect(row.offerStatus).toBe('open');
+    expect(row.offerPrice).toEqual({ value: 72.24, currency: 'CAD' });
+    expect(row.listPrice).toEqual({ value: 84.99, currency: 'CAD' });
+  });
+
+  it('reads OFFER EXPIRED the same way, with both figures in order', () => {
+    const page = extractOffersPage(offersDoc(expired), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    const row = page.candidates[0]!;
+    expect(row.direction).toBe('from_seller');
+    expect(row.offerStatus).toBe('expired');
+    expect(row.offerPrice).toEqual({ value: 10, currency: 'CAD' });
+    expect(row.listPrice).toEqual({ value: 12.5, currency: 'CAD' });
+  });
+
+  it('reads "Your max bid" as the operator\'s own bid when it runs on from the bid count', () => {
+    const page = extractOffersPage(offersDoc(bid), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    const row = page.candidates[0]!;
+    expect(row.snippet).toContain('12 bidsYour max bid');
+    expect(row.direction).toBe('from_you');
+    expect(row.offerStatus).toBe('none');
+    expect(row.offerPrice).toBeNull();
+    expect(page.warnings.find((warning) => warning.startsWith('OFFERS_BID_ROWS'))).toMatch(/366630546269/);
+  });
+
+  it('classifies every row of the concatenated template, so the page raises no OFFERS_DIRECTION_UNKNOWN', () => {
+    const page = extractOffersPage(offersDoc(received + expired + bid), 'https://www.ebay.ca/mye/myebay/bidsoffers', {
+      observedAt: OBSERVED_AT,
+    });
+    expect(page.candidates.map((row) => row.direction)).toEqual(['from_seller', 'from_seller', 'from_you']);
+    expect(page.warnings.some((warning) => warning.startsWith('OFFERS_DIRECTION_UNKNOWN'))).toBe(false);
+    expect(page.warnings.find((warning) => warning.startsWith('OFFERS_AMOUNTS_ORDERED_BY_VALUE'))).toMatch(/2 of 3/);
+    expect(page.warnings.find((warning) => warning.startsWith('OFFERS_BID_ROWS'))).toMatch(/1 of 3/);
+  });
+
+  it('still reads only a token at the head of the row: a title that merely contains the words is not a prefix', () => {
+    const titled =
+      `<li class="offer-card"><a href="https://www.ebay.ca/itm/115641809410">Special offer received well by collectors</a>` +
+      `<div><span>C $20.00</span><button>Make offer</button></div></li>`;
+    const page = extractOffersPage(offersDoc(titled), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    const row = page.candidates[0]!;
+    expect(row.direction).toBe('unknown');
+    expect(row.offerStatus).toBe('none');
+  });
+});

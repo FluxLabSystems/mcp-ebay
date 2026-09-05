@@ -108,6 +108,9 @@ importers:
       '@browser-bridge/site-kijiji':
         specifier: workspace:*
         version: link:../../packages/site-kijiji
+      '@browser-bridge/site-office':
+        specifier: workspace:*
+        version: link:../../packages/site-office
       '@browser-bridge/site-vendors':
         specifier: workspace:*
         version: link:../../packages/site-vendors
@@ -209,6 +212,12 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
+  packages/site-office:
+    dependencies:
+      '@browser-bridge/policy':
+        specifier: workspace:*
+        version: link:../policy
+
   packages/site-vendors:
     dependencies:
       '@browser-bridge/policy':
@@ -267,6 +276,9 @@ importers:
       '@browser-bridge/site-kijiji':
         specifier: workspace:*
         version: link:../packages/site-kijiji
+      '@browser-bridge/site-office':
+        specifier: workspace:*
+        version: link:../packages/site-office
       '@browser-bridge/site-vendors':
         specifier: workspace:*
         version: link:../packages/site-vendors

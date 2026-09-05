@@ -21,7 +21,18 @@ describe('production profile hygiene', () => {
     expect(ebaySiteProfile.id).toBe('ebay.ca.v1');
     expect(ebaySiteProfile.testOnly).toBeUndefined();
     expect([...ebaySiteProfile.allowedHosts].sort()).toEqual(
-      ['*.ebay.ca', '*.ebay.com', '*.ebayimg.com', '*.ebaystatic.com', 'ebay.ca', 'ebay.com', 'ebayimg.com', 'ebaystatic.com'].sort(),
+      [
+        '*.ebay.ca',
+        '*.ebay.com',
+        '*.ebaydesc.com',
+        '*.ebayimg.com',
+        '*.ebaystatic.com',
+        'ebay.ca',
+        'ebay.com',
+        'ebaydesc.com',
+        'ebayimg.com',
+        'ebaystatic.com',
+      ].sort(),
     );
     expect(ebaySiteProfile.destinationPostalCode).toBe('M6H 2W9');
   });

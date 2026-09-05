@@ -17,6 +17,7 @@
     "@browser-bridge/protocol": "workspace:*",
     "@browser-bridge/site-ebay": "workspace:*",
     "@browser-bridge/site-kijiji": "workspace:*",
+    "@browser-bridge/site-office": "workspace:*",
     "@browser-bridge/site-vendors": "workspace:*",
     "@browser-bridge/site-zazzle": "workspace:*",
     "@browser-bridge/source-countdown": "workspace:*",

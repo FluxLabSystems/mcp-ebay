@@ -101,6 +101,46 @@ const SELLER_SELECTORS = [
   'a[href*="/str/"]',
   '#mbgLink',
 ];
+/**
+ * The item-description iframe. Its src is eBay's own description host and
+ * carries the seller's LOGIN ID as `seller=` — even on a page whose seller
+ * card links only a /str/ store slug (198591780847: /str/dealsoncisco,
+ * seller=sunthan; 168613737621: /str/cartridgeman07, seller=cartridge_man07 —
+ * 2026-09-05 deals fires, the first verified by an _ssn=sunthan search that
+ * returned the item itself). The subresource itself is denied by the profile;
+ * the attribute is in the DOM regardless, so no allowlist change is involved.
+ */
+const DESCRIPTION_IFRAME_SELECTORS = ['iframe#desc_ifr', 'iframe[src*="ebaydesc."]'];
+const DESCRIPTION_IFRAME_HOST_RE = /(?:^|\.)ebaydesc\.com$/i;
+/** eBay user ids: letters, digits, period, underscore, hyphen, asterisk; at most 64. */
+const LOGIN_ID_RE = /^[A-Za-z0-9._*-]{1,64}$/;
+
+function sellerFromDescriptionIframe(document: Document): string | null {
+  for (const selector of DESCRIPTION_IFRAME_SELECTORS) {
+    let elements: Element[];
+    try {
+      elements = Array.from(document.querySelectorAll(selector));
+    } catch {
+      continue;
+    }
+    for (const el of elements) {
+      const src = el.getAttribute('src') ?? el.getAttribute('data-src') ?? '';
+      if (src.length === 0) continue;
+      let url: URL;
+      try {
+        url = new URL(src, 'https://www.ebay.ca/');
+      } catch {
+        continue;
+      }
+      if (!DESCRIPTION_IFRAME_HOST_RE.test(url.hostname)) continue;
+      const value = url.searchParams.get('seller')?.trim() ?? '';
+      if (!LOGIN_ID_RE.test(value)) continue;
+      return value;
+    }
+  }
+  return null;
+}
+
 const SHIPPING_SELECTORS = [
   '.ux-labels-values--shipping .ux-labels-values__values',
   '[data-testid="ux-labels-values--shipping"] .ux-labels-values__values',
@@ -809,6 +849,20 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
   }
   if (seller === null && jsonld?.offers?.seller?.name) {
     seller = { value: jsonld.offers.seller.name, source: 'jsonld', confidence: 0.95 };
+  }
+  if (seller === null) {
+    // Last resort, below the /usr/-confirmed 0.99 and the JSON-LD 0.95: the
+    // description iframe's seller= parameter, which the _ssn= seller search
+    // accepts as a login id. The warning is the provenance marker.
+    const iframeLoginId = sellerFromDescriptionIframe(document);
+    if (iframeLoginId !== null) {
+      seller = { value: iframeLoginId, source: 'dom', confidence: 0.9 };
+      warnings.push(
+        `SELLER_LOGIN_ID_FROM_DESCRIPTION_IFRAME: the seller card ${
+          sellerStoreSlug !== null ? `links a store (/str/${sellerStoreSlug})` : 'links no /usr/ login id'
+        }; seller "${iframeLoginId}" was read from the item-description iframe's seller= parameter (itm.ebaydesc.com) at confidence 0.9 — addressable as _ssn=${iframeLoginId}, not /usr/-confirmed`,
+      );
+    }
   }
   if (seller === null) {
     if (sellerStoreSlug !== null) {

@@ -70,6 +70,7 @@ describe('AGENT_SITE_PROFILES config', () => {
       'kijiji.ca.v1',
       'zazzle.com.v1',
       'wardrobe-vendors.v1',
+      'office-sources.v1',
     ]);
   });
 

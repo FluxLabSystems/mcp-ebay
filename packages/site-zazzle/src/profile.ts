@@ -81,6 +81,15 @@ export const zazzleSiteProfile: SitePolicyProfile = {
     // Product/render image CDN (rlv.zcache.com observed live).
     'zcache.com',
     '*.zcache.com',
+    // The .ca storefront's asset CDN: asset.zcache.ca (59 stylesheet and
+    // script requests) and rlv.zcache.ca (10 product images) were
+    // ORIGIN_DENIED on every zazzle.ca product page (wardrobe fire
+    // 2026-09-05 12:11Z, fingerprint gateway+coverage_gap+zcache-ca-not-
+    // in-zazzle-roster). Zazzle is a §5 roster vendor and zcache.ca is
+    // the .ca sibling of the already-allowed zcache.com; without it a
+    // screenshot renders unstyled and no product image URL can be read.
+    'zcache.ca',
+    '*.zcache.ca',
   ],
   deniedHosts: ZAZZLE_DENIED_HOSTS,
   blockedActionPatterns: ZAZZLE_BLOCKED_ACTION_PATTERNS,

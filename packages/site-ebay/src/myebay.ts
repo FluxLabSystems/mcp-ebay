@@ -676,8 +676,17 @@ const OFFER_FROM_YOU_RE = /\b(?:you\s+(?:offered|sent|made)|your\s+offer|offer\s
  * 2026-09-04, none of which carried any other direction or state wording).
  * Read only at the start of the row's text, where the template renders it;
  * a title is free to contain the words.
+ *
+ * No word boundary after the token: the live template's elements
+ * concatenate with no whitespace in textContent, so the title runs
+ * straight on from it ("OFFER RECEIVEDLEGO Star Wars …" — 2026-09-05
+ * 12:52Z fire, 31 of 31 rows unread by a \b-anchored pattern on the agent
+ * build that carried the fix). The uppercase form is matched as rendered,
+ * case-sensitively, so nothing a title starts with can complete it; the
+ * mixed-case form still needs a boundary, exactly as before.
  */
-const OFFER_PREFIX_RE = /^\s*offer\s+(received|expired|accepted|declined|sent|countered|retracted|withdrawn)\b/i;
+const OFFER_PREFIX_RE =
+  /^\s*(?:OFFER\s+(RECEIVED|EXPIRED|ACCEPTED|DECLINED|SENT|COUNTERED|RETRACTED|WITHDRAWN)|[Oo]ffer\s+(received|expired|accepted|declined|sent|countered|retracted|withdrawn)\b)/;
 const PREFIX_STATUS: Readonly<Record<string, OfferStatus>> = {
   received: 'open',
   expired: 'expired',
@@ -692,8 +701,10 @@ const PREFIX_STATUS: Readonly<Record<string, OfferStatus>> = {
  * The operator's own auction bid, which the bids/offers page lists beside
  * the offers ("Your max bid: US $41.00"; 6 of 31 rows on 2026-09-04, exactly
  * the rows with no offer prefix and no offer figure). A bid is not an offer.
+ * No leading boundary: the label follows the bid count with no whitespace
+ * on the live template ("12 bidsYour max bid: US $41.00").
  */
-const BID_ROW_RE = /\byour\s+max(?:imum)?\s+bid\b/i;
+const BID_ROW_RE = /your\s+max(?:imum)?\s+bid\b/i;
 /** A shipping figure on the row, never an offer or an ask. */
 const ROW_SHIPPING_FIGURE_RE = new RegExp(String.raw`(?:\+\s*)?${MONEY_SOURCE}\s*(?:shipping|delivery|postage)\b`, 'gi');
 const MONEY_GLOBAL_RE = new RegExp(MONEY_SOURCE, 'g');
@@ -782,7 +793,8 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
     const rest = amount === null ? blob : blob.replace(amount[0], ' ');
     const priceCell = cardText(card, MYEBAY_PRICE_SELECTOR);
     listPrice = money(priceCell) ?? firstMoneyIn(rest);
-    const prefix = OFFER_PREFIX_RE.exec(blob)?.[1]?.toLowerCase() ?? null;
+    const prefixMatch = OFFER_PREFIX_RE.exec(blob);
+    const prefix = (prefixMatch?.[1] ?? prefixMatch?.[2])?.toLowerCase() ?? null;
     let direction: OfferDirection = OFFER_FROM_SELLER_RE.test(blob) ? 'from_seller' : OFFER_FROM_YOU_RE.test(blob) ? 'from_you' : 'unknown';
     let offerStatus: OfferStatus = 'unknown';
     for (const [status, re] of OFFER_STATUS_RES) {

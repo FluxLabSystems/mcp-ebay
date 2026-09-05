@@ -74,6 +74,7 @@ import {
   kijijiSearchUrlWarnings,
   normalizeKijijiImageUrl,
 } from '@browser-bridge/site-kijiji';
+import { isOfficeSourceHost, OFFICE_SOURCES_SITE_PROFILE_ID } from '@browser-bridge/site-office';
 import { isWardrobeVendorHost, WARDROBE_VENDORS_SITE_PROFILE_ID } from '@browser-bridge/site-vendors';
 import {
   classifyZazzlePage,
@@ -156,7 +157,7 @@ function kijijiGalleryHints(): GalleryHints {
   };
 }
 
-type ExtractionSite = 'ebay' | 'kijiji' | 'zazzle' | 'vendor' | 'generic';
+type ExtractionSite = 'ebay' | 'kijiji' | 'zazzle' | 'vendor' | 'office' | 'generic';
 
 /**
  * Extraction dispatches by the page actually loaded, not by the session's
@@ -182,6 +183,8 @@ function siteForUrl(pageUrl: string): ExtractionSite {
     if (/(?:^|\.)zazzle\.(?:com|ca)$/.test(host)) return 'zazzle';
     // Policy-only wardrobe vendor roster: reachable, but no extractor.
     if (isWardrobeVendorHost(host)) return 'vendor';
+    // Policy-only office roster (providers + listing surfaces): same posture.
+    if (isOfficeSourceHost(host)) return 'office';
     return 'generic';
   } catch {
     return 'generic';
@@ -605,7 +608,9 @@ async function executeExtract(
           ? ZAZZLE_SITE_PROFILE_ID
           : site === 'vendor'
             ? WARDROBE_VENDORS_SITE_PROFILE_ID
-            : EBAY_SITE_PROFILE_ID;
+            : site === 'office'
+              ? OFFICE_SOURCES_SITE_PROFILE_ID
+              : EBAY_SITE_PROFILE_ID;
     if (declaredSiteProfile !== activeProfile) {
       intentWarnings.push(
         `DECLARED_SITE_PROFILE_MISMATCH: extraction ran ${activeProfile} for ${pageUrl}; the call declared ${declaredSiteProfile}.`,
@@ -632,7 +637,9 @@ async function executeExtract(
             ? ZAZZLE_SITE_PROFILE_ID
             : site === 'vendor'
               ? WARDROBE_VENDORS_SITE_PROFILE_ID
-              : declaredSiteProfile;
+              : site === 'office'
+                ? OFFICE_SOURCES_SITE_PROFILE_ID
+                : declaredSiteProfile;
     return {
       result: {
         siteProfile: activeProfile,
@@ -650,19 +657,25 @@ async function executeExtract(
     };
   }
 
-  // wardrobe-vendors.v1 is a policy-only profile: its hosts are reachable
-  // for navigate/snapshot/click/screenshot, but nothing here knows their
-  // page structure. Before this branch a vendor page fell through to the
-  // eBay listing extractor and came back as an all-null eBay record —
-  // plausible-looking junk. Say so instead, and hand back the little that
-  // is host-independent: the page's own title and URL.
-  if (site === 'vendor') {
+  // wardrobe-vendors.v1 and office-sources.v1 are policy-only profiles:
+  // their hosts are reachable for navigate/snapshot/click/screenshot, but
+  // nothing here knows their page structure. Before 2026-09-02 a vendor
+  // page fell through to the eBay listing extractor and came back as an
+  // all-null eBay record — plausible-looking junk. Say so instead, and
+  // hand back the little that is host-independent: the page's own title
+  // and URL.
+  if (site === 'vendor' || site === 'office') {
+    const policyOnlyProfile = site === 'vendor' ? WARDROBE_VENDORS_SITE_PROFILE_ID : OFFICE_SOURCES_SITE_PROFILE_ID;
+    const readingHint =
+      site === 'vendor'
+        ? 'Read the page with browser_snapshot (structure, prices, personalization controls) or browser_screenshot'
+        : 'Read the page with browser_snapshot (location, office sizes, the all-in monthly figure and what it includes, square footage, TMI and lease terms) or browser_screenshot';
     return {
       result: {
-        siteProfile: WARDROBE_VENDORS_SITE_PROFILE_ID,
+        siteProfile: policyOnlyProfile,
         pageRevision: tab.revision,
         record: {
-          siteProfile: WARDROBE_VENDORS_SITE_PROFILE_ID,
+          siteProfile: policyOnlyProfile,
           pageKind: 'other',
           pageUrl,
           pageTitle: normalizeTitle(document.querySelector('title')?.textContent),
@@ -670,7 +683,7 @@ async function executeExtract(
         },
         warnings: [
           ...intentWarnings,
-          `NO_EXTRACTOR_FOR_HOST: ${pageUrl} is on the wardrobe-vendors.v1 roster, which is policy-only — no extractor exists for this vendor. Read the page with browser_snapshot (structure, prices, personalization controls) or browser_screenshot; every value must be recorded with its provenance as observed on the page, never inferred from this record.`,
+          `NO_EXTRACTOR_FOR_HOST: ${pageUrl} is on the ${policyOnlyProfile} roster, which is policy-only — no extractor exists for this host. ${readingHint}; every value must be recorded with its provenance as observed on the page, never inferred from this record.`,
         ],
       },
       pageRevision: tab.revision,
