@@ -455,7 +455,24 @@ function detectSignedIn(document: Document, cardCount: number): boolean | null {
  * page rendered — a stated total below them is no total at all.
  */
 function readTotalCount(document: Document): { count: number | null; source: string | null; categoryChips: number } {
-  const chips = categoryFilterChips(document);
+  const { chips, allChip } = categoryFilterChips(document);
+  if (allChip !== null) {
+    // "(352)" in the chip's text; the accessible name's "352 items" is the
+    // same figure and the fallback when the text carries no parenthesis.
+    const text = normalizeText(allChip.textContent);
+    const aria = normalizeText(allChip.getAttribute('aria-label'));
+    const match = COUNT_IN_LABEL_RE.exec(text) ?? COUNT_ITEMS_RE.exec(aria);
+    if (match !== null) {
+      // The visible label only: the accessible name's "352 items" rides in
+      // a visually-hidden span that textContent runs onto the label's end.
+      const label = text.replace(/\s*\d[\d,]*\s*items?\s*$/i, '');
+      return {
+        count: Number.parseInt(match[1]!.replace(/,/g, ''), 10),
+        source: bounded(label.length > 0 ? label : aria, 80),
+        categoryChips: chips.length,
+      };
+    }
+  }
   const labelled: Array<{ count: number; source: string; form: 'label' | 'items' }> = [];
   try {
     const labels = Array.from(
@@ -504,26 +521,36 @@ function readTotalCount(document: Document): { count: number | null; source: str
  * "1 item" was read as the list total over 10+ rendered rows on the
  * 2026-09-05 15:30Z fire — so a chip is never a count source.
  */
-function categoryFilterChips(document: Document): Element[] {
+function categoryFilterChips(document: Document): { chips: Element[]; allChip: Element | null } {
   const chips: Element[] = [];
+  let allChip: Element | null = null;
   try {
     for (const el of Array.from(document.querySelectorAll('a[href], [aria-label]'))) {
       const href = el.getAttribute('href') ?? '';
       const aria = normalizeText(el.getAttribute('aria-label'));
       const text = normalizeText(el.textContent);
-      if (
-        /[?&]filter=category(?::|%3A)/i.test(href) ||
-        /^filter\s+watch\s*list\s+by\s+category\b/i.test(aria) ||
-        /^filter\s+watch\s*list\s+by\s+category\b/i.test(text)
-      ) {
+      const named = CHIP_NAME_RE.test(aria) || CHIP_NAME_RE.test(text);
+      if (!named && !/[?&]filter=category(?::|%3A)/i.test(href)) continue;
+      // The carousel's HEAD (18:21Z snapshot, node el_54_54): "All Categories
+      // (352) - Selected", accessible name "…: All Categories, 352 items,
+      // selected", href with NO filter=. That one chip is the whole list's
+      // count and is the total; every filtered sibling is a category's.
+      const isAll =
+        !/[?&]filter=category(?::|%3A)/i.test(href) &&
+        (ALL_CATEGORIES_CHIP_RE.test(aria) || /^all\s+categories\b/i.test(text));
+      if (isAll) {
+        if (allChip === null) allChip = el;
+      } else {
         chips.push(el);
       }
     }
   } catch {
     // no chips is no evidence either way
   }
-  return chips;
+  return { chips, allChip };
 }
+const CHIP_NAME_RE = /^filter\s+watch\s*list\s+by\s+category\b/i;
+const ALL_CATEGORIES_CHIP_RE = /^filter\s+watch\s*list\s+by\s+category:\s*all\s+categories\b/i;
 
 /**
  * A stated total below the rows the page itself rendered cannot be the

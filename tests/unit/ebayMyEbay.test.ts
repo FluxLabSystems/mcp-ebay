@@ -690,11 +690,29 @@ describe('watch list: the 2026-09-05 live template (2026-09-05 15:30Z fire, watc
     expect(byId('315012183531').title).toBe('Arista DCS-7050QX-32S-F 32x 40GbE QSFP+ 4x SFP+ Switch');
   });
 
-  it('never reads a category chip\'s "1 item" as the list total: totalCount null, no rejection, and a WATCHLIST_TOTAL_UNSTATED that names the chips', () => {
-    expect(page.totalCount).toBeNull();
-    expect(page.totalCountSource).toBeNull();
+  // The 18:21Z deals fire's second snapshot corrected the 15:30Z one: the
+  // carousel's HEAD is a selected "All Categories (352) - Selected" chip
+  // (href with no filter=, accessible name "…All Categories, 352 items,
+  // selected") and it carries the whole-list count. A per-category chip's
+  // "(1)" is still never the total.
+  it('reads the list total from the selected All Categories chip, never from a per-category chip, and says nothing is unstated', () => {
+    expect(page.totalCount).toBe(352);
+    expect(page.totalCountSource).toBe('All Categories (352) - Selected');
     expect(codes()).not.toContain('WATCHLIST_TOTAL_REJECTED');
-    const unstated = page.warnings.find((warning) => warning.startsWith('WATCHLIST_TOTAL_UNSTATED'));
+    expect(codes()).not.toContain('WATCHLIST_TOTAL_UNSTATED');
+  });
+
+  it('with the All Categories chip absent, the per-category chips are still never the total and the page says it is unstated', () => {
+    const { document } = parseHTML(
+      readFileSync(join(FIXTURES, 'watchlist-page-2026-09-05.html'), 'utf8').replace(/<a href="https:\/\/www\.ebay\.ca\/myb\/Watchlist\?custom_list_id=WATCH_LIST" aria-label="Filter Watchlist by category: All Categories[^]*?<\/a>/, ''),
+    );
+    const headless = extractWatchlistPage(document as unknown as Document, 'https://www.ebay.ca/mye/myebay/watchlist', { observedAt: OBSERVED_AT });
+    expect(headless.candidates).toHaveLength(4);
+    expect(headless.totalCount).toBeNull();
+    expect(headless.totalCountSource).toBeNull();
+    const heads = headless.warnings.map((warning) => warning.split(':')[0]);
+    expect(heads).not.toContain('WATCHLIST_TOTAL_REJECTED');
+    const unstated = headless.warnings.find((warning) => warning.startsWith('WATCHLIST_TOTAL_UNSTATED'));
     expect(unstated).toBeDefined();
     expect(unstated).toMatch(/category-filter chips/i);
     expect(unstated).toMatch(/per-category/i);

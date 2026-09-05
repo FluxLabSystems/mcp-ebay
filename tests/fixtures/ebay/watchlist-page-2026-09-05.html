@@ -17,7 +17,14 @@
     name is rendered here as a visually-hidden span so the "1 item" read the
     fire reported (WATCHLIST_TOTAL_REJECTED over "1 item") reproduces.
   - Node 87: button "Go to next slide" (the chip carousel's control).
-  - No list total anywhere on the page.
+  - The HEAD of the same carousel, from the 18:21Z deals fire's second
+    snapshot (pageRevision 54, node el_54_54, verbatim): role=link, name
+    "Filter Watchlist by category: All Categories, 352 items, selected",
+    text "All Categories (352) - Selected", href
+    /myb/Watchlist?custom_list_id=WATCH_LIST (no filter=). That selected
+    All Categories chip carries the WHOLE-LIST count; the 15:30Z snapshot
+    sampled the middle of the carousel and missed it. No other list total
+    renders anywhere on the page.
   - Per-row node order, verbatim: [checkbox name=title] -> [link href=/itm/
     name='' text=''] -> [img name=title] -> [heading name=title] -> [link
     name=title href=/itm/] -> [text "C $29.93*"] -> [text "* Converted from
@@ -46,6 +53,7 @@
   <main>
     <h1>Watch list</h1>
     <div>
+      <a href="https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST" aria-label="Filter Watchlist by category: All Categories, 352 items, selected" aria-current="true">All Categories (352) - Selected<span style="position:absolute;clip:rect(0 0 0 0)">352 items</span></a>
       <a href="https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST&amp;filter=category:175669" aria-label="Filter Watchlist by category: Drives, Storage &amp; Blank Media, 1 item">Drives, Storage &amp; Blank Media (1)<span style="position:absolute;clip:rect(0 0 0 0)">1 item</span></a>
       <a href="https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST&amp;filter=category:162" aria-label="Filter Watchlist by category: Other Computers &amp; Networking, 1 item">Other Computers &amp; Networking (1)<span style="position:absolute;clip:rect(0 0 0 0)">1 item</span></a>
       <a href="https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST&amp;filter=category:11450" aria-label="Filter Watchlist by category: Retail &amp; Services, 1 item">Retail &amp; Services (1)<span style="position:absolute;clip:rect(0 0 0 0)">1 item</span></a>
