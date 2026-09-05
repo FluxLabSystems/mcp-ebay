@@ -81,7 +81,7 @@ import {
   extractZazzleSearchResults,
   ZAZZLE_SITE_PROFILE_ID,
 } from '@browser-bridge/site-zazzle';
-import { resolveDirtyRevision, type BrowserSessionRuntime, type TabState } from '@browser-bridge/browser-core';
+import { resolveDirtyRevision, waitForAttached, type BrowserSessionRuntime, type TabState } from '@browser-bridge/browser-core';
 import { challengeWarning, CHALLENGE_WARNING_PREFIX, detectChallengePage } from './challenge.js';
 import { compactItemRecord, compactSearchPage } from './compact.js';
 import { ensureDestination } from './destinationFlow.js';
@@ -229,6 +229,14 @@ async function resolveExtractionSource(tab: TabState): Promise<ExtractionSource>
  * change to any extractable field must.
  */
 const FINGERPRINT_EPOCH = new Date('2000-01-01T00:00:00.000Z');
+
+/**
+ * Kijiji ad links, whatever the card markup: every ad URL is /v-<slug>/…/<id>.
+ * The selector the seller-page hydration wait watches for.
+ */
+const KIJIJI_AD_LINK_SELECTOR = 'a[href*="/v-"]';
+/** How long a seller page that read empty is given to render its listings. */
+const SELLER_HYDRATION_WAIT_MS = 4000;
 
 function extractionFingerprint(html: string, pageUrl: string): string {
   const site = siteForUrl(pageUrl);
@@ -676,7 +684,33 @@ async function executeExtract(
     // use. Worst case it finds nothing and says so. 'seller' (the poster's
     // /o-profile/ listings page every VIP links) is read the same way.
     if (kind === 'search' || kind === 'seller' || kind === 'other') {
-      const searchPage = extractSearchResults(document, pageUrl, { observedAt: source.capturedAt });
+      let capturedAt = source.capturedAt;
+      let searchPage = extractSearchResults(document, pageUrl, { observedAt: capturedAt });
+      const hydrationWarnings: string[] = [];
+      // 2026-09-04 deals fire (seller-profile-page-renders-no-listings-at-
+      // domcontentloaded): the first live /o-profile/ read returned zero ad
+      // links, and the bounded snapshot showed why — at domcontentloaded the
+      // DOM held only site chrome; the listings container is client-rendered.
+      // A seller page that reads empty on a fresh capture waits, bounded, for
+      // the first ad link and is read again from a fresh serialization. The
+      // wait is scoped to this page kind: search pages ship their cards in
+      // the server HTML (every live capture), and an empty search is common.
+      if (kind === 'seller' && searchPage.results.length === 0 && !source.pinned) {
+        const waited = await waitForAttached(tab, KIJIJI_AD_LINK_SELECTOR, SELLER_HYDRATION_WAIT_MS);
+        if (waited.found) {
+          tab.extractionPin = null;
+          const rehydrated = await resolveExtractionSource(tab);
+          capturedAt = rehydrated.capturedAt;
+          searchPage = extractSearchResults(rehydrated.document, pageUrl, { observedAt: capturedAt });
+          hydrationWarnings.push(
+            `LISTINGS_HYDRATED_AFTER_WAIT: ${pageUrl} rendered no ad link at domcontentloaded; its listings appeared ${waited.elapsedMs} ms later and the page was read again from that state (${searchPage.results.length} ad link(s)). This page kind is client-rendered — a read that skips the wait sees only site chrome.`,
+          );
+        } else {
+          hydrationWarnings.push(
+            `LISTINGS_NOT_HYDRATED: ${pageUrl} rendered no ad link at domcontentloaded and none appeared within ${SELLER_HYDRATION_WAIT_MS} ms; the seller may have no live ads, or the listings render on scroll or behind a control. Spend one browser_snapshot (maxNodes 120) on the page and quote it in the report before reading this as an empty inventory.`,
+          );
+        }
+      }
       // radius=/address= are ignored by kijiji.ca (2026-09-02, isolated
       // live); a URL that still carries them must not be read as a radius
       // sweep.
@@ -689,6 +723,7 @@ async function executeExtract(
         // The page ran a different keyword than the URL asked for, or none
         // (2026-09-02: a keyword in the first path segment is dropped).
         ...kijijiKeywordWarnings(pageUrl, searchPage),
+        ...hydrationWarnings,
         ...searchPage.warnings,
       ];
       if (kind === 'other') {
@@ -703,7 +738,7 @@ async function executeExtract(
         // empty state are unverified — the first fire on it says what it
         // rendered.
         warnings.push(
-          `SELLER_PAGE_UNVERIFIED: ${pageUrl} is a Kijiji seller listings page (/o-profile/<posterId>/<page>), read with the same ad-link scan as a search page; no live capture of this page kind exists (NEEDS-LIVE-VERIFICATION), so totalResults and hasNextPage are best-effort — compare candidateCount with the ad record's sellerListingCount, walk nextPageUrl (the trailing page number) while candidates keep appearing, and if the page renders no ad links spend one browser_snapshot (maxNodes 120) on it and quote what it shows in the report.`,
+          `SELLER_PAGE_UNVERIFIED: ${pageUrl} is a Kijiji seller listings page (/o-profile/<posterId>/<page>; the site redirects it to /o-profile/<posterId>/listings/<page>, and the listings render client-side after domcontentloaded — the agent waits for the first ad link), read with the same ad-link scan as a search page; no live capture of this page kind exists (NEEDS-LIVE-VERIFICATION), so totalResults and hasNextPage are best-effort — compare candidateCount with the ad record's sellerListingCount, walk nextPageUrl (the trailing page number, on whichever URL form the tab ended on) while candidates keep appearing, and if the page renders no ad links spend one browser_snapshot (maxNodes 120) on it and quote what it shows in the report.`,
         );
       }
       if (searchPage.results.length === 0) {
@@ -716,7 +751,7 @@ async function executeExtract(
           siteProfile: KIJIJI_SITE_PROFILE_ID,
           pageKind: kind,
           pageUrl,
-          observedAt: source.capturedAt.toISOString(),
+          observedAt: capturedAt.toISOString(),
           candidateCount: searchPage.results.length,
           candidates: searchPage.results,
           hasNextPage: searchPage.hasNextPage,

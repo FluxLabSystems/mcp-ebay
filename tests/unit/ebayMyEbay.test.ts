@@ -119,7 +119,10 @@ describe('extractWatchlistPage', () => {
     expect(drive.shippingSnippetText).toBe('Free shipping');
     expect(drive.seller).toBeNull();
     expect(drive.sellerText).toMatch(/tapeworks_usa \(883\) 100%/);
-    expect(drive.watchlistStatus).toBe('active');
+    // A price alone no longer implies a live listing: on the 2026-09-04
+    // overflow render 81 of 118 priced, unbadged cards had ended.
+    expect(drive.watchlistStatus).toBe('unknown');
+    expect(drive.sellingFormat).toBe('unknown');
   });
 
   it('marks an ended card ended and keeps its last price as evidence', () => {
@@ -141,7 +144,9 @@ describe('extractWatchlistPage', () => {
     expect(page.hasNextPage).toBe(true);
     expect(page.nextPageUrl).toBe('https://www.ebay.ca/mye/myebay/watchlist?page=2');
     expect(page.currentPage).toBeNull();
-    expect(page.warnings).toEqual([]);
+    // Two of the five authored cards state neither a status nor a format;
+    // the page says so instead of defaulting them.
+    expect(page.warnings.map((warning) => warning.split(':')[0])).toEqual(['WATCHLIST_STATUS_UNSTATED', 'WATCHLIST_FORMAT_UNSTATED']);
   });
 
   it('diagnoses a sign-in wall instead of reporting an empty list', () => {
@@ -395,5 +400,179 @@ describe('watch list: a stated count below the rendered rows is rejected (2026-0
     );
     expect(page.totalCount).toBe(312);
     expect(page.totalCountSource).toBe('All (312)');
+  });
+});
+
+// 2026-09-04 20:00Z deals fire (site-ebay+extractor_defect+offers-listprice-
+// is-the-offer-and-direction-is-in-the-snippet-prefix): on the live
+// /mye/myebay/bidsoffers page every row's snippet began with an uppercase
+// status token — "OFFER RECEIVED" on the 6 open rows, "OFFER EXPIRED" on 19 —
+// and the two figures a row carries were read the wrong way round: offerPrice
+// held the ask and listPrice the seller's offer (267676402924: offerPrice
+// C $84.99 / listPrice C $72.24, item page ask C $84.99; 168360507031 and
+// 128028063251 the same; listPrice below offerPrice on all 25 rows carrying
+// both). The 6 rows with no offer prefix and "Your max bid:" are the
+// operator's own auction bids. NO live row markup is captured: the layout
+// below is the one consistent with the fire's field-level output (an
+// unlabelled offer figure, then a "Make offer" control beside the ask),
+// and the fix is layout-agnostic — the prefix is read off the snippet and an
+// offer is never the higher of a row's two figures.
+describe('offers page: the status prefix and the ordering of the two figures (2026-09-04 20:00Z fire)', () => {
+  function offersDoc(rows: string): Document {
+    const { document } = parseHTML(
+      `<html><head><title>Bids and offers | My eBay</title></head><body>
+       <div class="filter-menu" role="tablist"><button role="tab" aria-selected="true">All (31)</button></div>
+       <ul>${rows}</ul></body></html>`,
+    );
+    return document as unknown as Document;
+  }
+  const received = `<li class="offer-card"><span class="eyebrow">OFFER RECEIVED</span>
+      <a href="https://www.ebay.ca/itm/267676402924">LEGO Star Wars 75192 Millennium Falcon manual</a>
+      <div><span>C $72.24</span></div><div>Buy It Now C $84.99 <button>Make offer</button></div></li>`;
+  const expired = `<li class="offer-card"><span class="eyebrow">OFFER EXPIRED</span>
+      <a href="https://www.ebay.ca/itm/267759834239">LEGO minifigure lot</a>
+      <div><span>C $10.00</span></div><div>C $12.50 <button>Make offer</button></div></li>`;
+  const bid = `<li class="offer-card"><a href="https://www.ebay.ca/itm/366630546269">Arista DCS-7050QX-32S</a>
+      <div>12 bids · Your max bid: US $41.00</div></li>`;
+
+  it('reads OFFER RECEIVED as an open offer from the seller, offer below ask', () => {
+    const page = extractOffersPage(offersDoc(received), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    const row = page.candidates[0]!;
+    expect(row.direction).toBe('from_seller');
+    expect(row.offerStatus).toBe('open');
+    expect(row.offerPrice).toEqual({ value: 72.24, currency: 'CAD' });
+    expect(row.listPrice).toEqual({ value: 84.99, currency: 'CAD' });
+    expect(page.warnings.some((warning) => warning.startsWith('OFFERS_DIRECTION_UNKNOWN'))).toBe(false);
+    expect(page.warnings.some((warning) => warning.startsWith('OFFERS_NO_OFFER_THREAD'))).toBe(false);
+  });
+
+  it('reads OFFER EXPIRED as an expired seller offer with both figures in order', () => {
+    const page = extractOffersPage(offersDoc(expired), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    const row = page.candidates[0]!;
+    expect(row.direction).toBe('from_seller');
+    expect(row.offerStatus).toBe('expired');
+    expect(row.offerPrice).toEqual({ value: 10, currency: 'CAD' });
+    expect(row.listPrice).toEqual({ value: 12.5, currency: 'CAD' });
+  });
+
+  it('names the rows whose labelled figure was the higher one, and says which way they were read', () => {
+    const page = extractOffersPage(offersDoc(received + expired), 'https://www.ebay.ca/mye/myebay/bidsoffers', {
+      observedAt: OBSERVED_AT,
+    });
+    const ordered = page.warnings.find((warning) => warning.startsWith('OFFERS_AMOUNTS_ORDERED_BY_VALUE'));
+    expect(ordered).toBeDefined();
+    expect(ordered).toMatch(/2 of 2/);
+    expect(ordered).toMatch(/never above the ask/);
+  });
+
+  it('keeps a labelled offer that is already the lower figure exactly as labelled, with no ordering note', () => {
+    const page = extractOffersPage(loadFixture('offers-page.html'), 'https://www.ebay.ca/mye/myebay/bidsoffers', {
+      observedAt: OBSERVED_AT,
+    });
+    expect(page.candidates[0]!.offerPrice).toEqual({ value: 165, currency: 'USD' });
+    expect(page.candidates[0]!.listPrice).toEqual({ value: 189, currency: 'USD' });
+    expect(page.warnings).toEqual([]);
+  });
+
+  it('a "Your max bid" row with no offer prefix is the operator\'s own bid: from_you, no offer, not an unknown', () => {
+    const page = extractOffersPage(offersDoc(bid + received), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    const row = page.candidates[0]!;
+    expect(row.itemId).toBe('366630546269');
+    expect(row.direction).toBe('from_you');
+    expect(row.offerStatus).toBe('none');
+    expect(row.offerPrice).toBeNull();
+    expect(page.warnings.some((warning) => warning.startsWith('OFFERS_DIRECTION_UNKNOWN'))).toBe(false);
+    expect(page.warnings.some((warning) => warning.startsWith('OFFERS_NO_OFFER_THREAD'))).toBe(false);
+    const bids = page.warnings.find((warning) => warning.startsWith('OFFERS_BID_ROWS'));
+    expect(bids).toBeDefined();
+    expect(bids).toMatch(/1 of 2/);
+    expect(bids).toMatch(/366630546269/);
+  });
+
+  it('still reads "you offered" wording as the operator\'s own offer when the prefix says only EXPIRED', () => {
+    const own = `<li class="offer-card"><span class="eyebrow">OFFER EXPIRED</span>
+      <a href="https://www.ebay.ca/itm/115641809410">IBM LTO-8 drive</a>
+      <div>You offered US $950.00</div><div>US $1,149.00</div></li>`;
+    const page = extractOffersPage(offersDoc(own), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    expect(page.candidates[0]!.direction).toBe('from_you');
+    expect(page.candidates[0]!.offerStatus).toBe('expired');
+    expect(page.candidates[0]!.offerPrice).toEqual({ value: 950, currency: 'USD' });
+  });
+});
+
+// 2026-09-04 20:00Z deals fire (site-ebay+extractor_defect+watchlist-overflow-
+// render-status-format-and-price-unreliable): the ?page=99 overflow render of
+// a 346-row watch list carried no status badge, no format element and no
+// countdown on its cards, and the reader filled the gaps with inferences —
+// watchlistStatus 'active' on 343 rows of which 81 of the 118 validated had
+// ended; sellingFormat 'fixed_price' on all 346 including 44 live auctions
+// with bids; and 137295398934 read 'sold' from its "N sold" quantity badge
+// while its item page was live at C $35.00. A walk that trusted the cards
+// produced 95 phantom change events. A card that states nothing gets an
+// 'unknown', and the page says how many rows that was.
+describe('watch list: an overflow card that states no status or format gets unknown, never a default (2026-09-04 20:00Z fire)', () => {
+  function watchlistDoc(cards: string): Document {
+    const { document } = parseHTML(
+      `<html><head><title>Watch list | My eBay</title></head><body>
+       <div class="filter-menu" role="tablist"><button role="tab" aria-selected="true">All (346)</button></div>
+       <ul>${cards}</ul></body></html>`,
+    );
+    return document as unknown as Document;
+  }
+  const endedButUnbadged = `<li class="m-item"><a class="m-item__title" href="https://www.ebay.ca/itm/178459747470">Cisco C9130AXE-A</a>
+      <div class="m-item__price">C $45.00</div> <div>Seller: lapennaco (12,004) 99.9%</div></li>`;
+  const auctionUnbadged = `<li class="m-item"><a class="m-item__title" href="https://www.ebay.ca/itm/137605605739">Arista DCS-7050QX-32S</a>
+      <div class="m-item__price">C $412.00</div></li>`;
+  const soldCount = `<li class="m-item"><a class="m-item__title" href="https://www.ebay.ca/itm/137295398934">Genuine LEGO plates lot</a>
+      <div class="m-item__price">C $35.00</div> <div class="m-item__hotness">12 sold</div></li>`;
+  const countdown = `<li class="m-item"><a class="m-item__title" href="https://www.ebay.ca/itm/318689537241">IBM TS2900</a>
+      <div class="m-item__price">C $770.65</div> <div>2d 3h left</div></li>`;
+  const stated = `<li class="m-item"><a class="m-item__title" href="https://www.ebay.ca/itm/127905836341">Mellanox SX1012</a>
+      <div class="m-item__price">US $189.00</div> <div>Buy It Now or Best Offer</div></li>`;
+  const page = extractWatchlistPage(watchlistDoc(endedButUnbadged + auctionUnbadged + soldCount + countdown + stated), 'https://www.ebay.ca/mye/myebay/watchlist?page=99', {
+    observedAt: OBSERVED_AT,
+  });
+  const byId = (id: string) => page.candidates.find((row) => row.itemId === id)!;
+
+  it('a priced card with no badge and no countdown is unknown, not active', () => {
+    expect(byId('178459747470').watchlistStatus).toBe('unknown');
+    expect(byId('137605605739').watchlistStatus).toBe('unknown');
+  });
+
+  it('a card that states neither bids nor Buy It Now has an unknown format, not fixed_price', () => {
+    expect(byId('178459747470').sellingFormat).toBe('unknown');
+    expect(byId('137605605739').sellingFormat).toBe('unknown');
+    expect(byId('137605605739').bidCount).toBeNull();
+  });
+
+  it('"12 sold" is a quantity badge, not a sold state', () => {
+    expect(byId('137295398934').watchlistStatus).toBe('unknown');
+  });
+
+  it('a countdown is still the one card-level tell of a live listing', () => {
+    expect(byId('318689537241').watchlistStatus).toBe('active');
+    expect(byId('318689537241').timeLeftText).toBe('2d 3h left');
+  });
+
+  it('a card that states Buy It Now keeps its format', () => {
+    expect(byId('127905836341').sellingFormat).toBe('fixed_price');
+  });
+
+  it('the page counts the rows whose status and format it could not read, so a walk never diffs from them', () => {
+    const status = page.warnings.find((warning) => warning.startsWith('WATCHLIST_STATUS_UNSTATED'));
+    expect(status).toBeDefined();
+    expect(status).toMatch(/4 of 5/);
+    expect(status).toMatch(/item page/);
+    const format = page.warnings.find((warning) => warning.startsWith('WATCHLIST_FORMAT_UNSTATED'));
+    expect(format).toBeDefined();
+    expect(format).toMatch(/4 of 5/);
+  });
+
+  it('the badged fixture still reads its ended and sold states from their wording', () => {
+    const fixture = extractWatchlistPage(loadFixture('watchlist-page.html'), 'https://www.ebay.ca/mye/myebay/watchlist', {
+      observedAt: OBSERVED_AT,
+    });
+    expect(fixture.candidates[3]!.watchlistStatus).toBe('ended');
+    expect(fixture.candidates[0]!.watchlistStatus).toBe('active');
   });
 });

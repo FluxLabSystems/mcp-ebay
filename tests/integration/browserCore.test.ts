@@ -28,6 +28,7 @@ import {
   snapshot,
   screenshot,
   waitFor,
+  waitForAttached,
 } from '@browser-bridge/browser-core';
 import type { BridgeError } from '@browser-bridge/protocol';
 import { startFixtureServer, type FixtureServer } from '../helpers/fixtureServer.js';
@@ -320,6 +321,31 @@ describe('navigation + revisions + snapshot (FR-02/03, §14)', () => {
     expect(result2.consentDismissed?.method).toBe('removed');
     expect(await harness.session.getTab(tabId).page.textContent('#state')).toBe('redeemed');
     await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
+  });
+
+  // 2026-09-04 20:00Z deals fire (site-kijiji+extractor_defect+seller-profile-
+  // page-renders-no-listings-at-domcontentloaded): a page captured at
+  // domcontentloaded held only site chrome; its listings rendered later.
+  it('a domcontentloaded capture misses client-rendered links that a bounded attached-wait then finds', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/hydrated-links.html?delay=600`, 'domcontentloaded', 20_000);
+    const tab = harness.session.getTab(tabId);
+    const adLinks = () => tab.page.$$eval('a[href*="/v-"]', (anchors) => anchors.length);
+    // The serialized HTML carries the links only inside the script's source
+    // text; the DOM — what the extractor's anchor scan reads — has none yet.
+    expect(await adLinks()).toBe(0);
+    const waited = await waitForAttached(tab, 'a[href*="/v-"]', 5_000);
+    expect(waited.found).toBe(true);
+    expect(waited.elapsedMs).toBeGreaterThanOrEqual(0);
+    expect(waited.elapsedMs).toBeLessThan(5_000);
+    expect(await adLinks()).toBe(3);
+  });
+
+  it('the attached-wait reports not-found at its deadline instead of throwing', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/hydrated-links.html?delay=60000`, 'domcontentloaded', 20_000);
+    const tab = harness.session.getTab(tabId);
+    const waited = await waitForAttached(tab, 'a[href*="/v-"]', 700);
+    expect(waited.found).toBe(false);
+    expect(waited.elapsedMs).toBeGreaterThanOrEqual(600);
   });
 
   it('the tab automation last touched reports active=true (F-11)', async () => {

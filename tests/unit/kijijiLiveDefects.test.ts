@@ -360,6 +360,19 @@ describe('kijiji seller listings surface (live captures)', () => {
     expect(nextKijijiSellerPageUrl('https://www.kijiji.ca/b-buy-sell/city-of-toronto/lego/c10l1700273')).toBeNull();
   });
 
+  // 2026-09-04 20:00Z deals fire: the site redirected /o-profile/1046282996/1
+  // to /o-profile/1046282996/listings/1 — the page the tab ends on is the one
+  // the next-page URL is derived from, so the redirect form pages too.
+  it('pages the post-redirect /o-profile/<id>/listings/<n> form and classifies it as a seller page', () => {
+    expect(classifyKijijiPage('https://www.kijiji.ca/o-profile/1046282996/listings/1')).toBe('seller');
+    expect(nextKijijiSellerPageUrl('https://www.kijiji.ca/o-profile/1046282996/listings/1')).toBe(
+      'https://www.kijiji.ca/o-profile/1046282996/listings/2',
+    );
+    expect(nextKijijiSellerPageUrl('https://www.kijiji.ca/o-profile/1046282996/listings/')).toBe(
+      'https://www.kijiji.ca/o-profile/1046282996/listings/2',
+    );
+  });
+
   it('a seller page runs the ad-link scan and names itself a seller page', () => {
     // No live /o-profile/ capture exists; the scan is anchor-href based, so
     // the search capture stands in for the markup shape it does not depend on.
