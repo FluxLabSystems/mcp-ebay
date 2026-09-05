@@ -1067,18 +1067,23 @@ function applySearchCompaction(
  * removed-item template (listingStatus 'unavailable'), a deleted Kijiji ad
  * still rendering a VIP shell (listingStatus 'deleted'), or Kijiji's
  * removed-ad redirect — the VIP URL 302s to its category search page
- * carrying ?adRemoved=<id>. These used to come back ok:true and count as
- * succeeded, so a routine upserting every ok slot would write a record
- * literally titled "Discover error" to the deals board. The record stays on
- * the slot — a dead listing is exactly the evidence a re-validation pass
- * needs to retire a stored id — but ok now means "produced listing
- * evidence", not "the tab loaded something".
+ * carrying ?adRemoved=<id> — or, with no marker at all, to a plain category
+ * page. These used to come back ok:true and count as succeeded, so a
+ * routine upserting every ok slot would write a record literally titled
+ * "Discover error" to the deals board. The record stays on the slot — a
+ * dead listing is exactly the evidence a re-validation pass needs to retire
+ * a stored id — but ok now means "produced listing evidence", not "the tab
+ * loaded something".
  *
  * 'sold', 'ended' and 'expired' stay ok:true on purpose: those are real
  * listing pages whose data (final price, close date) is the signal a deals
  * watch exists to collect.
  */
-function deadListingError(url: string, record: Record<string, unknown> | null): BatchExtractItem['error'] {
+function deadListingError(
+  url: string,
+  finalUrl: string | null,
+  record: Record<string, unknown> | null,
+): BatchExtractItem['error'] {
   if (record === null) return null;
   const status = typeof record.listingStatus === 'string' ? record.listingStatus : null;
   if (status === 'unavailable' || status === 'deleted') {
@@ -1093,6 +1098,30 @@ function deadListingError(url: string, record: Record<string, unknown> | null): 
     return {
       code: 'LISTING_UNAVAILABLE',
       message: `Kijiji redirected this ad to its category search page marked adRemoved=${removedAdId}: the ad no longer exists.`,
+      retryable: false,
+    };
+  }
+  // 2026-09-04 deals fire (removed-ad-redirect-without-adremoved-marker-not-
+  // classified-unavailable): ad 1742968008 redirected to its category page
+  // with NO adRemoved parameter, while ad 1740940278 in the same audit
+  // carried the marker. Both were gone; only one was detectable, so the
+  // first sat active on the board as "a live ad the extractor failed to
+  // parse". The check is the URL-shape change, not the marker: a Kijiji ad
+  // URL (/v-…/<id>) that finalises on a category or search path (/b-…) is
+  // never a live ad. The redirect target is kept in the message and on the
+  // slot's finalUrl as the evidence. A search URL requested as such lands
+  // on a search page and is not touched here.
+  const landed = finalUrl ?? (typeof record.pageUrl === 'string' ? record.pageUrl : null);
+  if (
+    landed !== null &&
+    siteForUrl(url) === 'kijiji' &&
+    classifyKijijiPage(url) === 'listing' &&
+    siteForUrl(landed) === 'kijiji' &&
+    classifyKijijiPage(landed) === 'search'
+  ) {
+    return {
+      code: 'LISTING_UNAVAILABLE',
+      message: `Kijiji redirected ad ${adIdFromUrl(url) ?? url} to a category search page (${landed}) with no adRemoved marker: an ad URL that resolves to a search page is not a live ad.`,
       retryable: false,
     };
   }
@@ -1136,7 +1165,7 @@ async function traverseOne(
     const error: BatchExtractItem['error'] =
       challengeNote !== undefined
         ? { code: 'CHALLENGE_PAGE', message: challengeNote, retryable: true }
-        : deadListingError(url, record);
+        : deadListingError(url, nav.finalUrl, record);
     return {
       url,
       finalUrl: nav.finalUrl,
