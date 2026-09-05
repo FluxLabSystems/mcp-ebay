@@ -4,6 +4,8 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { checkUrl, isProtectedEndpoint } from '@browser-bridge/policy';
 import { ebaySiteProfile } from '@browser-bridge/site-ebay';
 import { describeProfileConformance } from './harness.js';
 
@@ -81,13 +83,14 @@ describeProfileConformance({
   offProfileUrl: 'https://www.marriott.com/en-us/hotels/',
   suffixConfusionUrl: 'https://www.ebay.ca.attacker-test.example/itm/1',
   httpUrl: 'http://www.ebay.ca/sch/i.html?_nkw=lego',
-  blockedAuthUrls: [
-    'https://www.ebay.ca/signin/',
-    'https://www.ebay.ca/signin/?ru=https%3A%2F%2Fwww.ebay.ca%2F',
-    'https://signin.ebay.ca/ws/eBayISAPI.dll?SignIn',
-    'https://signin.ebay.ca/signin/s',
-    'https://www.ebay.com/signin/',
-  ],
+  // Empty by operator decision (2026-09-05): eBay's sign-in surfaces are
+  // reachable so the human can hold a session, without which shipping cannot
+  // resolve to the destination postal code and the watch list and offers are
+  // invisible. See EBAY_AUTH_PATH_PATTERNS for the full reasoning and for what
+  // still guards credentials. The reachability is asserted positively in
+  // "eBay sign-in reachability" below rather than left merely unasserted, so a
+  // silent re-block fails a test instead of quietly breaking the operator.
+  blockedAuthUrls: [],
   allowedLookalikeUrls: [
     // Seller-written slugs that merely contain auth-ish words.
     'https://www.ebay.ca/itm/vintage-sign-in-neon-frame/123456789012',
@@ -97,8 +100,12 @@ describeProfileConformance({
     'https://www.ebay.ca/checkout/start',
     'https://pay.ebay.ca/rxo?action=view',
     'https://www.ebay.ca/bestoffer/offers/912?modal=1',
-    'https://signin.ebay.ca/ws/eBayISAPI.dll?SignInSubmit',
+    // SignInSubmit is deliberately absent: aborting the credential POST would
+    // let the human reach the form and then kill the submission, which reads
+    // as eBay rejecting their password. Credential CHANGE stays protected —
+    // the change-password entry below covers every ebay subdomain.
     'https://www.ebay.ca/cnt/change-password/',
+    'https://signin.ebay.ca/cnt/change-password/',
   ],
   unprotectedListingUrls: [
     // The segment-anchoring guarantee: a slug containing a deny keyword is
@@ -108,4 +115,58 @@ describeProfileConformance({
     'https://www.ebay.ca/itm/lego-lot-best-offer-welcome/144555666777',
     'https://www.ebay.ca/itm/nintendo-factory-reset-console/155666777888',
   ],
+});
+
+/**
+ * The operator's session is a FEATURE of this profile (decision 2026-09-05).
+ *
+ * Signed out, eBay will not resolve shipping to the destination postal code,
+ * will not show the watch list or received offers, and will not show member
+ * pricing — which is most of what ebay.ca.v1 exists to extract. The previous
+ * blanket auth block also applied to the human, because enforcement lives in
+ * the route interception that sees every navigation in the context.
+ *
+ * These assertions are positive on purpose. Emptying blockedAuthUrls alone
+ * would make the harness's auth test vacuous, and a future well-meaning
+ * re-block would pass CI while silently locking the operator out of their own
+ * account again.
+ */
+describe('eBay sign-in reachability', () => {
+  const SIGNIN_URLS = [
+    'https://www.ebay.ca/signin/',
+    'https://www.ebay.ca/signin/?ru=https%3A%2F%2Fwww.ebay.ca%2F',
+    'https://signin.ebay.ca/ws/eBayISAPI.dll?SignIn',
+    'https://signin.ebay.ca/signin/s',
+    'https://www.ebay.com/signin/',
+  ];
+
+  it('sign-in pages are reachable by navigation and by redirect hop', async () => {
+    for (const url of SIGNIN_URLS) {
+      for (const context of ['navigation', 'redirect'] as const) {
+        const decision = await checkUrl(url, ebaySiteProfile, context, { resolveDns: false });
+        expect(decision.allowed, `${url} (${context})`).toBe(true);
+      }
+    }
+  });
+
+  it('the credential POST is not aborted as a protected endpoint', () => {
+    expect(isProtectedEndpoint('https://signin.ebay.ca/ws/eBayISAPI.dll?SignInSubmit', ebaySiteProfile)).toBe(false);
+  });
+
+  it('but changing a credential is still blocked, on every eBay host', () => {
+    for (const url of [
+      'https://www.ebay.ca/cnt/change-password/',
+      'https://signin.ebay.ca/cnt/change-password/',
+      'https://www.ebay.ca/acctsec/security',
+      'https://accounts.ebay.com/account/security',
+    ]) {
+      expect(isProtectedEndpoint(url, ebaySiteProfile), url).toBe(true);
+    }
+  });
+
+  it('the agent still cannot type a credential', () => {
+    for (const field of ['current-password', 'new-password', 'one-time-code']) {
+      expect(ebaySiteProfile.blockedFieldAutocomplete).toContain(field);
+    }
+  });
 });
