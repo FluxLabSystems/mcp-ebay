@@ -145,6 +145,67 @@ export function parseKijijiPostedText(rawText: string, now: Date): string | null
   return null;
 }
 
+/**
+ * How precisely a card's posted time is known. 'exact' is a machine-readable
+ * statement (a datetime attribute, the hydration cache); every other value
+ * names the unit of the relative label the instant was derived from.
+ */
+export type KijijiPostedPrecision = 'exact' | 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month';
+
+function postedUnitPrecision(unitMs: number): KijijiPostedPrecision {
+  if (unitMs >= 2_592_000_000) return 'month';
+  if (unitMs >= 604_800_000) return 'week';
+  if (unitMs >= 86_400_000) return 'day';
+  if (unitMs >= 3_600_000) return 'hour';
+  if (unitMs >= 60_000) return 'minute';
+  return 'second';
+}
+
+/** The instant with everything finer than the label's unit dropped (a day or coarser truncates to the UTC date). */
+function truncateToPrecision(ms: number, precision: KijijiPostedPrecision): string {
+  const date = new Date(ms);
+  if (precision === 'second') date.setUTCMilliseconds(0);
+  else if (precision === 'minute') date.setUTCSeconds(0, 0);
+  else if (precision === 'hour') date.setUTCMinutes(0, 0, 0);
+  else date.setUTCHours(0, 0, 0, 0);
+  return date.toISOString();
+}
+
+/**
+ * The relative label a search card renders, read as what it is: the ad's
+ * last activation as the card ROUNDS it, measured back from the caller's
+ * clock and then truncated to the label's own unit. The 2026-09-06 deals
+ * fire read three live search pages on which nearly every card's postedAt
+ * carried the fetch clock's sub-second component (04:13:09.857Z across a
+ * whole page) — parseKijijiPostedText composes a full instant out of a label
+ * that never stated one, so the time half was manufactured. Here "2 hrs ago"
+ * at 04:13:09.857Z becomes 02:00:00.000Z with precision 'hour', and "1 day
+ * ago" becomes the UTC date with precision 'day'. Null exactly when
+ * parseKijijiPostedText is null. The caller records the precision and the
+ * source beside the value; it is not the ad's original posting date, which
+ * only the ad page states.
+ */
+export function parseKijijiPostedLabel(
+  rawText: string,
+  now: Date,
+): { postedAt: string; precision: KijijiPostedPrecision } | null {
+  const text = rawText.replace(/[\u00a0\u202f]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (text.length === 0) return null;
+  if (/\d\+|\bover a\b|\bplus d/.test(text)) return null;
+  if (/\b(?:yesterday|hier)\b/.test(text)) {
+    return { postedAt: truncateToPrecision(now.getTime() - 86_400_000, 'day'), precision: 'day' };
+  }
+  for (const match of text.matchAll(/(\d+)\s*([a-z\u00e0-\u00ff]+)/g)) {
+    const unitMs = postedUnitMs(match[2]!);
+    if (unitMs === null) continue;
+    const amount = Number.parseInt(match[1]!, 10);
+    if (!Number.isFinite(amount)) continue;
+    const precision = postedUnitPrecision(unitMs);
+    return { postedAt: truncateToPrecision(now.getTime() - amount * unitMs, precision), precision };
+  }
+  return null;
+}
+
 /** Fluxology deals feed id convention: `kijiji-<marketplaceListingId>`. */
 export function dealsFeedId(adId: string): string {
   return `kijiji-${adId}`;

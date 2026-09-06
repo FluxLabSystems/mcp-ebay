@@ -184,6 +184,8 @@ export function mapSearchRows(input: MapSearchRowsInput): Mapped<ApiListingCandi
       sellingFormat,
       bidCount: null,
       shippingSnippetText: null,
+      shippingSnippetAmount: null,
+      shippingSnippetServiceNamed: null,
       itemLocationText,
       isNewListing: null,
       order,

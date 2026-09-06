@@ -89,11 +89,11 @@ reading a snapshot. Each row below says which kind it is.
 | Still needed | The operator's ratification of the roster (the office lane's precedent: rosters are operator decisions — and `westgateresorts.com` is not on this row); the OTA decision (`booking.com` and `trip.com` are transactional in a way the resort sites are not; the safer first cut is the brand sites plus `tripadvisor.com`, with the OTAs deferred until the brand lane has run); and live verification per brand that the reservation path is walled (`createResearchProfile` blocks `booking`/`reserve` paths and the "book now" / "reserve now" names). Recommended order: brand sites first — `mgmresorts.com` (query-param addressable, no interaction needed), then `marriott.com`. |
 | Risk | Highest on the list. A date search is a form submission, and the profile's job is to make the *reservation* path unreachable while leaving the *search* path open. `createResearchProfile` blocks `booking`, `bookings`, `reserve` and `reservation` as path segments and "book now" / "reserve now" / "confirm booking" by name. That needs live verification per brand before the lane ships, not after. |
 
-**Two further `site_profile_request`s from the vacation routine (2026-09-05,
-both closed `needs_operator` on 2026-09-06 — the roster is the operator's to
-write, and neither report's evidence is an `ORIGIN_DENIED`; both were read in
-an attended Claude in Chrome session). Recorded here so the decision has its
-evidence in one place; nothing below is allowlisted by being written down.**
+**Further requests from the vacation routine (2026-09-05 and 2026-09-06,
+each closed `needs_operator` — the roster is the operator's to write, and no
+report's evidence is an `ORIGIN_DENIED`; all were read in an attended Claude
+in Chrome session). Recorded here so the decision has its evidence in one
+place; nothing below is allowlisted by being written down.**
 
 - **`booking.com` property pages** (fingerprint
   `mcp-ebay+site_profile_request+booking-com-property-pages-deep-linkable-and-itemise-taxes-and-charges`).
@@ -131,6 +131,59 @@ evidence in one place; nothing below is allowlisted by being written down.**
   controls did not navigate under automation — the hotel-level URL is
   constructed, not clicked. Hotel ids observed: Westgate Flamingo Bay 68747;
   South Point 11548. Same reservation-path risk as the row above.
+  **Design requirements the lane must carry, from the 2026-09-06 01:22Z
+  report** (fingerprint
+  `mcp-ebay+extractor_defect+synxis-silently-rewrites-out-of-horizon-dates-to-a-default-window-yielding-wrong-prices`
+  — filed as an extractor defect against a profile that does not exist yet,
+  so it is pinned here rather than reproduced): (1) **a mandatory date
+  assertion** — an arrival beyond the engine's horizon (Westgate Park City,
+  chain 19007, 2027-10-10) produced no error; the engine rewrote the query
+  string to a default two-night window and rendered real prices for a
+  September 2026 window under the requested URL. The extractor reads the
+  rendered Check-in / Check-out fields (`location.search` is blocked by a
+  page guard; `document.body.innerText` reads normally), compares them with
+  the requested `arrive`/`depart`, and on a mismatch returns an
+  out-of-horizon result, never prices. (2) **Recorded horizons** so
+  out-of-range queries are not issued: chain 6903 (South Point) sells
+  through about 2027-08-20 (first declared-unavailable date 2027-08-21);
+  chain 19007 (Westgate) sells past 2027-09-28 and silently rejects
+  2027-10-10 — boundary in the first week of October 2027, not bisected.
+  (3) **A line-anchored category parser**: identify each category header by
+  its "Sleeps N … sq ft" metadata line and take the minimum rate-plan price
+  before the next header; substring matching collides ("One Bedroom Villa"
+  inside "One Bedroom Deluxe Villa"). Search for "From" without a trailing
+  space — the page renders `From\u00a0$122.30`. (4) Surface the engine's
+  explicit in-horizon blackout strings ("We do not have available rooms on
+  October 15, 2026", with a referral to a neighbouring property) as a
+  finding, not noise. Routing for the attended pathway is in the vacation
+  SKILL.md ("Never trust your own request URL").
+- **Hilton Grand Vacations through the hilton.com booking engine** (fingerprint
+  `mcp-ebay+site_profile_request+hilton-grand-vacations-reachable-by-ctyhocn-deep-link-and-absent-from-the-property-sitemap`,
+  2026-09-06). `hilton.com` is already on this row. The 2026-09-05 conclusion
+  that HGV inventory is unreachable was wrong: only hilton.com SEARCH hangs
+  and it never surfaces HGV because HGV properties have no entry in the
+  property sitemap (`robots.txt` → `sitemap.xml` → `sitemap-en.xml`, 984
+  brand-grouped sub-sitemaps; brand code `gv` has `location-gv` files and NO
+  `prop-gv` files). The booking-engine deep link renders fully, signed out,
+  including ten-night stays:
+  `https://www.hilton.com/en/book/reservation/rooms/?ctyhocn=<CODE>&arrivalDate=YYYY-MM-DD&departureDate=YYYY-MM-DD&room1NumAdults=1&displayCurrency=CAD`,
+  room cards under `[data-testid=roomCardTile]`. A profile would carry a
+  `ctyhocn` resolver that walks the LOCATION sitemap for brands absent from
+  the property sitemap (`/en/locations/canada/ontario/hilton-grand-vacations/`
+  carries the single hotel link), the known codes (`YYZBLGV` Blue Mountain, a
+  Hilton Grand Vacations Club; `LASCDCI` Conrad Las Vegas at Resorts World),
+  Hilton's clean itemisation of taxes and mandatory charges (13.52% + 4.00%
+  per room per night and a separately flagged "Daily Mandatory Charge … VAF"
+  at Blue Mountain; a C$75.99/night resort charge stated inside the Conrad
+  rate), and the rule that Hilton returns an IDENTICAL no-rooms message for
+  in-horizon no-inventory and out-of-horizon dates, so the profile reasons
+  from the ~550-day window (HGV releases cash-rental inventory only a few
+  months ahead: Blue Mountain sold through about 2027-01-20 and nothing
+  Feb–Aug 2027). It would cover the standard Hilton brands, Curio, Conrad and
+  the whole HGV portfolio — three unpriceable records on the feed today.
+  Never route through hilton.com search. Same reservation-path risk as the
+  row above; the row's "still needed" (ratification, live wall verification)
+  is unchanged.
 
 ---
 

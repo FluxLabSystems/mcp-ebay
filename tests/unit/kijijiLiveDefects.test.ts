@@ -93,13 +93,18 @@ describe('defect 3 — posted time on search candidates', () => {
     expect(page.results.map((result) => result.postedText)).toEqual(['2 hrs ago', '1 day ago', '3 wks ago']);
   });
 
-  it('resolves postedAt from the posted text when it is machine-parseable', () => {
+  it('resolves postedAt from the posted text when it is machine-parseable, at the label\'s own precision', () => {
+    // 2026-09-06: a label states a rounded age, not an instant, so the value
+    // is truncated to the label's unit and marked as derived — "1 day ago"
+    // is a date, not 12:00:00 on that date (the fetch clock's time of day).
     const page = extractSearchResults(loadFixture('search-cards-hydrated.html'), SEARCH_URL, {
       observedAt: new Date('2026-08-29T12:00:00.000Z'),
     });
     expect(page.results[0]?.postedAt).toBe('2026-08-29T10:00:00.000Z');
-    expect(page.results[1]?.postedAt).toBe('2026-08-28T12:00:00.000Z');
-    expect(page.results[2]?.postedAt).toBe('2026-08-08T12:00:00.000Z');
+    expect(page.results[1]?.postedAt).toBe('2026-08-28T00:00:00.000Z');
+    expect(page.results[2]?.postedAt).toBe('2026-08-08T00:00:00.000Z');
+    expect(page.results.map((result) => result.postedAtSource)).toEqual(['relative_text', 'relative_text', 'relative_text']);
+    expect(page.results.map((result) => result.postedAtPrecision)).toEqual(['hour', 'day', 'week']);
   });
 
   it('reads the time out of the details block when the node carries no name', () => {

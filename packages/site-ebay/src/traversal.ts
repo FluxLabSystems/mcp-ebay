@@ -42,6 +42,22 @@ export interface ListingCandidate {
   bidCount: number | null;
   /** Shipping line as rendered ("+C $22.15 shipping", "Free shipping"). */
   shippingSnippetText: string | null;
+  /**
+   * The amount shippingSnippetText states (0 for "Free shipping"), parsed
+   * so a consumer need not. A traversal hint like every other card field,
+   * and never a landed-cost input: on 2026-09-06 the card for 167300287674
+   * read "+C $83.34 shipping" and the item page, minutes later, quoted
+   * C$875.27 UPS Worldwide Saver for the same id. The card names no
+   * service or destination, so nothing on it says which quote it is.
+   */
+  shippingSnippetAmount: { value: number; currency: string } | null;
+  /**
+   * Whether the card's shipping text names a carrier or service level
+   * (UPS, Canada Post, Expedited, …). False on the ordinary "+C $83.34
+   * shipping" card; null when there is no shipping text. A false here is
+   * why the figure is not costable (SHIPPING_SNIPPET_SERVICE_UNLABELLED).
+   */
+  shippingSnippetServiceNamed: boolean | null;
   itemLocationText: string | null;
   /** The badge cleanTitle strips out of the title, kept as a flag. */
   isNewListing: boolean;
@@ -198,6 +214,29 @@ function shippingFromCardText(card: Element): string | null {
 }
 
 /**
+ * Words that name the service a shipping figure is for. A card that carries
+ * only "+C $83.34 shipping" names none, and that absence is what makes its
+ * figure uncostable. NEEDS-LIVE-VERIFICATION: no live ebay.ca card has been
+ * captured naming a carrier; the vocabulary is the item page's ("UPS
+ * Worldwide Saver", "USPS Priority Mail International", "UPS Standard").
+ */
+const SHIPPING_SERVICE_NAMED_RE =
+  /\b(?:ups|usps|fedex|dhl|purolator|canpar|canada\s+post|expedited|economy|standard|priority|express|ground|first[\s-]class|worldwide|international\s+(?:priority|express|economy|standard))\b/i;
+
+/** The amount a shipping snippet states and whether it names a service; both null without a snippet. */
+export function readShippingSnippet(shippingSnippetText: string | null): {
+  amount: { value: number; currency: string } | null;
+  serviceNamed: boolean | null;
+} {
+  if (shippingSnippetText === null) return { amount: null, serviceNamed: null };
+  const parsed = parseMoney(shippingSnippetText);
+  return {
+    amount: parsed === null ? null : { value: parsed.value, currency: parsed.currency },
+    serviceNamed: SHIPPING_SERVICE_NAMED_RE.test(shippingSnippetText),
+  };
+}
+
+/**
  * The card's text with a space at every element boundary. textContent runs
  * adjacent elements together ("+C $12.00 shippingC $45.00"), and a word
  * boundary the regexes above rely on disappears with the whitespace.
@@ -337,6 +376,8 @@ export function extractListingCandidates(document: Document, pageUrl: string): L
       const textPrice = elementPrice === null ? priceFromCardText(card, rawTitle) : null;
       const parsedPrice = elementPrice ?? textPrice;
       const { sellingFormat, bidCount } = detectCardFormat(card, rawTitle, parsedPrice !== null);
+      const shippingSnippetText = cardText(card, CARD_SHIPPING_SELECTOR) ?? shippingFromCardText(card);
+      const shippingSnippet = readShippingSnippet(shippingSnippetText);
 
       candidates.push({
         itemId,
@@ -346,7 +387,9 @@ export function extractListingCandidates(document: Document, pageUrl: string): L
         snippetPriceSource: elementPrice !== null ? 'element' : textPrice !== null ? 'text' : null,
         sellingFormat,
         bidCount,
-        shippingSnippetText: cardText(card, CARD_SHIPPING_SELECTOR) ?? shippingFromCardText(card),
+        shippingSnippetText,
+        shippingSnippetAmount: shippingSnippet.amount,
+        shippingSnippetServiceNamed: shippingSnippet.serviceNamed,
         itemLocationText: cardText(card, CARD_LOCATION_SELECTOR),
         isNewListing: isNewListingCard(card, rawTitle),
         order: candidates.length,

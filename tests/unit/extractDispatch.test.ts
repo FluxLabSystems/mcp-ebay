@@ -547,3 +547,38 @@ describe('kijiji search records carry searchTerm and KEYWORD_NOT_APPLIED', () =>
     expect(parsed.warnings.some((warning) => warning.startsWith('KEYWORD_NOT_APPLIED'))).toBe(true);
   });
 });
+
+// 2026-09-06 deals fire: a search card's "+C $83.34 shipping" stood beside an
+// item page quoting C$875.27 UPS Worldwide Saver for the same id. The page-
+// level warning says how many cards quote an amount with no service or
+// destination named, so a run never costs a card.
+describe('search-card shipping figures are named service-unlabelled at page level', () => {
+  it('SHIPPING_SNIPPET_SERVICE_UNLABELLED counts the amount-bearing cards that name no service', async () => {
+    const outcome = await runExtract(
+      'https://www.ebay.ca/sch/i.html?_nkw=40GbE+QSFP%2B+switch&_sop=10&_ipg=240',
+      `<html><head><title>40GbE QSFP+ switch | eBay</title></head><body><ul class="srp-results">
+         <li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/167300287674"><h3 class="s-item__title">ARISTA DCS-7050QX-32-R</h3></a><span class="s-item__price">C $145.29</span><span class="s-item__shipping">+C $83.34 shipping</span></li>
+         <li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/198591780847"><h3 class="s-item__title">Mellanox SX1036</h3></a><span class="s-item__price">C $210.00</span><span class="s-item__shipping">+C $29.00 UPS Standard shipping</span></li>
+         <li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/236571703560"><h3 class="s-item__title">Dell S6000</h3></a><span class="s-item__price">C $300.00</span><span class="s-item__shipping">Free shipping</span></li>
+       </ul></body></html>`,
+      'ebay.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const unlabelled = parsed.warnings.find((warning) => warning.startsWith('SHIPPING_SNIPPET_SERVICE_UNLABELLED'));
+    expect(unlabelled).toBeDefined();
+    expect(unlabelled).toContain('1 of 3');
+    expect(unlabelled).toMatch(/item page/);
+  });
+
+  it('is silent on a page whose cards quote no shipping amount', async () => {
+    const outcome = await runExtract(
+      'https://www.ebay.ca/sch/i.html?_nkw=lego',
+      `<html><head><title>lego | eBay</title></head><body><ul class="srp-results">
+         <li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/236571703560"><h3 class="s-item__title">Lego lot</h3></a><span class="s-item__price">C $30.00</span><span class="s-item__shipping">Free shipping</span></li>
+       </ul></body></html>`,
+      'ebay.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    expect(parsed.warnings.some((warning) => warning.startsWith('SHIPPING_SNIPPET_SERVICE_UNLABELLED'))).toBe(false);
+  });
+});

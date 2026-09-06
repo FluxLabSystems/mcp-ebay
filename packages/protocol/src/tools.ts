@@ -950,7 +950,12 @@ export const DashboardRecordsInput = z.strictObject({
   fields: z.array(z.string().min(1).max(64)).min(1).max(64).optional(),
   /** ISO 8601. Keeps records whose last activity is at or after it, plus records with no timestamp at all. */
   since: z.iso.datetime({ offset: true }).optional(),
-  /** Exact match on recordType (candidate, search_run, offer, …). */
+  /**
+   * Exact match on recordType (candidate, search_run, offer, …). The keys
+   * are the ones dashboard_summary reports under byRecordType, so
+   * "unspecified" selects the records that carry no recordType at all — on
+   * a scope whose records are untyped (office), that is every record.
+   */
   recordType: z.string().min(1).max(64).optional(),
   /** changed (last activity, the default), added (addedAt) or discovered (firstSeen). */
   sort: z.enum(['changed', 'added', 'discovered']).default('changed'),
