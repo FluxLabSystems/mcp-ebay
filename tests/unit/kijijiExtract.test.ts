@@ -462,6 +462,28 @@ describe('description excerpt says when it is cut (2026-09-05)', () => {
     expect(cut).toMatch(/500/);
   });
 
+  // 2026-09-06 office fire (site-kijiji+extractor_defect+description-
+  // truncated-warning-prescribes-a-snapshot-remedy-that-returns-no-
+  // description-text): the warning's first remedy — "read the rest from a
+  // browser_snapshot of the description region" — does not exist. On ad
+  // 1743072691 (1,239-character body) browser_snapshot returned the
+  // Description heading, the Show More control and zero body nodes before
+  // and after the control was clicked; the snapshot never carries prose
+  // (tests/integration/browserCore.test.ts pins that against a fixture). The
+  // warning must send the caller somewhere that answers: the syndicated MLS
+  // record or a screenshot of the expanded description.
+  it('names a remedy that exists: the syndicated MLS record or a screenshot, never a snapshot of the prose', () => {
+    const body = sentence.repeat(13); // 1,239 characters whitespace-collapsed, like ad 1743072691
+    const { warnings } = extractKijijiListing(vip(body), 'https://www.kijiji.ca/v-commercial-office-space/markham-york-region/x/1743072691');
+    const cut = warnings.find((warning) => warning.startsWith('DESCRIPTION_TRUNCATED'));
+    expect(cut).toBeDefined();
+    expect(cut).not.toMatch(/browser_snapshot of the description/);
+    expect(cut).toMatch(/never description prose/);
+    expect(cut).toMatch(/realtor\.ca/);
+    expect(cut).toMatch(/browser_screenshot/);
+    expect(cut).toMatch(/the whole ad text the Bridge returns/);
+  });
+
   it('stays silent on a body that fits the excerpt', () => {
     const { record, warnings } = extractKijijiListing(vip(sentence.repeat(3)), 'https://www.kijiji.ca/v-commercial-office-space/oakville-halton-region/x/1738813761');
     expect(record.description?.value.length).toBeLessThan(500);

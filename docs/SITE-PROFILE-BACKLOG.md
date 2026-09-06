@@ -184,6 +184,39 @@ place; nothing below is allowlisted by being written down.**
   Never route through hilton.com search. Same reservation-path risk as the
   row above; the row's "still needed" (ratification, live wall verification)
   is unchanged.
+- **The Excellence Collection's per-property `h-rez.com` (Windsurfer)
+  booking engines** (fingerprint
+  `mcp-ebay+site_profile_request+h-rez-windsurfer-engine-walls-excellence-rates-while-brand-content-pages-are-webfetch-readable`,
+  2026-09-06, closed `needs_operator`). A chain-engine family no row above
+  covers (the rows to date are SynXis, MGM/Marriott and Hilton `ctyhocn`):
+  each property prices on its own subdomain of the shape
+  `<property-slug>.h-rez.com` (`excellence-playa-mujeres.h-rez.com`), and
+  the engine root answered HTTP 403 to WebFetch, so no Mexico all-inclusive
+  rate and no 1-adult-versus-2-adult occupancy probe could be run on that
+  lane. **Neither `h-rez.com` nor `excellenceresorts.com` is named as a
+  source host in the committed vacation SKILL.md** (the brand appears there
+  as the Track L benchmark and in the measured 75% solo ratio, not as a
+  roster host), so rule 2 fails today; the vacation SKILL.md would have to
+  name the engine first, and the ratification is the operator's. The Bridge
+  probe of the brand host returned, verbatim, `Host www.excellenceresorts.com
+  is not in the ebay.ca.v1+kijiji.ca.v1+zazzle.com.v1+wardrobe-vendors.v1+office-sources.v1
+  allowlist` — character-identical to the 2026-09-05 lodging allowlist
+  observation already on this row, so it is recorded, not re-filed. The
+  useful half: `www.excellenceresorts.com` CONTENT pages are fully
+  server-rendered and WebFetch-readable (room pages with square footage per
+  category, the top-tier suite's amenity detail, the brand-level `/offers/`
+  index with live promotions), so a profile would be needed only for the
+  engine host, never for the brand site; the per-property offers path
+  (`/offers/excellence-playa-mujeres-package-deals/`) is a JavaScript shell
+  that renders no offer list, and a dated booking.com deep link for the same
+  property returned an empty shell, so the OTA is not a substitute rate
+  pathway here. Worth checking, when the lane is ratified, whether the
+  engine's 403 is a plain user-agent filter that a profile's normal browser
+  context passes. Why it matters: Excellence supplies the Track L benchmark
+  and is the only brand whose solo supplement ratio has been measured
+  (75.0% of the double-occupancy room total); without the engine every
+  Excellence property outside the two priced in an attended session stays
+  cost-unresolved. Same reservation-path risk as the rows above.
 
 ---
 

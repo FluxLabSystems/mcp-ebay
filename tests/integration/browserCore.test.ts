@@ -154,6 +154,36 @@ describe('navigation + revisions + snapshot (FR-02/03, §14)', () => {
     expect(result.selectedValue).toBe('used'); // read back from el.checked/el.value
   });
 
+  // 2026-09-06 office fire (site-kijiji+extractor_defect+description-
+  // truncated-warning-prescribes-a-snapshot-remedy-that-returns-no-
+  // description-text): the Kijiji DESCRIPTION_TRUNCATED warning told the
+  // caller to read the cut ad body from a browser_snapshot of the
+  // description region; on ad 1743072691 the snapshot returned the heading,
+  // the Show More control and zero body nodes, before and after expanding.
+  // That is the collector's contract, not a miss: prose is never a node, and
+  // a money amount inside an element longer than 400 characters is not
+  // collected either. Pinned here against the fixture so the remedy text in
+  // site-kijiji (which now points at the MLS record or a screenshot) is
+  // never "fixed" back to a snapshot read.
+  it('a long ad description is not in the snapshot even when it carries money amounts (the excerpt is the whole readable body)', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/kijiji-vip-long-description.html`, 'load', 20_000);
+    const snap = await snapshot(harness.session, tabId, 3000);
+    expect(snap.truncated).toBe(false);
+    // The short price header is a text node, as on a product page.
+    const header = snap.snapshot.filter((node) => node.role === 'text' && node.text === '$550');
+    expect(header).toHaveLength(1);
+    // The expanded body's own amounts never appear: the deepest element
+    // carrying them is the 1,000+ character paragraph, over the bound.
+    expect(snap.snapshot.some((node) => node.text.includes('/month'))).toBe(false);
+    expect(snap.snapshot.some((node) => node.text.startsWith('Fully furnished private offices'))).toBe(false);
+    expect(snap.snapshot.some((node) => node.text.includes('TMI is included'))).toBe(false);
+    // The control and the link are there — the snapshot is the page's
+    // interactive structure, which is what it is for.
+    expect(snap.snapshot.some((node) => node.role === 'button' && node.name === 'Show less')).toBe(true);
+    expect(snap.snapshot.some((node) => node.role === 'link' && node.name.includes('View all listings'))).toBe(true);
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
+  });
+
   // 2026-09-04 wardrobe fire (gateway+connector_defect+snapshot-omits-pdp-
   // own-price-node): on Printful and Spreadshirt product pages the subject
   // product's price is styled text in a generic container, so the

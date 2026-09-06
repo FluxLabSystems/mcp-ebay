@@ -890,12 +890,20 @@ export function extractKijijiListing(
   // MLS-syndicated commercial ad came back as 490 characters ending
   // mid-word with nothing saying so, and the cut section was where square
   // footage and lease terms sat — a run could not tell a terse ad from a
-  // cut one. Name the cut and the body's full length.
+  // cut one. Name the cut and the body's full length — and name a remedy
+  // that exists. The first version of this warning sent the caller to a
+  // browser_snapshot of the description region; the 2026-09-06 office fire
+  // followed it on ad 1743072691 (a 1,239-character body) and got zero body
+  // nodes before and after Show More, because the snapshot collects
+  // interactive elements and short money-bearing text only, never prose
+  // (browser-core snapshot.ts, TEXT_SELECTOR + the 400-character bound).
+  // The excerpt IS the whole ad text the Bridge returns; the cut terms are
+  // read from the MLS record the ad syndicates or from a screenshot.
   if (descriptionBody !== null) {
     const collapsedLength = descriptionBody.replace(/\s+/g, ' ').trim().length;
     if (collapsedLength > 500) {
       warnings.push(
-        `DESCRIPTION_TRUNCATED: the description excerpt is capped at 500 characters and the ad body is ${collapsedLength} characters (whitespace-collapsed) — the excerpt ends mid-text, so do not read it as the whole ad; the terms it may cut (square footage, TMI, lease structure) are read from a browser_snapshot of the description region or from the page the ad syndicates`,
+        `DESCRIPTION_TRUNCATED: the description excerpt is capped at 500 characters and the ad body is ${collapsedLength} characters (whitespace-collapsed) — the excerpt ends mid-text, so do not read it as the whole ad. The excerpt is the whole ad text the Bridge returns: browser_snapshot carries interactive elements and short money-bearing text, never description prose, so the terms the cut may hide (square footage, TMI, lease structure) are read from the MLS record the ad syndicates (realtor.ca, on the office-sources.v1 roster) or from a browser_screenshot of the description after clicking Show More; when neither is available the field stays unresolved`,
       );
     }
   }
