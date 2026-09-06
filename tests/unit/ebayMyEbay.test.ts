@@ -719,6 +719,49 @@ describe('watch list: the 2026-09-05 live template (2026-09-05 15:30Z fire, watc
     expect(unstated).toMatch(/no list total/i);
   });
 
+  // deals 2026-09-05T18:21Z file, site-ebay+enhancement+watchlist-category-
+  // filter-urls-as-a-stable-walk-path: the same rail's per-category chips are
+  // filtered views of the list with their own stated counts (href
+  // …&filter=category:<id>[.EBAY-<SITE>]), a deterministic alternative to the
+  // unstable ?page=N slices AND the marketplace's own taxonomy for
+  // interestArea. Emit them; a walk chooses the category path when they are
+  // present and falls back to the overflow render when they are not.
+  it('emits the per-category filter chips as categories[] with label, id, count and an absolute url, and never the All Categories chip', () => {
+    expect(page.categories).toEqual([
+      { label: 'Drives, Storage & Blank Media', categoryId: '175669', site: null, count: 1, url: 'https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST&filter=category:175669' },
+      { label: 'Other Computers & Networking', categoryId: '162', site: null, count: 1, url: 'https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST&filter=category:162' },
+      { label: 'Retail & Services', categoryId: '11450', site: null, count: 1, url: 'https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST&filter=category:11450' },
+      { label: 'Enterprise Networking, Servers', categoryId: '175698', site: null, count: 1, url: 'https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST&filter=category:175698' },
+    ]);
+    // The chips read here are what the page rendered (a 200-node snapshot
+    // sampled four of 33); their sum is never the list total and no warning
+    // says otherwise.
+    expect(page.categories.reduce((sum, chip) => sum + (chip.count ?? 0), 0)).toBeLessThan(page.totalCount!);
+  });
+
+  it('reads the marketplace site suffix off a category href (filter=category:<id>.EBAY-<SITE>) and keeps an unstated count null', () => {
+    const { document } = parseHTML(`<!doctype html><html><head><title>Watch list | My eBay</title></head><body>
+      <a href="/myb/Watchlist?custom_list_id=WATCH_LIST" aria-label="Filter Watchlist by category: All Categories, 352 items, selected">All Categories (352) - Selected</a>
+      <a href="/myb/Watchlist?custom_list_id=WATCH_LIST&amp;filter=category:183446.EBAY-US" aria-label="Filter Watchlist by category: Building Toys, 154 items">Building Toys (154)</a>
+      <a href="/myb/Watchlist?custom_list_id=WATCH_LIST&amp;filter=category:183446.EBAY-CA" aria-label="Filter Watchlist by category: Building Toys, 30 items">Building Toys (30)</a>
+      <a href="/myb/Watchlist?custom_list_id=WATCH_LIST&amp;filter=category:86722.EBAY-AU" aria-label="Filter Watchlist by category: Power Protection, Distribution">Power Protection, Distribution</a>
+      <ul><li><a href="https://www.ebay.ca/itm/111111111111">LEGO bulk lot</a><span>C $12.00</span></li></ul>
+    </body></html>`);
+    const rail = extractWatchlistPage(document as unknown as Document, 'https://www.ebay.ca/mye/myebay/watchlist', { observedAt: OBSERVED_AT });
+    expect(rail.categories.map((chip) => [chip.label, chip.categoryId, chip.site, chip.count])).toEqual([
+      ['Building Toys', '183446', 'US', 154],
+      ['Building Toys', '183446', 'CA', 30],
+      ['Power Protection, Distribution', '86722', 'AU', null],
+    ]);
+    expect(rail.categories[0]!.url).toBe('https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST&filter=category:183446.EBAY-US');
+    expect(rail.totalCount).toBe(352);
+  });
+
+  it('a template with no category rail emits an empty categories[]', () => {
+    const plain = extractWatchlistPage(loadFixture('watchlist-page.html'), 'https://www.ebay.ca/mye/myebay/watchlist', { observedAt: OBSERVED_AT });
+    expect(plain.categories).toEqual([]);
+  });
+
   it('reads the format from the action link: "Bid Now" is an auction, "Buy It Now" fixed price, so no format is unstated', () => {
     expect(byId('377449134404').sellingFormat).toBe('auction');
     expect(byId('226934512873').sellingFormat).toBe('auction');

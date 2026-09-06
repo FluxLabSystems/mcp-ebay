@@ -933,6 +933,11 @@ async function executeExtract(
     if (kind === 'watchlist') {
       const watchlist = page as ReturnType<typeof extractWatchlistPage>;
       record.currentPage = watchlist.currentPage;
+      // The category-filter rail, when the template renders one: each chip
+      // is a filtered view of the list with its own count and URL, so a walk
+      // can read the list by category (deterministic, unlike ?page=N) and
+      // take interestArea from the marketplace's own category id.
+      record.categories = watchlist.categories;
     }
     const myEbayPage = applySearchCompaction(record, searchOptions, warnings);
     return {

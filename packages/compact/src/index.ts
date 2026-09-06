@@ -393,6 +393,11 @@ const PRESERVED_ROOT_FIELDS = [
   'signedIn',
   'currentPage',
   'totalCountSource',
+  // The watch list's category-filter rail: per-category URLs with their own
+  // counts, the deterministic walk path the deals routine prefers over the
+  // unstable ?page=N slices. Compacting it away would leave the walk with
+  // only the page slices.
+  'categories',
   // Kijiji's removed-ad marker: a deleted ad's VIP URL 302s to its category
   // search page carrying ?adRemoved=<id>. Compacting it away would turn
   // "this ad was removed" back into "an ordinary search page".
