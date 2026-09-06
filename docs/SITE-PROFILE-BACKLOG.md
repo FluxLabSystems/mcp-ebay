@@ -89,6 +89,49 @@ reading a snapshot. Each row below says which kind it is.
 | Still needed | The operator's ratification of the roster (the office lane's precedent: rosters are operator decisions — and `westgateresorts.com` is not on this row); the OTA decision (`booking.com` and `trip.com` are transactional in a way the resort sites are not; the safer first cut is the brand sites plus `tripadvisor.com`, with the OTAs deferred until the brand lane has run); and live verification per brand that the reservation path is walled (`createResearchProfile` blocks `booking`/`reserve` paths and the "book now" / "reserve now" names). Recommended order: brand sites first — `mgmresorts.com` (query-param addressable, no interaction needed), then `marriott.com`. |
 | Risk | Highest on the list. A date search is a form submission, and the profile's job is to make the *reservation* path unreachable while leaving the *search* path open. `createResearchProfile` blocks `booking`, `bookings`, `reserve` and `reservation` as path segments and "book now" / "reserve now" / "confirm booking" by name. That needs live verification per brand before the lane ships, not after. |
 
+**Two further `site_profile_request`s from the vacation routine (2026-09-05,
+both closed `needs_operator` on 2026-09-06 — the roster is the operator's to
+write, and neither report's evidence is an `ORIGIN_DENIED`; both were read in
+an attended Claude in Chrome session). Recorded here so the decision has its
+evidence in one place; nothing below is allowlisted by being written down.**
+
+- **`booking.com` property pages** (fingerprint
+  `mcp-ebay+site_profile_request+booking-com-property-pages-deep-linkable-and-itemise-taxes-and-charges`).
+  The host is already on this row (named in the committed vacation SKILL.md);
+  the open question is the OTA decision above. What the fire observed:
+  `booking.com/hotel/<cc>/<slug>.html?checkin=…&checkout=…&group_adults=1&no_rooms=1&selected_currency=CAD`
+  renders fully with the dates honoured, one row per room category (name, bed
+  configuration, m², amenity tags, a whole-stay total and a separate
+  "+CAD N taxes and charges" line, cancellation and prepayment terms) and a
+  review block with component subscores (Cleanliness, Comfort, Facilities,
+  Location, Staff, Value). It answered five of six candidates whose own
+  engines resist automation. Limits observed: slugs cannot be guessed (six
+  of nine guesses 404ed — the fire resolved real slugs from a web search for
+  `"booking.com/hotel/us" <property name>`); prices arrive converted to the
+  account currency, so a profile must record the currency basis; an
+  unavailable window returns an explicit "no availability … between <dates>"
+  string, which is a finding, not a failure. If the operator ratifies the
+  OTA half, this is an **extractor** lane (room rows and the taxes-and-charges
+  line are the value), and the reservation path (`/book`, "Reserve",
+  "I'll reserve") must be walled and verified live before it ships.
+- **SynXis-hosted booking engines** (fingerprint
+  `mcp-ebay+site_profile_request+synxis-booking-engines-deep-linkable-with-chain-level-portfolio-pricing`):
+  `book.westgateresorts.com` (chain 19007) and `be.synxis.com` (chain 6903,
+  South Point). **Neither host is named in the committed vacation SKILL.md**
+  (`westgateresorts.com` and `southpointcasino.com` appear only in filed
+  `ORIGIN_DENIED` evidence and in this request), so rule 2 fails today; the
+  vacation SKILL.md would have to name the SynXis engine as a source first.
+  What the fire observed: `?adult=1&arrive=YYYY-MM-DD&depart=YYYY-MM-DD&chain=<id>&hotel=<id>&level=hotel&rooms=1&currency=USD&start=availresults`
+  renders one block per room category (name, bed configuration, sleeps,
+  sq ft, amenity tags) with one priced sub-block per rate plan ("Includes all
+  fees, excludes taxes"); `level=chain` prices a whole portfolio (~30 Westgate
+  properties) in one load; blackouts are named explicitly ("Our hotel is not
+  available on December 11, 2026"); fee disclosure is inline (South Point:
+  "Prevailing Rates include a $29.20 daily resort fee"). In-page "View Rates"
+  controls did not navigate under automation — the hotel-level URL is
+  constructed, not clicked. Hotel ids observed: Westgate Flamingo Bay 68747;
+  South Point 11548. Same reservation-path risk as the row above.
+
 ---
 
 ## P2 — worth having, no evidence yet

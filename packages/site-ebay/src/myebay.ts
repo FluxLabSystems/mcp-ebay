@@ -74,8 +74,36 @@ export interface WatchlistCandidate extends ListingCandidate {
   conditionText: string | null;
 }
 
+/**
+ * One chip of the watch list's category-filter rail: a filtered view of the
+ * same list, addressable by URL, with its own stated count. The rail is the
+ * marketplace's own taxonomy over the operator's list, so a walk can read
+ * the list one category at a time (a deterministic traversal, unlike the
+ * unstable ?page=N slices) and take interestArea from the category id
+ * instead of inferring it from titles.
+ */
+export interface WatchlistCategoryChip {
+  /** The chip's visible label without its count ("Building Toys"). */
+  label: string;
+  /** The eBay category id in the href ("183446"). */
+  categoryId: string;
+  /** The marketplace suffix on the id ("US" from "183446.EBAY-US"); null when the href carries none. */
+  site: string | null;
+  /** The count the chip states for that category; null when it states none. Never the list total. */
+  count: number | null;
+  /** The chip's href, absolute. */
+  url: string;
+}
+
 export interface WatchlistPage {
   candidates: WatchlistCandidate[];
+  /**
+   * The per-category filter chips the page rendered, in rail order, with
+   * the selected "All Categories" chip (the list total) excluded. Empty on
+   * a template that renders no rail. A 200-node snapshot sampled four of
+   * 33 chips on 2026-09-05, so these are the chips READ, not the taxonomy.
+   */
+  categories: WatchlistCategoryChip[];
   /** The rendered document title; the cheapest proof of which page actually loaded. */
   pageTitle: string;
   /**
@@ -454,7 +482,7 @@ function detectSignedIn(document: Document, cardCount: number): boolean | null {
  * list). The caller still checks the chosen count against the rows the
  * page rendered — a stated total below them is no total at all.
  */
-function readTotalCount(document: Document): { count: number | null; source: string | null; categoryChips: number } {
+function readTotalCount(document: Document): { count: number | null; source: string | null; categoryChips: number; chips: Element[] } {
   const { chips, allChip } = categoryFilterChips(document);
   if (allChip !== null) {
     // "(352)" in the chip's text; the accessible name's "352 items" is the
@@ -470,6 +498,7 @@ function readTotalCount(document: Document): { count: number | null; source: str
         count: Number.parseInt(match[1]!.replace(/,/g, ''), 10),
         source: bounded(label.length > 0 ? label : aria, 80),
         categoryChips: chips.length,
+        chips,
       };
     }
   }
@@ -497,7 +526,7 @@ function readTotalCount(document: Document): { count: number | null; source: str
     // is the widest filter the page offers.
     const all = entries.find((entry) => /^all\b/i.test(entry.source));
     const chosen = all ?? entries.reduce((best, entry) => (entry.count > best.count ? entry : best));
-    return { count: chosen.count, source: chosen.source, categoryChips: chips.length };
+    return { count: chosen.count, source: chosen.source, categoryChips: chips.length, chips };
   }
   // The body-text fallback with every chip's own text struck out first: a
   // chip's visually-hidden ", 1 item" is the first "N items" on the page.
@@ -508,9 +537,9 @@ function readTotalCount(document: Document): { count: number | null; source: str
   }
   const match = COUNT_ITEMS_RE.exec(lead.slice(0, 4000));
   if (match !== null) {
-    return { count: Number.parseInt(match[1]!.replace(/,/g, ''), 10), source: bounded(match[0], 40), categoryChips: chips.length };
+    return { count: Number.parseInt(match[1]!.replace(/,/g, ''), 10), source: bounded(match[0], 40), categoryChips: chips.length, chips };
   }
-  return { count: null, source: null, categoryChips: chips.length };
+  return { count: null, source: null, categoryChips: chips.length, chips };
 }
 
 /**
@@ -549,6 +578,50 @@ function categoryFilterChips(document: Document): { chips: Element[]; allChip: E
   }
   return { chips, allChip };
 }
+/**
+ * The per-category chips as records: label, category id (and the marketplace
+ * suffix eBay appends to ids from other sites: "183446.EBAY-US"), the chip's
+ * own count and its absolute URL. The All Categories chip is the total and is
+ * not a category, so categoryFilterChips already keeps it apart.
+ */
+function readCategoryChips(chips: Element[], pageUrl: string): WatchlistCategoryChip[] {
+  const out: WatchlistCategoryChip[] = [];
+  for (const chip of chips) {
+    const href = chip.getAttribute('href') ?? '';
+    const idMatch = CATEGORY_FILTER_RE.exec(href);
+    if (idMatch === null) continue;
+    let url: string;
+    try {
+      url = new URL(href.replace(/&amp;/g, '&'), pageUrl).toString();
+    } catch {
+      continue;
+    }
+    const text = normalizeText(chip.textContent);
+    const aria = normalizeText(chip.getAttribute('aria-label'));
+    // Visible label first ("Building Toys (154)"), its count and the
+    // visually-hidden "N items" tail struck; the accessible name's
+    // "…category: Building Toys, 154 items" is the fallback.
+    let label = text
+      .replace(/\s*\d[\d,]*\s*items?\s*$/i, '')
+      .replace(/\s*\((\d[\d,]*)\)\s*(?:-\s*selected)?\s*$/i, '')
+      .trim();
+    if (label.length === 0) {
+      const named = /^filter\s+watch\s*list\s+by\s+category:\s*(.+?)(?:,\s*\d[\d,]*\s+items?)?(?:,\s*selected)?$/i.exec(aria);
+      label = named === null ? '' : named[1]!.trim();
+    }
+    if (label.length === 0) continue;
+    const countMatch = COUNT_IN_LABEL_RE.exec(text) ?? COUNT_ITEMS_RE.exec(aria);
+    out.push({
+      label: bounded(label, 80),
+      categoryId: idMatch[1]!,
+      site: idMatch[2] === undefined ? null : idMatch[2].toUpperCase(),
+      count: countMatch === null ? null : Number.parseInt(countMatch[1]!.replace(/,/g, ''), 10),
+      url,
+    });
+  }
+  return out;
+}
+const CATEGORY_FILTER_RE = /[?&]filter=category(?::|%3A)(\d+)(?:\.EBAY-([A-Za-z]{2,3}))?(?=&|$|#)/i;
 const CHIP_NAME_RE = /^filter\s+watch\s*list\s+by\s+category\b/i;
 const ALL_CATEGORIES_CHIP_RE = /^filter\s+watch\s*list\s+by\s+category:\s*all\s+categories\b/i;
 
@@ -765,7 +838,8 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
 
   const pageTitle = documentTitle(document);
   const signedIn = detectSignedIn(document, candidates.length);
-  const { categoryChips, ...readTotal } = readTotalCount(document);
+  const { categoryChips, chips, ...readTotal } = readTotalCount(document);
+  const categories = readCategoryChips(chips, pageUrl);
   const { count: totalCount, source: totalCountSource } = checkedTotalCount(
     readTotal,
     candidates.length,
@@ -833,6 +907,7 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
 
   return {
     candidates,
+    categories,
     pageTitle,
     signedIn,
     totalCount,
