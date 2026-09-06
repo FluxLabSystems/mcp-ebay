@@ -33,6 +33,7 @@ import {
   detectCardFormat,
   isNewListingCard,
   normalizeText,
+  readShippingSnippet,
   type ListingCandidate,
 } from './traversal.js';
 
@@ -812,6 +813,8 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
     const shipping = cardText(card, MYEBAY_SHIPPING_SELECTOR);
     const shippingMatch = /((?:free\s+(?:shipping|delivery)|(?:\+\s*)?(?:C\s?\$|US\s?\$|\$)\s?\d[\d,]*(?:\.\d{2})?\s*(?:shipping|delivery|postage)))/i.exec(blob);
     const priceDrop = PRICE_DROP_RE.exec(blob);
+    const shippingSnippetText = shipping ?? (shippingMatch === null ? null : normalizeText(shippingMatch[1]!));
+    const shippingSnippet = readShippingSnippet(shippingSnippetText);
 
     candidates.push({
       itemId,
@@ -821,7 +824,9 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
       snippetPriceSource: elementPrice !== null ? 'element' : snippetPrice !== null ? 'text' : null,
       sellingFormat: sellingFormat as SellingFormatKind,
       bidCount,
-      shippingSnippetText: shipping ?? (shippingMatch === null ? null : normalizeText(shippingMatch[1]!)),
+      shippingSnippetText,
+      shippingSnippetAmount: shippingSnippet.amount,
+      shippingSnippetServiceNamed: shippingSnippet.serviceNamed,
       itemLocationText: null,
       isNewListing: isNewListingCard(card, rawTitle),
       order: candidates.length,

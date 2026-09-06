@@ -468,3 +468,114 @@ describe('description excerpt says when it is cut (2026-09-05)', () => {
     expect(warnings.some((warning) => warning.startsWith('DESCRIPTION_TRUNCATED'))).toBe(false);
   });
 });
+
+// 2026-09-06 deals fire (site-kijiji+extractor_defect+search-card-postedat-
+// synthesised-from-fetch-time-and-can-be-a-year-wrong): on three live search
+// pages nearly every card's postedAt carried the fetch clock's sub-second
+// component (04:13:09.857Z across a whole page), and ad 1723674721 came back
+// as 2026-09-06T02:13:09.857Z from a card whose own page states
+// 2025-08-29 — 373 days apart. A relative label ("2 hrs ago") is the ad's
+// last ACTIVATION as the card rounds it, measured back from the fetch
+// clock; it is neither an observation of an instant nor the original
+// posting date. The card must say which of the two it carried.
+describe('kijiji search-card postedAt provenance (2026-09-06 deals fire)', () => {
+  const observedAt = new Date('2026-09-06T04:13:09.857Z');
+  const PAGE_URL = 'https://www.kijiji.ca/b-gta-greater-toronto-area/server-cabinet/k0l1700272';
+
+  function card(adId: string, posted: string): string {
+    return `
+      <li data-testid="listing-card-${adId}">
+        <a href="/v-servers/oakville-halton-region/cabinet-${adId}/${adId}"><h3 data-testid="listing-title">Cabinet ${adId}</h3></a>
+        <div data-testid="listing-price">$450.00</div>
+        <div data-testid="listing-details"><span data-testid="listing-location">Oakville</span> • ${posted}</div>
+      </li>`;
+  }
+
+  function page(cards: string, apollo: Record<string, unknown> | null = null): Document {
+    const nextData =
+      apollo === null
+        ? ''
+        : `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify({
+            props: { pageProps: { __APOLLO_STATE__: apollo } },
+          })}</script>`;
+    const { document } = parseHTML(
+      `<html><head><title>12 ads for server cabinet in Toronto (GTA) | Kijiji</title>${nextData}</head><body><ul>${cards}</ul></body></html>`,
+    );
+    return document as unknown as Document;
+  }
+
+  it('truncates a relative-label postedAt to the label\'s unit and says it was derived, never the fetch clock', () => {
+    const result = extractSearchResults(
+      page(card('1723674721', '2 hrs ago') + card('1723674722', '1 day ago') + card('1723674723', '3 wks ago') + card('1723674724', '5 min ago')),
+      PAGE_URL,
+      { observedAt },
+    );
+    expect(result.results.map((row) => row.postedAt)).toEqual([
+      '2026-09-06T02:00:00.000Z',
+      '2026-09-05T00:00:00.000Z',
+      '2026-08-16T00:00:00.000Z',
+      '2026-09-06T04:08:00.000Z',
+    ]);
+    expect(result.results.map((row) => row.postedAtSource)).toEqual(['relative_text', 'relative_text', 'relative_text', 'relative_text']);
+    expect(result.results.map((row) => row.postedAtPrecision)).toEqual(['hour', 'day', 'week', 'minute']);
+    // The fetch clock's own time component never survives into a card.
+    for (const row of result.results) expect(row.postedAt).not.toMatch(/09\.857Z$/);
+    const derived = result.warnings.find((warning) => warning.startsWith('POSTED_AT_FROM_RELATIVE_LABEL'));
+    expect(derived).toBeDefined();
+    expect(derived).toContain('4 of 4');
+    expect(derived).toContain('2026-09-06T04:13:09.857Z');
+    expect(derived).toMatch(/activation/i);
+    expect(derived).toMatch(/original posting date/i);
+  });
+
+  it('prefers the activation date the hydration cache states over the relative label', () => {
+    const result = extractSearchResults(
+      page(card('1723674721', '2 hrs ago'), {
+        'StandardListing:1723674721': { __typename: 'StandardListing', id: '1723674721', activationDate: '2025-08-29T00:00:00.000Z' },
+      }),
+      PAGE_URL,
+      { observedAt },
+    );
+    expect(result.results[0]).toMatchObject({
+      postedText: '2 hrs ago',
+      postedAt: '2025-08-29T00:00:00.000Z',
+      postedAtSource: 'hydration',
+      postedAtPrecision: 'exact',
+    });
+    expect(result.warnings.some((warning) => warning.startsWith('POSTED_AT_FROM_RELATIVE_LABEL'))).toBe(false);
+  });
+
+  it('prefers a machine-readable datetime on the card over the relative label', () => {
+    const result = extractSearchResults(
+      page(
+        `<li data-testid="listing-card-1720698002">
+          <a href="/v-servers/city-of-toronto/rack/1720698002"><h3 data-testid="listing-title">Rack</h3></a>
+          <div data-testid="listing-details"><span data-testid="listing-location">Toronto</span> • <time datetime="2025-07-11T03:00:39.000Z">11 months ago</time></div>
+        </li>`,
+      ),
+      PAGE_URL,
+      { observedAt },
+    );
+    expect(result.results[0]).toMatchObject({
+      postedAt: '2025-07-11T03:00:39.000Z',
+      postedAtSource: 'card_datetime',
+      postedAtPrecision: 'exact',
+    });
+  });
+
+  it('counts only the derived cards, and leaves a card with no posted time null on all three fields', () => {
+    const result = extractSearchResults(
+      page(card('1723674721', '2 hrs ago') + card('1736311009', ''), {
+        'StandardListing:1736311009': { activationDate: '2026-04-20T20:33:52.000Z' },
+      }),
+      PAGE_URL,
+      { observedAt },
+    );
+    expect(result.results[1]).toMatchObject({ postedAt: '2026-04-20T20:33:52.000Z', postedAtSource: 'hydration' });
+    const derived = result.warnings.find((warning) => warning.startsWith('POSTED_AT_FROM_RELATIVE_LABEL'));
+    expect(derived).toContain('1 of 2');
+    const bare = extractSearchResults(page(card('1723674799', '')), PAGE_URL, { observedAt });
+    expect(bare.results[0]).toMatchObject({ postedText: null, postedAt: null, postedAtSource: null, postedAtPrecision: null });
+    expect(bare.warnings.some((warning) => warning.startsWith('POSTED_AT_FROM_RELATIVE_LABEL'))).toBe(false);
+  });
+});

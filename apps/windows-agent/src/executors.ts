@@ -989,6 +989,22 @@ async function executeExtract(
         `SNIPPET_PRICE_FROM_CARD_TEXT: no price element matched on ${pricedFromText} of ${candidates.length} card(s); their snippetPrice is the first non-shipping amount in the card's rendered text — a traversal hint only (the item page is the price). Capture one such card (browser_snapshot) so the store-card price selector can be pinned.`,
       );
     }
+    // 2026-09-06 deals fire: the card for 167300287674 quoted "+C $83.34
+    // shipping" and its item page C$875.27 UPS Worldwide Saver, with two
+    // neighbouring cards matching their pages — so the divergence is per
+    // listing and invisible on the card. Say how many cards quote an amount
+    // that names no service, so a run never costs one.
+    const shippingUnlabelled = candidates.filter(
+      (candidate) =>
+        candidate.shippingSnippetAmount !== null &&
+        candidate.shippingSnippetAmount.value > 0 &&
+        candidate.shippingSnippetServiceNamed === false,
+    ).length;
+    if (shippingUnlabelled > 0) {
+      warnings.push(
+        `SHIPPING_SNIPPET_SERVICE_UNLABELLED: ${shippingUnlabelled} of ${candidates.length} card(s) quote a shipping amount (shippingSnippetAmount) that names no carrier, service level or destination; on 2026-09-06 such a card read C$83.34 for an item whose page quoted C$875.27 UPS Worldwide Saver to Canada. A card's shipping figure is a traversal hint and never a landed-cost input — cost only from the item page's shipping block (value, currency, serviceText, destinationVerified).`,
+      );
+    }
     const ebayPage = applySearchCompaction(
       {
         siteProfile: EBAY_SITE_PROFILE_ID,

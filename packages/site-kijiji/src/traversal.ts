@@ -22,8 +22,8 @@
  * kijijiSearchUrlWarnings() flags a URL that still carries them.
  */
 import { apolloActivationDate, readKijijiApolloCache } from './extract.js';
-import { adIdFromUrl, parseKijijiPostedText, parseKijijiPrice } from './normalize.js';
-import type { ParsedKijijiPrice } from './normalize.js';
+import { adIdFromUrl, parseKijijiPostedLabel, parseKijijiPostedText, parseKijijiPrice } from './normalize.js';
+import type { KijijiPostedPrecision, ParsedKijijiPrice } from './normalize.js';
 
 export interface KijijiSearchResult {
   adId: string;
@@ -37,8 +37,25 @@ export interface KijijiSearchResult {
   locationText: string | null;
   /** Raw rendered posted time from the card ("2 hrs ago"), when present. */
   postedText: string | null;
-  /** ISO instant the posted time resolves to; null when nothing states one. */
+  /**
+   * ISO instant the posted time resolves to; null when nothing states one.
+   * Read postedAtSource before trusting it: a 'relative_text' value is the
+   * ad's last ACTIVATION as the card rounds it ("2 hrs ago"), measured back
+   * from the fetch clock and truncated to the label's unit — a bumped or
+   * reposted ad reads as new here. It is never the ad's original posting
+   * date, which only the ad page's postedAt states (2026-09-06: a card
+   * derived 2026-09-06T02:13Z for an ad whose page states 2025-08-29).
+   */
   postedAt: string | null;
+  /**
+   * Where postedAt came from: a datetime attribute on the card
+   * ('card_datetime'), the hydration cache's activationDate for this ad
+   * ('hydration'), or arithmetic on the rendered relative label
+   * ('relative_text'); null when postedAt is null.
+   */
+  postedAtSource: 'card_datetime' | 'hydration' | 'relative_text' | null;
+  /** 'exact' for a stated instant; otherwise the unit of the label postedAt was derived from. */
+  postedAtPrecision: KijijiPostedPrecision | null;
 }
 
 export interface KijijiSearchContext {
@@ -101,6 +118,7 @@ export interface KijijiSearchPage {
 
 export const PAGINATION_METADATA_ABSENT_WARNING_PREFIX = 'PAGINATION_METADATA_ABSENT';
 export const SORT_NOT_HONOURED_WARNING_PREFIX = 'SORT_NOT_HONOURED';
+export const POSTED_AT_FROM_RELATIVE_LABEL_WARNING_PREFIX = 'POSTED_AT_FROM_RELATIVE_LABEL';
 
 /** Sorting parameters kijiji.ca accepts on a category or search URL. */
 const SORT_PARAM_KEYS = ['sort'] as const;
@@ -289,6 +307,24 @@ function cardPostedText(card: Element, locationText: string | null, observedAt: 
   return rest.length > 0 && parseKijijiPostedText(rest, observedAt) !== null ? rest : null;
 }
 
+/**
+ * A machine-readable posted time the card itself carries (<time datetime>,
+ * or any element in the details block with a datetime attribute), as an ISO
+ * instant. NEEDS-LIVE-VERIFICATION: no live card has rendered one — the
+ * hydrated posted node is a <p aria-label="Published …"> — so this is read
+ * ahead of the label because a stated instant beats arithmetic, not because
+ * a live page has been seen to state one.
+ */
+function cardPostedDatetime(card: Element): string | null {
+  let el: Element | null;
+  try {
+    el = card.querySelector('time[datetime], [data-testid="listing-details"] [datetime], [data-testid="listing-date"][datetime]');
+  } catch {
+    return null;
+  }
+  return toIsoOrNull(el?.getAttribute('datetime') ?? null);
+}
+
 /** The removed-ad marker: see KijijiSearchPage.removedAdId. */
 function removedAdIdFromUrl(pageUrl: string): string | null {
   try {
@@ -413,6 +449,31 @@ export function extractSearchResults(
     const locationText = cardText(card, CARD_LOCATION_SELECTOR);
     const postedText = cardPostedText(card, locationText, observedAt);
 
+    // A stated instant before arithmetic on a label: the datetime the card
+    // carries, then the activation date the hydration cache states for this
+    // exact ad (the only statement of it in server HTML), and only then the
+    // rendered relative label — truncated to its own unit and marked as
+    // derived, so the fetch clock never leaks into a card (2026-09-06).
+    const cardDatetime = cardPostedDatetime(card);
+    const hydrationDate = toIsoOrNull(apolloActivationDate(apollo, adId));
+    const label = postedText === null ? null : parseKijijiPostedLabel(postedText, observedAt);
+    let postedAt: string | null = null;
+    let postedAtSource: KijijiSearchResult['postedAtSource'] = null;
+    let postedAtPrecision: KijijiPostedPrecision | null = null;
+    if (cardDatetime !== null) {
+      postedAt = cardDatetime;
+      postedAtSource = 'card_datetime';
+      postedAtPrecision = 'exact';
+    } else if (hydrationDate !== null) {
+      postedAt = hydrationDate;
+      postedAtSource = 'hydration';
+      postedAtPrecision = 'exact';
+    } else if (label !== null) {
+      postedAt = label.postedAt;
+      postedAtSource = 'relative_text';
+      postedAtPrecision = label.precision;
+    }
+
     results.push({
       adId,
       url: absolute.toString(),
@@ -421,12 +482,9 @@ export function extractSearchResults(
       price: priceText === null ? null : parseKijijiPrice(priceText),
       locationText,
       postedText,
-      // The rendered relative time when it parses; otherwise the activation
-      // date the page states for this exact ad, which is the only statement
-      // of it in server HTML.
-      postedAt:
-        (postedText === null ? null : parseKijijiPostedText(postedText, observedAt)) ??
-        toIsoOrNull(apolloActivationDate(apollo, adId)),
+      postedAt,
+      postedAtSource,
+      postedAtPrecision,
     });
   }
 
@@ -499,6 +557,17 @@ export function extractSearchResults(
       `${PAGINATION_METADATA_ABSENT_WARNING_PREFIX}: ${pageUrl} rendered ${results.length} candidate(s) but stated no result count and linked no next page, so totalResults:null, nextPageUrl:null and hasNextPage:false describe what the page withheld, not the end of the result set${
         sortParam === null ? '' : ` (a category URL carrying ${sortParam} renders neither; observed 2026-09-04)`
       }. Walk the category without the sort parameter${unsorted === null ? '' : ` — ${unsorted} — which does carry both`}, and never count this page as the whole category.`,
+    );
+  }
+  const derivedFromLabel = results.filter((result) => result.postedAtSource === 'relative_text').length;
+  if (derivedFromLabel > 0) {
+    // 2026-09-06 deals fire: three live pages carried the fetch clock's
+    // sub-second component on nearly every card, and one card-derived
+    // postedAt was 373 days newer than the same ad's page. Say how many
+    // cards are arithmetic, what the arithmetic measures, and what is not
+    // evidence of freshness.
+    warnings.push(
+      `${POSTED_AT_FROM_RELATIVE_LABEL_WARNING_PREFIX}: ${derivedFromLabel} of ${results.length} card(s) carry a postedAt derived from the card's relative label ("2 hrs ago") measured back from the fetch clock at ${observedAt.toISOString()} and truncated to the label's unit (postedAtSource "relative_text", postedAtPrecision minute|hour|day|week|month). That figure is the ad's last ACTIVATION as the card rounds it — a bumped or reposted ad reads as new here — and is not the ad's original posting date; only the ad page's postedAt is evidence of freshness, so open the ad before calling it new this fire. Cards with postedAtSource "hydration" or "card_datetime" state their instant.`,
     );
   }
   if (sortParam !== null && /^sort=dateDesc$/i.test(sortParam) && newestFirstViolated(results)) {

@@ -266,3 +266,43 @@ describe('store cards whose price element has no known class (2026-09-04)', () =
     expect(candidate?.snippetPriceSource).toBeNull();
   });
 });
+
+// 2026-09-06 deals fire (site-ebay+extractor_defect+search-card-
+// shippingsnippettext-quotes-a-different-service-than-the-item-page): the
+// card for 167300287674 quoted "+C $83.34 shipping" and the item page,
+// minutes later, C$875.27 UPS Worldwide Saver — 10.5x apart, and nothing on
+// either read said the card's figure names no service or destination. Two
+// other cards on the same page matched their pages, so the divergence is
+// per listing and a card's shipping figure is never a landed-cost input.
+describe('search-card shipping snippets name no service (2026-09-06)', () => {
+  function searchCandidates(html: string): ListingCandidate[] {
+    const { document } = parseHTML(`<ul class="srp-results">${html}</ul>`);
+    return extractListingCandidates(
+      document as unknown as Document,
+      'https://www.ebay.ca/sch/i.html?_nkw=40GbE+QSFP%2B+switch&_sop=10&_ipg=240',
+    );
+  }
+
+  it('parses the card\'s shipping amount beside the verbatim text', () => {
+    const candidates = searchCandidates(
+      `<li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/167300287674"><h3 class="s-item__title">ARISTA DCS-7050QX-32-R 32x40GbE QSFP+ SWITCH</h3></a><span class="s-item__price">C $145.29</span><span class="s-item__shipping">+C $83.34 shipping</span></li>
+       <li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/198591780847"><h3 class="s-item__title">Mellanox SX1036</h3></a><span class="s-item__price">C $210.00</span><span class="s-item__shipping">Free shipping</span></li>
+       <li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/236571703560"><h3 class="s-item__title">Dell S6000</h3></a><span class="s-item__price">C $300.00</span><span class="s-item__shipping">+US $73.50 shipping estimate from United States</span></li>
+       <li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/236571703561"><h3 class="s-item__title">No shipping line</h3></a><span class="s-item__price">C $12.00</span></li>`,
+    );
+    expect(candidates.map((row) => row.shippingSnippetAmount)).toEqual([
+      { value: 83.34, currency: 'CAD' },
+      { value: 0, currency: 'CAD' },
+      { value: 73.5, currency: 'USD' },
+      null,
+    ]);
+    expect(candidates.map((row) => row.shippingSnippetServiceNamed)).toEqual([false, false, false, null]);
+  });
+
+  it('recognises a card that does name a carrier or service level', () => {
+    const [named] = searchCandidates(
+      `<li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/198591780848"><h3 class="s-item__title">Switch</h3></a><span class="s-item__price">C $99.00</span><span class="s-item__shipping">+C $29.00 UPS Standard shipping</span></li>`,
+    );
+    expect(named).toMatchObject({ shippingSnippetAmount: { value: 29, currency: 'CAD' }, shippingSnippetServiceNamed: true });
+  });
+});
