@@ -659,3 +659,213 @@ describe('offers page: the status token and the bid label with no whitespace aft
     expect(row.offerStatus).toBe('none');
   });
 });
+
+// 2026-09-05 15:30Z deals fire (site-ebay+extractor_defect+watchlist-template-
+// unpinned): the first browser_snapshot of the live /mye/myebay/watchlist.
+// The fixture watchlist-page-2026-09-05.html is authored from that snapshot's
+// node order (see its header), with no known card class on any row. What the
+// fire reported, and what the fixture reproduces: the page opens with a
+// carousel of category-filter link chips ("Drives, Storage & Blank Media
+// (1)", accessible name ending ", 1 item") whose counts are per category, and
+// the extractor read the first chip's "1 item" as the list total and then
+// rejected it (WATCHLIST_TOTAL_REJECTED over 10+ rows); every row read
+// sellingFormat unknown although its action link says "Bid Now" or "Buy It
+// Now"; sellerText was null on every row although the login id renders
+// twice (the /usr/ link "<loginId> username" and the feedback link "100%
+// (283) Feedback score is 283 for <loginId>"); the shipping line is a plain
+// "+C $38.80 Shipping" text node; and a row converted from a foreign
+// currency carries "* Converted from GBP 16.00" beside eBay's C$ figure.
+describe('watch list: the 2026-09-05 live template (2026-09-05 15:30Z fire, watchlist-template-unpinned)', () => {
+  const page = extractWatchlistPage(loadFixture('watchlist-page-2026-09-05.html'), 'https://www.ebay.ca/mye/myebay/watchlist', {
+    observedAt: OBSERVED_AT,
+  });
+  const byId = (id: string) => page.candidates.find((row) => row.itemId === id)!;
+  const codes = () => page.warnings.map((warning) => warning.split(':')[0]);
+
+  it('finds every row once, in page order, through the generic card climb', () => {
+    expect(page.candidates.map((row) => row.itemId)).toEqual(['377449134404', '315012183531', '226934512873', '146872203419']);
+    expect(page.candidates.map((row) => row.order)).toEqual([0, 1, 2, 3]);
+    expect(page.signedIn).toBe(true);
+    expect(byId('377449134404').title).toBe('IBM LTO-8 HH SAS Tape Drive 3573-8547 for TS3100 TS3200 Tested');
+    expect(byId('315012183531').title).toBe('Arista DCS-7050QX-32S-F 32x 40GbE QSFP+ 4x SFP+ Switch');
+  });
+
+  // The 18:21Z deals fire's second snapshot corrected the 15:30Z one: the
+  // carousel's HEAD is a selected "All Categories (352) - Selected" chip
+  // (href with no filter=, accessible name "…All Categories, 352 items,
+  // selected") and it carries the whole-list count. A per-category chip's
+  // "(1)" is still never the total.
+  it('reads the list total from the selected All Categories chip, never from a per-category chip, and says nothing is unstated', () => {
+    expect(page.totalCount).toBe(352);
+    expect(page.totalCountSource).toBe('All Categories (352) - Selected');
+    expect(codes()).not.toContain('WATCHLIST_TOTAL_REJECTED');
+    expect(codes()).not.toContain('WATCHLIST_TOTAL_UNSTATED');
+  });
+
+  it('with the All Categories chip absent, the per-category chips are still never the total and the page says it is unstated', () => {
+    const { document } = parseHTML(
+      readFileSync(join(FIXTURES, 'watchlist-page-2026-09-05.html'), 'utf8').replace(/<a href="https:\/\/www\.ebay\.ca\/myb\/Watchlist\?custom_list_id=WATCH_LIST" aria-label="Filter Watchlist by category: All Categories[^]*?<\/a>/, ''),
+    );
+    const headless = extractWatchlistPage(document as unknown as Document, 'https://www.ebay.ca/mye/myebay/watchlist', { observedAt: OBSERVED_AT });
+    expect(headless.candidates).toHaveLength(4);
+    expect(headless.totalCount).toBeNull();
+    expect(headless.totalCountSource).toBeNull();
+    const heads = headless.warnings.map((warning) => warning.split(':')[0]);
+    expect(heads).not.toContain('WATCHLIST_TOTAL_REJECTED');
+    const unstated = headless.warnings.find((warning) => warning.startsWith('WATCHLIST_TOTAL_UNSTATED'));
+    expect(unstated).toBeDefined();
+    expect(unstated).toMatch(/category-filter chips/i);
+    expect(unstated).toMatch(/per-category/i);
+    expect(unstated).toMatch(/no list total/i);
+  });
+
+  it('reads the format from the action link: "Bid Now" is an auction, "Buy It Now" fixed price, so no format is unstated', () => {
+    expect(byId('377449134404').sellingFormat).toBe('auction');
+    expect(byId('226934512873').sellingFormat).toBe('auction');
+    expect(byId('315012183531').sellingFormat).toBe('fixed_price');
+    expect(byId('146872203419').sellingFormat).toBe('fixed_price');
+    expect(codes()).not.toContain('WATCHLIST_FORMAT_UNSTATED');
+  });
+
+  it('reads the seller from the /usr/ link and a bounded sellerText from the two seller links on every row', () => {
+    expect(page.candidates.map((row) => row.seller)).toEqual(['tapeworks_uk', 'netgear_liquidators', 'mediahub_direct', 'serverpartsdepot']);
+    for (const row of page.candidates) {
+      expect(row.sellerText).not.toBeNull();
+      expect(row.sellerText!.length).toBeLessThanOrEqual(96);
+      expect(row.sellerText).toContain(row.seller!);
+    }
+    expect(byId('377449134404').sellerText).toMatch(/100% \(283\)/);
+    expect(byId('377449134404').sellerText).not.toMatch(/\busername\b/);
+    expect(byId('377449134404').sellerText).not.toMatch(/Feedback score/);
+    expect(byId('315012183531').sellerText).toMatch(/99\.6% \(4812\)/);
+    expect(page.warnings.find((warning) => warning.startsWith('WATCHLIST_FIELDS_NULL')) ?? '').not.toMatch(/sellerText/);
+  });
+
+  it('surfaces the plain-text shipping line exactly as rendered', () => {
+    for (const row of page.candidates) expect(row.shippingSnippetText).toBe('+C $38.80 Shipping');
+  });
+
+  it('keeps eBay\'s C$ conversion as snippetPrice and says, per row, that it is a conversion of the seller\'s ask', () => {
+    expect(byId('377449134404').snippetPrice).toEqual({ value: 29.93, currency: 'CAD' });
+    expect(byId('377449134404').snippetPriceSource).toBe('text');
+    expect(byId('315012183531').snippetPrice).toEqual({ value: 412, currency: 'CAD' });
+    const converted = page.warnings.find((warning) => warning.startsWith('WATCHLIST_PRICE_CONVERTED'));
+    expect(converted).toBeDefined();
+    expect(converted).toMatch(/377449134404/);
+    expect(converted).toMatch(/GBP 16\.00/);
+    expect(converted).toMatch(/conversion/i);
+    expect(converted).toMatch(/not the seller's ask/);
+    // The three un-converted rows are not named.
+    expect(converted).not.toMatch(/315012183531|226934512873|146872203419/);
+  });
+
+  it('the chip carousel\'s "Go to next slide" button is not pagination', () => {
+    expect(page.hasNextPage).toBe(false);
+    expect(page.nextPageUrl).toBeNull();
+  });
+});
+
+// The same fire's total-count rules, on synthetic pages, so each rule is
+// pinned on its own: a chip is never a count source even when it sits in
+// the label selectors, a genuine below-rows label is still rejected, and a
+// real "All (N)" tab beside the chips still wins.
+describe('watch list: category-filter chips are never the list total (2026-09-05 15:30Z fire)', () => {
+  const chip =
+    `<a href="https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST&amp;filter=category:175669" aria-label="Filter Watchlist by category: Drives, Storage &amp; Blank Media, 1 item">Drives, Storage &amp; Blank Media (1)<span>1 item</span></a>`;
+  const rows = Array.from(
+    { length: 3 },
+    (_, index) =>
+      `<li><a href="https://www.ebay.ca/itm/28713881074${index}"></a><h3>Item ${index}</h3><a href="https://www.ebay.ca/itm/28713881074${index}">Item ${index}</a><span>C $${10 + index}.00</span><a href="https://www.ebay.ca/itm/28713881074${index}">Buy It Now</a></li>`,
+  ).join('');
+  function doc(head: string): Document {
+    const { document } = parseHTML(`<html><head><title>Watch list | My eBay</title></head><body>${head}<ul>${rows}</ul></body></html>`);
+    return document as unknown as Document;
+  }
+
+  it('a chip inside a tablist is skipped as a count source, and the page says the total is unstated', () => {
+    const page = extractWatchlistPage(doc(`<div role="tablist">${chip}</div>`), 'https://www.ebay.ca/mye/myebay/watchlist', { observedAt: OBSERVED_AT });
+    expect(page.candidates).toHaveLength(3);
+    expect(page.totalCount).toBeNull();
+    expect(page.warnings.some((warning) => warning.startsWith('WATCHLIST_TOTAL_REJECTED'))).toBe(false);
+    expect(page.warnings.some((warning) => warning.startsWith('WATCHLIST_TOTAL_UNSTATED'))).toBe(true);
+  });
+
+  it('a chip named only by its aria-label (no filter= in the href) is skipped the same way', () => {
+    const named = `<div role="tablist"><a href="https://www.ebay.ca/myb/Watchlist?x=1" aria-label="Filter Watchlist by category: Retail &amp; Services, 1 item">Retail &amp; Services (1)</a></div>`;
+    const page = extractWatchlistPage(doc(named), 'https://www.ebay.ca/mye/myebay/watchlist', { observedAt: OBSERVED_AT });
+    expect(page.totalCount).toBeNull();
+    expect(page.warnings.some((warning) => warning.startsWith('WATCHLIST_TOTAL_UNSTATED'))).toBe(true);
+  });
+
+  it('an "All (N)" tab beside the chips is still the list total', () => {
+    const page = extractWatchlistPage(
+      doc(`<div role="tablist"><button role="tab">All (312)</button></div><div>${chip}</div>`),
+      'https://www.ebay.ca/mye/myebay/watchlist',
+      { observedAt: OBSERVED_AT },
+    );
+    expect(page.totalCount).toBe(312);
+    expect(page.totalCountSource).toBe('All (312)');
+    expect(page.warnings.some((warning) => warning.startsWith('WATCHLIST_TOTAL_UNSTATED'))).toBe(false);
+  });
+
+  it('a genuine below-rows label with no chips on the page is still rejected, not unstated', () => {
+    const page = extractWatchlistPage(doc('<h2>1 item</h2>'), 'https://www.ebay.ca/mye/myebay/watchlist', { observedAt: OBSERVED_AT });
+    expect(page.totalCount).toBeNull();
+    expect(page.warnings.some((warning) => warning.startsWith('WATCHLIST_TOTAL_REJECTED'))).toBe(true);
+    expect(page.warnings.some((warning) => warning.startsWith('WATCHLIST_TOTAL_UNSTATED'))).toBe(false);
+  });
+
+  it('a page with no chips and no count label stays silent about the total, exactly as before', () => {
+    const page = extractWatchlistPage(doc(''), 'https://www.ebay.ca/mye/myebay/watchlist', { observedAt: OBSERVED_AT });
+    expect(page.totalCount).toBeNull();
+    expect(page.warnings.some((warning) => /^WATCHLIST_TOTAL_/.test(warning))).toBe(false);
+  });
+});
+
+// The action-link format rule on its own: only the link's or button's own
+// text discriminates, a title that says "Buy It Now" does not, and a row
+// that renders both controls is an auction with a Buy It Now.
+describe('watch list: the action link discriminates the format (2026-09-05 15:30Z fire)', () => {
+  function doc(rows: string): Document {
+    const { document } = parseHTML(`<html><head><title>Watch list | My eBay</title></head><body><ul>${rows}</ul></body></html>`);
+    return document as unknown as Document;
+  }
+  // Live node order: the shipping line sits between the price and the
+  // action links. (Abutting them — "C $20.00Bid Now" — makes the generic
+  // bid-count regex read "00Bid" as a bid count, a separate quirk of the
+  // concatenated template that this block does not test.)
+  const row = (id: string, title: string, actions: string) =>
+    `<li><a href="https://www.ebay.ca/itm/${id}"></a><h3>${title}</h3><a href="https://www.ebay.ca/itm/${id}">${title}</a><span>C $20.00</span><span>+C $5.00 Shipping</span>${actions}<button>More Actions</button></li>`;
+
+  it('"Place bid" is an auction and a "Buy It Now" button is fixed price', () => {
+    const page = extractWatchlistPage(
+      doc(
+        row('100000000001', 'Lot A', '<a href="https://www.ebay.ca/itm/100000000001">Place bid</a>') +
+          row('100000000002', 'Lot B', '<button type="button">Buy It Now</button>'),
+      ),
+      'https://www.ebay.ca/mye/myebay/watchlist',
+      { observedAt: OBSERVED_AT },
+    );
+    expect(page.candidates.map((candidate) => candidate.sellingFormat)).toEqual(['auction', 'fixed_price']);
+    expect(page.candidates.map((candidate) => candidate.bidCount)).toEqual([null, null]);
+  });
+
+  it('both controls on one row is auction_with_bin', () => {
+    const page = extractWatchlistPage(
+      doc(row('100000000003', 'Lot C', '<a href="https://www.ebay.ca/itm/100000000003">Bid Now</a><a href="https://www.ebay.ca/itm/100000000003">Buy It Now</a>')),
+      'https://www.ebay.ca/mye/myebay/watchlist',
+      { observedAt: OBSERVED_AT },
+    );
+    expect(page.candidates[0]!.sellingFormat).toBe('auction_with_bin');
+  });
+
+  it('a title that says Buy It Now is the seller talking, never the format; a row with no action link stays unknown', () => {
+    const page = extractWatchlistPage(
+      doc(row('100000000004', 'BUY IT NOW cheap Lego lot', '') + row('100000000005', 'Lot E', '<a href="https://www.ebay.ca/itm/100000000005">View seller\'s other items</a>')),
+      'https://www.ebay.ca/mye/myebay/watchlist',
+      { observedAt: OBSERVED_AT },
+    );
+    expect(page.candidates.map((candidate) => candidate.sellingFormat)).toEqual(['unknown', 'unknown']);
+    expect(page.warnings.find((warning) => warning.startsWith('WATCHLIST_FORMAT_UNSTATED'))).toMatch(/2 of 2/);
+  });
+});

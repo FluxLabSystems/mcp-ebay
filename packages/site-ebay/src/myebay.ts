@@ -6,14 +6,16 @@
  * their own page kinds. Both render item cards that link /itm/ pages; the
  * structure this module reads is the same one the search-results scanner
  * reads (an /itm/ anchor, the card around it, the card's text), because
- * eBay has restyled My eBay more than once and NO live capture of the
- * current watch-list markup exists in this repository yet. So every field
- * below is read shape-tolerantly: a known class name first, then the
- * card's own text through a bounded regex, and a null — never a guess —
- * when neither says. A page that renders no cards says exactly which of
- * three things it is (a sign-in wall, an empty list, or a template the
- * selectors do not know) so the first live pass can pin the markup as a
- * fixture instead of reading silence as "nothing watched".
+ * eBay has restyled My eBay more than once and no raw capture of the
+ * current watch-list markup exists in this repository: the closest thing is
+ * tests/fixtures/ebay/watchlist-page-2026-09-05.html, authored from the
+ * 2026-09-05 browser_snapshot's node order (roles, names, text, hrefs — no
+ * class names). So every field below is read shape-tolerantly: a known
+ * class name first, then the card's own text through a bounded regex, and
+ * a null — never a guess — when neither says. A page that renders no cards
+ * says exactly which of three things it is (a sign-in wall, an empty list,
+ * or a template the selectors do not know) so a live pass can pin the
+ * markup as a fixture instead of reading silence as "nothing watched".
  *
  * Nothing here is canonical listing evidence: a watch-list card is a
  * traversal hint exactly like a search card, and the item page decides
@@ -345,8 +347,86 @@ function sellerFrom(card: Element): { seller: string | null; sellerText: string 
   const text = normalizeText(card.textContent);
   const labelled = SELLER_TEXT_RE.exec(text);
   const feedback = SELLER_FEEDBACK_RE.exec(text);
-  const sellerText = labelled !== null ? bounded(normalizeText(labelled[0]), 96) : feedback !== null ? bounded(feedback[0], 96) : null;
+  const sellerText =
+    labelled !== null
+      ? bounded(normalizeText(labelled[0]), 96)
+      : feedback !== null
+        ? bounded(feedback[0], 96)
+        : sellerTextFromLinks(card);
   return { seller, sellerText };
+}
+
+/**
+ * The seller as the 2026-09-05 watch-list template renders it: no "Seller:"
+ * label and no "name (283) 100%" run, but two links per row — the /usr/
+ * link reading "<loginId> username" and the feedback-profile link reading
+ * "100% (283) Feedback score is 283 for <loginId>". Composed as
+ * "<loginId> 100% (283)" from the login id and the feedback link's leading
+ * figures; null when the row links neither.
+ */
+const USR_LINK_NAME_RE = /^(.{2,64}?)(?:\s+username)?$/i;
+const FEEDBACK_LEAD_RE = /^(\d{1,3}(?:\.\d)?%\s*\(\d[\d,]*\))/;
+
+function sellerTextFromLinks(card: Element): string | null {
+  let name: string | null = null;
+  let feedback: string | null = null;
+  try {
+    const usr = card.querySelector('a[href*="/usr/"]');
+    const usrText = normalizeText(usr?.textContent);
+    const nameMatch = usrText.length > 0 ? USR_LINK_NAME_RE.exec(usrText) : null;
+    if (nameMatch !== null && nameMatch[1]!.length > 0) name = nameMatch[1]!;
+    const fdbk = card.querySelector('a[href*="/fdbk/feedback_profile/"]');
+    const fdbkText = normalizeText(fdbk?.textContent);
+    const lead = fdbkText.length > 0 ? FEEDBACK_LEAD_RE.exec(fdbkText) : null;
+    if (lead !== null) feedback = normalizeText(lead[1]!);
+  } catch {
+    return null;
+  }
+  const parts = [name, feedback].filter((part): part is string => part !== null);
+  return parts.length === 0 ? null : bounded(parts.join(' '), 96);
+}
+
+/**
+ * The format as the row's ACTION LINK states it — "Bid Now" / "Place bid"
+ * on an auction, "Buy It Now" on a fixed-price listing, both on an auction
+ * with a Buy It Now. Read only from an anchor's or button's own text, never
+ * from the title (a seller is free to write BUY IT NOW in one) and never
+ * from the card's running text, where the 2026-09-05 template concatenates
+ * the control onto the seller's name ("…for loginidBuy It NowView…") and a
+ * word-bounded regex sees nothing. 'unknown' when the row renders no such
+ * control.
+ */
+const ACTION_AUCTION_RE = /^(?:bid\s+now|place\s+bid)$/i;
+const ACTION_BIN_RE = /^buy\s+it\s+now$/i;
+
+function actionLinkFormat(card: Element): SellingFormatKind {
+  let auction = false;
+  let bin = false;
+  try {
+    for (const control of Array.from(card.querySelectorAll('a, button'))) {
+      const text = normalizeText(control.textContent);
+      if (ACTION_AUCTION_RE.test(text)) auction = true;
+      else if (ACTION_BIN_RE.test(text)) bin = true;
+    }
+  } catch {
+    return 'unknown';
+  }
+  if (auction && bin) return 'auction_with_bin';
+  if (auction) return 'auction';
+  if (bin) return 'fixed_price';
+  return 'unknown';
+}
+
+/**
+ * "* Converted from GBP 16.00": eBay's own conversion note beside a price it
+ * rendered in the viewer's currency. The C$ figure on such a row is eBay's
+ * conversion at its rate, not the seller's ask.
+ */
+const CONVERTED_FROM_RE = /converted\s+from\s+([A-Z]{3})\s*([\d,]+(?:\.\d{2})?)/i;
+
+function readConvertedFrom(cardBlob: string): string | null {
+  const match = CONVERTED_FROM_RE.exec(cardBlob);
+  return match === null ? null : `${match[1]!.toUpperCase()} ${match[2]!}`;
 }
 
 function detectSignedIn(document: Document, cardCount: number): boolean | null {
@@ -374,13 +454,32 @@ function detectSignedIn(document: Document, cardCount: number): boolean | null {
  * list). The caller still checks the chosen count against the rows the
  * page rendered — a stated total below them is no total at all.
  */
-function readTotalCount(document: Document): { count: number | null; source: string | null } {
+function readTotalCount(document: Document): { count: number | null; source: string | null; categoryChips: number } {
+  const { chips, allChip } = categoryFilterChips(document);
+  if (allChip !== null) {
+    // "(352)" in the chip's text; the accessible name's "352 items" is the
+    // same figure and the fallback when the text carries no parenthesis.
+    const text = normalizeText(allChip.textContent);
+    const aria = normalizeText(allChip.getAttribute('aria-label'));
+    const match = COUNT_IN_LABEL_RE.exec(text) ?? COUNT_ITEMS_RE.exec(aria);
+    if (match !== null) {
+      // The visible label only: the accessible name's "352 items" rides in
+      // a visually-hidden span that textContent runs onto the label's end.
+      const label = text.replace(/\s*\d[\d,]*\s*items?\s*$/i, '');
+      return {
+        count: Number.parseInt(match[1]!.replace(/,/g, ''), 10),
+        source: bounded(label.length > 0 ? label : aria, 80),
+        categoryChips: chips.length,
+      };
+    }
+  }
   const labelled: Array<{ count: number; source: string; form: 'label' | 'items' }> = [];
   try {
     const labels = Array.from(
       document.querySelectorAll('h1, h2, [role="tab"], [role="tablist"] a, [role="tablist"] button, .tabs a, .tabs button, .m-tabs a, .filter-menu a, .filter-menu button'),
     );
     for (const el of labels) {
+      if (chips.some((chip) => chip === el || chip.contains(el))) continue;
       const text = normalizeText(el.textContent);
       if (text.length === 0 || text.length > 80) continue;
       const inLabel = COUNT_IN_LABEL_RE.exec(text);
@@ -398,13 +497,60 @@ function readTotalCount(document: Document): { count: number | null; source: str
     // is the widest filter the page offers.
     const all = entries.find((entry) => /^all\b/i.test(entry.source));
     const chosen = all ?? entries.reduce((best, entry) => (entry.count > best.count ? entry : best));
-    return { count: chosen.count, source: chosen.source };
+    return { count: chosen.count, source: chosen.source, categoryChips: chips.length };
   }
-  const lead = bodyText(document, 4000);
-  const match = COUNT_ITEMS_RE.exec(lead);
-  if (match !== null) return { count: Number.parseInt(match[1]!.replace(/,/g, ''), 10), source: bounded(match[0], 40) };
-  return { count: null, source: null };
+  // The body-text fallback with every chip's own text struck out first: a
+  // chip's visually-hidden ", 1 item" is the first "N items" on the page.
+  let lead = normalizeText(document.body?.textContent);
+  for (const chip of chips) {
+    const text = normalizeText(chip.textContent);
+    if (text.length > 0) lead = lead.split(text).join(' ');
+  }
+  const match = COUNT_ITEMS_RE.exec(lead.slice(0, 4000));
+  if (match !== null) {
+    return { count: Number.parseInt(match[1]!.replace(/,/g, ''), 10), source: bounded(match[0], 40), categoryChips: chips.length };
+  }
+  return { count: null, source: null, categoryChips: chips.length };
 }
+
+/**
+ * The category-filter chips the 2026-09-05 watch-list template opens with:
+ * a carousel of links ("Drives, Storage & Blank Media (1)", accessible name
+ * "Filter Watchlist by category: …, 1 item", href …&filter=category:…).
+ * Each count is that CATEGORY's, never the list's — the first chip's
+ * "1 item" was read as the list total over 10+ rendered rows on the
+ * 2026-09-05 15:30Z fire — so a chip is never a count source.
+ */
+function categoryFilterChips(document: Document): { chips: Element[]; allChip: Element | null } {
+  const chips: Element[] = [];
+  let allChip: Element | null = null;
+  try {
+    for (const el of Array.from(document.querySelectorAll('a[href], [aria-label]'))) {
+      const href = el.getAttribute('href') ?? '';
+      const aria = normalizeText(el.getAttribute('aria-label'));
+      const text = normalizeText(el.textContent);
+      const named = CHIP_NAME_RE.test(aria) || CHIP_NAME_RE.test(text);
+      if (!named && !/[?&]filter=category(?::|%3A)/i.test(href)) continue;
+      // The carousel's HEAD (18:21Z snapshot, node el_54_54): "All Categories
+      // (352) - Selected", accessible name "…: All Categories, 352 items,
+      // selected", href with NO filter=. That one chip is the whole list's
+      // count and is the total; every filtered sibling is a category's.
+      const isAll =
+        !/[?&]filter=category(?::|%3A)/i.test(href) &&
+        (ALL_CATEGORIES_CHIP_RE.test(aria) || /^all\s+categories\b/i.test(text));
+      if (isAll) {
+        if (allChip === null) allChip = el;
+      } else {
+        chips.push(el);
+      }
+    }
+  } catch {
+    // no chips is no evidence either way
+  }
+  return { chips, allChip };
+}
+const CHIP_NAME_RE = /^filter\s+watch\s*list\s+by\s+category\b/i;
+const ALL_CATEGORIES_CHIP_RE = /^filter\s+watch\s*list\s+by\s+category:\s*all\s+categories\b/i;
 
 /**
  * A stated total below the rows the page itself rendered cannot be the
@@ -557,6 +703,7 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
   const warnings: string[] = [];
   const observedAt = (context.observedAt ?? new Date()).toISOString();
   const candidates: WatchlistCandidate[] = [];
+  const converted: Array<{ itemId: string; price: string; from: string }> = [];
 
   for (const { anchor, itemId, url } of itemAnchors(document, pageUrl)) {
     const card = myEbayCardRoot(anchor);
@@ -567,12 +714,25 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
     const priceText = cardText(card, MYEBAY_PRICE_SELECTOR);
     const elementPrice = money(priceText);
     const snippetPrice = elementPrice ?? firstMoneyIn(blob);
+    const convertedFrom = readConvertedFrom(blob);
+    if (convertedFrom !== null) {
+      converted.push({
+        itemId,
+        price: snippetPrice === null ? 'no price' : `${snippetPrice.currency} ${snippetPrice.value.toFixed(2)}`,
+        from: convertedFrom,
+      });
+    }
     // A watch-list card that states no format is 'unknown': the overflow
     // render carries no format element, and inferring fixed_price from the
-    // price labelled 44 live auctions that way on 2026-09-04.
-    const { sellingFormat, bidCount } = detectCardFormat(card, rawTitle, snippetPrice !== null, {
+    // price labelled 44 live auctions that way on 2026-09-04. The row's
+    // action link ("Bid Now" / "Buy It Now") is the one card-level statement
+    // of format the 2026-09-05 template makes, and it is read only when the
+    // format vocabulary said nothing.
+    const detected = detectCardFormat(card, rawTitle, snippetPrice !== null, {
       inferFixedPriceFromPrice: false,
     });
+    const sellingFormat = detected.sellingFormat === 'unknown' ? actionLinkFormat(card) : detected.sellingFormat;
+    const bidCount = detected.bidCount;
     const timeLeftText = readTimeLeft(card);
     const status = readStatus(blob, timeLeftText);
     const { seller, sellerText } = sellerFrom(card);
@@ -605,12 +765,20 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
 
   const pageTitle = documentTitle(document);
   const signedIn = detectSignedIn(document, candidates.length);
+  const { categoryChips, ...readTotal } = readTotalCount(document);
   const { count: totalCount, source: totalCountSource } = checkedTotalCount(
-    readTotalCount(document),
+    readTotal,
     candidates.length,
     'WATCHLIST_TOTAL_REJECTED',
     warnings,
   );
+  // Unstated is "nothing was found", distinct from a found label being
+  // rejected above; a chip is not a label, so it never counts as found.
+  if (readTotal.count === null && categoryChips > 0) {
+    warnings.push(
+      `WATCHLIST_TOTAL_UNSTATED: the page renders ${categoryChips} category-filter chips ("<category> (N)", accessible name "Filter Watchlist by category: …, N items") whose counts are per-category, and no list total was found anywhere else on it, so totalResults is null; audit the rows read against a count the page has not stated, never against a chip's count.`,
+    );
+  }
   const pagination = readPagination(document, pageUrl, warnings);
 
   if (candidates.length === 0) {
@@ -638,6 +806,15 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
     if (unstatedFormat > 0) {
       warnings.push(
         `WATCHLIST_FORMAT_UNSTATED: ${unstatedFormat} of ${candidates.length} row(s) state neither bids nor Buy It Now, so sellingFormat is unknown and bidCount null on them (this template shows no format element; live auctions with bids render exactly like fixed-price rows here) — read format and bids from the item page.`,
+      );
+    }
+    if (converted.length > 0) {
+      const rows = converted
+        .slice(0, 10)
+        .map((row) => `${row.itemId}: ${row.price} converted from ${row.from}`)
+        .join('; ');
+      warnings.push(
+        `WATCHLIST_PRICE_CONVERTED: ${converted.length} of ${candidates.length} row(s) carry eBay's currency-conversion note (${rows}${converted.length > 10 ? '; …' : ''}), so snippetPrice on them is eBay's conversion of the seller's ask at its own rate, not the seller's ask; the item page decides the price and its currency, and a price diff on these rows must allow for the rate moving.`,
       );
     }
     const nullNote = nullCountsWarning(

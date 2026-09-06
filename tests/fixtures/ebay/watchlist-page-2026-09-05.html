@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<!--
+  AUTHORED FROM the 2026-09-05 15:30Z deals-fire browser_snapshot of the
+  live https://www.ebay.ca/mye/myebay/watchlist (accessibility tree,
+  maxNodes 200; fingerprint site-ebay+extractor_defect+watchlist-template-
+  unpinned). This is NOT raw HTML: the snapshot gives roles, accessible
+  names, text and hrefs in node order, never class names, so this page
+  carries NO `.m-item*` (or any other known card) class and every row is a
+  plain <li> that only the generic card climb (cardRootFor) can find.
+
+  Reproduced faithfully from the snapshot:
+
+  - Nodes 83-86: role=link chips, name "Filter Watchlist by category:
+    <category>, N item(s)", text "<category> (N)", href
+    /myb/Watchlist?custom_list_id=WATCH_LIST&filter=category:<id>. The "(1)"
+    on each is that CATEGORY's count. The ", 1 item" tail of the accessible
+    name is rendered here as a visually-hidden span so the "1 item" read the
+    fire reported (WATCHLIST_TOTAL_REJECTED over "1 item") reproduces.
+  - Node 87: button "Go to next slide" (the chip carousel's control).
+  - The HEAD of the same carousel, from the 18:21Z deals fire's second
+    snapshot (pageRevision 54, node el_54_54, verbatim): role=link, name
+    "Filter Watchlist by category: All Categories, 352 items, selected",
+    text "All Categories (352) - Selected", href
+    /myb/Watchlist?custom_list_id=WATCH_LIST (no filter=). That selected
+    All Categories chip carries the WHOLE-LIST count; the 15:30Z snapshot
+    sampled the middle of the carousel and missed it. No other list total
+    renders anywhere on the page.
+  - Per-row node order, verbatim: [checkbox name=title] -> [link href=/itm/
+    name='' text=''] -> [img name=title] -> [heading name=title] -> [link
+    name=title href=/itm/] -> [text "C $29.93*"] -> [text "* Converted from
+    GBP 16.00"] (one row) -> [text "+C $38.80 Shipping"] -> [link "<loginId>
+    username" href=/usr/] -> [link "100% (283) Feedback score is 283 for
+    <loginId>" href=/fdbk/feedback_profile/] -> [link "Bid Now" (auction) or
+    "Buy It Now" (fixed price) href=/itm/] -> [link "View seller's other
+    items" href=/sch/<loginId>/m.html] -> [button "More Actions"].
+
+  Whitespace between a row's elements is deliberately absent (the `><`
+  line breaks sit inside the tags): on the live template adjacent elements
+  concatenate with no whitespace in textContent (the 2026-09-05 12:52Z
+  offers-page finding), which is why a \b-anchored "Buy It Now" never
+  matched and the fire read format unknown on every row.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Watch list | My eBay</title>
+</head>
+<body>
+  <header>
+    <a href="https://www.ebay.ca/">eBay</a>
+    <a href="https://www.ebay.ca/mye/myebay/summary">My eBay</a>
+  </header>
+  <main>
+    <h1>Watch list</h1>
+    <div>
+      <a href="https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST" aria-label="Filter Watchlist by category: All Categories, 352 items, selected" aria-current="true">All Categories (352) - Selected<span style="position:absolute;clip:rect(0 0 0 0)">352 items</span></a>
+      <a href="https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST&amp;filter=category:175669" aria-label="Filter Watchlist by category: Drives, Storage &amp; Blank Media, 1 item">Drives, Storage &amp; Blank Media (1)<span style="position:absolute;clip:rect(0 0 0 0)">1 item</span></a>
+      <a href="https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST&amp;filter=category:162" aria-label="Filter Watchlist by category: Other Computers &amp; Networking, 1 item">Other Computers &amp; Networking (1)<span style="position:absolute;clip:rect(0 0 0 0)">1 item</span></a>
+      <a href="https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST&amp;filter=category:11450" aria-label="Filter Watchlist by category: Retail &amp; Services, 1 item">Retail &amp; Services (1)<span style="position:absolute;clip:rect(0 0 0 0)">1 item</span></a>
+      <a href="https://www.ebay.ca/myb/Watchlist?custom_list_id=WATCH_LIST&amp;filter=category:175698" aria-label="Filter Watchlist by category: Enterprise Networking, Servers, 1 item">Enterprise Networking, Servers (1)<span style="position:absolute;clip:rect(0 0 0 0)">1 item</span></a>
+      <button type="button" aria-label="Go to next slide">Go to next slide</button>
+    </div>
+    <ul>
+      <li
+        ><input type="checkbox" aria-label="IBM LTO-8 HH SAS Tape Drive 3573-8547 for TS3100 TS3200 Tested"
+        ><a href="https://www.ebay.ca/itm/377449134404"></a
+        ><img src="https://i.ebayimg.com/images/g/a/s-l225.jpg" alt="IBM LTO-8 HH SAS Tape Drive 3573-8547 for TS3100 TS3200 Tested"
+        ><h3>IBM LTO-8 HH SAS Tape Drive 3573-8547 for TS3100 TS3200 Tested</h3
+        ><a href="https://www.ebay.ca/itm/377449134404">IBM LTO-8 HH SAS Tape Drive 3573-8547 for TS3100 TS3200 Tested</a
+        ><span>C $29.93*</span
+        ><span>* Converted from GBP 16.00</span
+        ><span>+C $38.80 Shipping</span
+        ><a href="https://www.ebay.ca/usr/tapeworks_uk">tapeworks_uk username</a
+        ><a href="https://www.ebay.ca/fdbk/feedback_profile/tapeworks_uk">100% (283) Feedback score is 283 for tapeworks_uk</a
+        ><a href="https://www.ebay.ca/itm/377449134404">Bid Now</a
+        ><a href="https://www.ebay.ca/sch/tapeworks_uk/m.html">View seller's other items</a
+        ><button type="button">More Actions</button
+      ></li>
+      <li
+        ><input type="checkbox" aria-label="Arista DCS-7050QX-32S-F 32x 40GbE QSFP+ 4x SFP+ Switch"
+        ><a href="https://www.ebay.ca/itm/315012183531"></a
+        ><img src="https://i.ebayimg.com/images/g/b/s-l225.jpg" alt="Arista DCS-7050QX-32S-F 32x 40GbE QSFP+ 4x SFP+ Switch"
+        ><h3>Arista DCS-7050QX-32S-F 32x 40GbE QSFP+ 4x SFP+ Switch</h3
+        ><a href="https://www.ebay.ca/itm/315012183531">Arista DCS-7050QX-32S-F 32x 40GbE QSFP+ 4x SFP+ Switch</a
+        ><span>C $412.00</span
+        ><span>+C $38.80 Shipping</span
+        ><a href="https://www.ebay.ca/usr/netgear_liquidators">netgear_liquidators username</a
+        ><a href="https://www.ebay.ca/fdbk/feedback_profile/netgear_liquidators">99.6% (4812) Feedback score is 4812 for netgear_liquidators</a
+        ><a href="https://www.ebay.ca/itm/315012183531">Buy It Now</a
+        ><a href="https://www.ebay.ca/sch/netgear_liquidators/m.html">View seller's other items</a
+        ><button type="button">More Actions</button
+      ></li>
+      <li
+        ><input type="checkbox" aria-label="Fujifilm LTO-8 Ultrium 12TB/30TB Data Cartridge Lot of 5"
+        ><a href="https://www.ebay.ca/itm/226934512873"></a
+        ><img src="https://i.ebayimg.com/images/g/c/s-l225.jpg" alt="Fujifilm LTO-8 Ultrium 12TB/30TB Data Cartridge Lot of 5"
+        ><h3>Fujifilm LTO-8 Ultrium 12TB/30TB Data Cartridge Lot of 5</h3
+        ><a href="https://www.ebay.ca/itm/226934512873">Fujifilm LTO-8 Ultrium 12TB/30TB Data Cartridge Lot of 5</a
+        ><span>C $255.00</span
+        ><span>+C $38.80 Shipping</span
+        ><a href="https://www.ebay.ca/usr/mediahub_direct">mediahub_direct username</a
+        ><a href="https://www.ebay.ca/fdbk/feedback_profile/mediahub_direct">99.2% (2301) Feedback score is 2301 for mediahub_direct</a
+        ><a href="https://www.ebay.ca/itm/226934512873">Bid Now</a
+        ><a href="https://www.ebay.ca/sch/mediahub_direct/m.html">View seller's other items</a
+        ><button type="button">More Actions</button
+      ></li>
+      <li
+        ><input type="checkbox" aria-label="Mellanox SX1012 12-Port 40GbE QSFP+ 1U Switch MSX1012B-2BFS"
+        ><a href="https://www.ebay.ca/itm/146872203419"></a
+        ><img src="https://i.ebayimg.com/images/g/d/s-l225.jpg" alt="Mellanox SX1012 12-Port 40GbE QSFP+ 1U Switch MSX1012B-2BFS"
+        ><h3>Mellanox SX1012 12-Port 40GbE QSFP+ 1U Switch MSX1012B-2BFS</h3
+        ><a href="https://www.ebay.ca/itm/146872203419">Mellanox SX1012 12-Port 40GbE QSFP+ 1U Switch MSX1012B-2BFS</a
+        ><span>C $189.00</span
+        ><span>+C $38.80 Shipping</span
+        ><a href="https://www.ebay.ca/usr/serverpartsdepot">serverpartsdepot username</a
+        ><a href="https://www.ebay.ca/fdbk/feedback_profile/serverpartsdepot">99.9% (12004) Feedback score is 12004 for serverpartsdepot</a
+        ><a href="https://www.ebay.ca/itm/146872203419">Buy It Now</a
+        ><a href="https://www.ebay.ca/sch/serverpartsdepot/m.html">View seller's other items</a
+        ><button type="button">More Actions</button
+      ></li>
+    </ul>
+  </main>
+</body>
+</html>

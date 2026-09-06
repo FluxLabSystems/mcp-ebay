@@ -66,11 +66,41 @@ interface ProfileSlot {
   lock: ProfileLock;
 }
 
+/** The crash-loop window (§13): more than CRASH_LOOP_MAX_LAUNCHES launches inside it is DEGRADED. */
+const CRASH_LOOP_WINDOW_MS = 5 * 60 * 1000;
+const CRASH_LOOP_MAX_LAUNCHES = 3;
+
+interface LaunchRecord {
+  profileName: string;
+  at: number;
+}
+
+/**
+ * What a DEGRADED refusal tells the caller (2026-09-05, gateway+defect+
+ * bridge-agent-degraded-blocks-new-session-creation, read as the
+ * windows-agent connector_defect it is): before this the
+ * BROWSER_UNAVAILABLE for a new profile on a degraded agent carried
+ * details {}, so a routine could not tell a crash loop from a box that
+ * needs a human, did not know which profiles had crashed, and did not
+ * know its already-open sessions keep working.
+ */
+export interface DegradedDetails {
+  degraded: true;
+  launchesInWindow: number;
+  windowMs: number;
+  /** Profiles launched inside the window, in first-launch order, each once. */
+  crashedProfiles: string[];
+  /** Profiles whose session is still live and serving. */
+  openSessions: string[];
+  recovery: 'manual';
+  hint: string;
+}
+
 export class SessionManager {
   private readonly options: SessionManagerOptions;
   private readonly slots = new Map<string, ProfileSlot>();
   private readonly opening = new Map<string, Promise<BrowserSessionRuntime>>();
-  private launchTimestamps: number[] = [];
+  private launches: LaunchRecord[] = [];
   private degraded = false;
 
   constructor(options: SessionManagerOptions) {
@@ -146,18 +176,43 @@ export class SessionManager {
     slot.lock.release();
   }
 
-  private recordLaunch(): void {
+  /** The launches still inside the crash-loop window, oldest first. */
+  private launchesInWindow(now: number): LaunchRecord[] {
+    this.launches = this.launches.filter((launch) => now - launch.at < CRASH_LOOP_WINDOW_MS);
+    return this.launches;
+  }
+
+  private recordLaunch(profileName: string): void {
     const now = Date.now();
-    this.launchTimestamps = this.launchTimestamps.filter((ts) => now - ts < 5 * 60 * 1000);
-    this.launchTimestamps.push(now);
-    if (this.launchTimestamps.length > 3) {
+    const launches = this.launchesInWindow(now);
+    launches.push({ profileName, at: now });
+    if (launches.length > CRASH_LOOP_MAX_LAUNCHES) {
       this.degraded = true;
       this.options.logger.error(
-        { launchesInWindow: this.launchTimestamps.length },
+        { launchesInWindow: launches.length, crashedProfiles: this.degradedDetails().crashedProfiles },
         'Browser crash loop detected; entering DEGRADED state',
       );
       this.options.monitor?.sessionDegraded();
     }
+  }
+
+  /** The diagnosis a DEGRADED refusal carries; built at refusal time, so it names the sessions still open then. */
+  private degradedDetails(): DegradedDetails {
+    const launches = this.launchesInWindow(Date.now());
+    const crashedProfiles = Array.from(new Set(launches.map((launch) => launch.profileName)));
+    const openSessions = this.listActive().map((session) => session.profileName);
+    return {
+      degraded: true,
+      launchesInWindow: launches.length,
+      windowMs: CRASH_LOOP_WINDOW_MS,
+      crashedProfiles,
+      openSessions,
+      recovery: 'manual',
+      hint:
+        `The agent counted ${launches.length} browser launches in ${CRASH_LOOP_WINDOW_MS / 60_000} minutes (profiles: ${crashedProfiles.join(', ') || 'none'}) and will not launch another. ` +
+        `Existing sessions keep working (${openSessions.length === 0 ? 'none open' : `open: ${openSessions.join(', ')}`}); ` +
+        'new sessions need the operator to restart the agent after checking the crashed profile(s). Not a transient condition: do not retry the open.',
+    };
   }
 
   private planFor(profileName: string): BrowserLaunchPlan {
@@ -167,11 +222,15 @@ export class SessionManager {
 
   private async launch(profileName: string): Promise<BrowserSessionRuntime> {
     if (this.degraded) {
-      throw new BridgeError('BROWSER_UNAVAILABLE', 'Agent is DEGRADED after repeated browser crashes; user intervention required.');
+      throw new BridgeError(
+        'BROWSER_UNAVAILABLE',
+        'Agent is DEGRADED after repeated browser crashes; user intervention required.',
+        { ...this.degradedDetails(), profileName },
+      );
     }
     const lock = acquireProfileLock(profileDirectoryFor(this.options.profileDir, profileName));
     try {
-      this.recordLaunch();
+      this.recordLaunch(profileName);
       const context = await launchPersistent(this.planFor(profileName), this.options.launcher ?? defaultLauncher);
       const session = await BrowserSessionRuntime.create(context, profileName, this.options.policy, {
         onContextClosed: () => {
