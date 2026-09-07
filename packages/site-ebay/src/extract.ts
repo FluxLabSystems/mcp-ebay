@@ -440,6 +440,33 @@ export function readDestinationPostal(document: Document): string | null {
   return null;
 }
 
+/**
+ * Why shipping is not destination-resolved, in the record's own words. The
+ * blanket form ("must not be treated as destination-resolved Toronto data")
+ * hid the difference between a page that states no destination and a page
+ * that states a DIFFERENT one — on 2026-09-07 two item pages printed
+ * "to M6H0A1" in their delivery estimate against a configured ship-to of
+ * M6H 2W9, and the routine could not tell that the page had resolved the
+ * destination at all. The flag stays false whenever the codes differ (a
+ * neighbouring code in the same forward sortation area usually prices the
+ * same, but "usually" is not a verification); the warning names both codes
+ * so a ship-to mismatch in the agent configuration shows up as one.
+ */
+function destinationUnverifiedWarning(stated: string | null, expected: string | null, observedText: string | null): string {
+  const shipTo = expected ?? 'not configured';
+  if (stated === null) {
+    return `DESTINATION_UNVERIFIED: the page states no destination postal code (configured ship-to ${shipTo}); shipping must not be treated as destination-resolved data`;
+  }
+  const sameFsa = expected !== null && stated.slice(0, 3) === expected.slice(0, 3);
+  const quoted = observedText !== null ? ` — "${observedText.slice(0, 120)}"` : '';
+  return (
+    `DESTINATION_UNVERIFIED: the page resolves delivery to ${stated}${quoted} — but the configured ship-to is ${shipTo}, so shipping is that destination's figure, not the ship-to's` +
+    (sameFsa
+      ? `; the two codes share the forward sortation area ${stated.slice(0, 3)}, which points at a ship-to mismatch between the eBay account and the agent's configured postal code rather than at the page — the flag stays false because the codes differ`
+      : '')
+  );
+}
+
 const OFFER_CONTROL_SELECTORS = ['.x-offer-action', '[data-testid="x-offer-action"]', '#boBtn_btn', '.vi-bo-btn'];
 const OFFER_TEXT_RE = /\b(?:make\s+offer|best\s+offer)\b/i;
 
@@ -901,12 +928,18 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
   // --- destination + shipping (§20.1: never mark proxy shipping verified) ---
   const domPostal = readDestinationPostal(document);
   const liveVerification = context.verifiedDestination;
-  const destinationPostal = liveVerification?.postalCode ?? domPostal;
+  // The live flow hands back '' (or null) when it matched no indicator. That
+  // is "the flow saw nothing", not "the page states nothing": the 2026-09-07
+  // template prints the destination inside the shipping block's own delivery
+  // estimate ("Get it between Wed, Sep 9 and Fri, Sep 11 to M6H0A1"), which
+  // the DOM read finds. A live read that DID see an indicator is the rendered
+  // state after any set attempt and outranks the DOM text (§20.1 steps 4-5).
+  const liveRaw = liveVerification?.postalCode ?? '';
+  const livePostal = liveRaw.length > 0 ? (normalizePostalCode(liveRaw) ?? liveRaw) : null;
+  const destinationPostal = livePostal ?? domPostal;
   const destinationVerified =
-    liveVerification !== undefined
-      ? liveVerification.verified &&
-        expectedPostal !== null &&
-        postalCodesMatch(liveVerification.postalCode, expectedPostal)
+    livePostal !== null
+      ? liveVerification!.verified && expectedPostal !== null && postalCodesMatch(livePostal, expectedPostal)
       : domPostal !== null && expectedPostal !== null && postalCodesMatch(domPostal, expectedPostal);
 
   let shipping: ExtractionRecord['shipping'] = null;
@@ -968,7 +1001,7 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
   if (shipping === null) {
     warnings.push('shipping could not be resolved');
   } else if (!destinationVerified) {
-    warnings.push('DESTINATION_UNVERIFIED: shipping must not be treated as destination-resolved Toronto data');
+    warnings.push(destinationUnverifiedWarning(destinationPostal, expectedPostal, shipping.observedText));
   }
 
   // --- best offer availability (read-only observation) ---

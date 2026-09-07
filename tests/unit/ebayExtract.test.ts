@@ -593,3 +593,85 @@ describe('seller login id recovered from the description iframe (2026-09-05)', (
     expect(ExtractionRecordSchema.safeParse(record).success).toBe(true);
   });
 });
+
+// 2026-09-07 04:1xZ deals fire (site-ebay+extractor_defect+item-page-states-
+// destination-postal-code-in-delivery-estimate-yet-destinationverified-is-
+// false): 204269906390 and 205251607981 rendered their destination INSIDE the
+// shipping block — "Free 3 day deliveryGet it between Wed, Sep 9 and Fri, Sep
+// 11 to M6H0A1. See detailsfor shipping" — with no separate delivery row, and
+// came back destinationVerified false under a blanket DESTINATION_UNVERIFIED
+// that named neither the postal code the page printed nor the one the Bridge
+// expects. Two honest outcomes exist and the record must say which: the
+// page's own statement matches the configured ship-to (verified), or it names
+// a different postal code (unverified, with both codes in the warning so a
+// ship-to mismatch is visible as such).
+describe('item page: the destination stated inside the delivery estimate (2026-09-07 fire)', () => {
+  const ESTIMATE = 'Free 3 day deliveryGet it between Wed, Sep 9 and Fri, Sep 11 to M6H0A1. See detailsfor shipping';
+  function listing(): Document {
+    return parseHTML(
+      `<html><head><title>LEGO Lot | eBay</title><link rel="canonical" href="https://www.ebay.ca/itm/204269906390"></head><body>
+       <h1 class="x-item-title__mainTitle">LEGO Lot</h1>
+       <div class="x-price-primary">C $45.00</div>
+       <div class="x-sellercard-atf"><a href="https://www.ebay.ca/usr/philjn555">philjn555</a></div>
+       <div class="ux-labels-values ux-labels-values--shipping">
+         <div class="ux-labels-values__labels">Shipping:</div>
+         <div class="ux-labels-values__values"><span class="ux-textspans">${ESTIMATE}</span></div>
+       </div>
+       <div class="x-bin-action"><a role="button">Buy It Now</a></div>
+       </body></html>`,
+    ).document as unknown as Document;
+  }
+
+  it('reads the estimate\'s postal code from the DOM when the live flow found no indicator, and verifies on a match', () => {
+    const { record, warnings } = extractListing(listing(), 'https://www.ebay.ca/itm/204269906390', {
+      expectedPostalCode: 'M6H 0A1',
+      // What the agent passes when readLiveDestination matched nothing.
+      verifiedDestination: { postalCode: '', verified: false },
+    });
+    expect(record.shipping?.value).toBe(0);
+    expect(record.shipping?.destinationPostalCode).toBe('M6H 0A1');
+    expect(record.shipping?.destinationVerified).toBe(true);
+    expect(warnings.some((w) => w.includes('DESTINATION_UNVERIFIED'))).toBe(false);
+  });
+
+  it('names both the stated and the expected postal code when they differ, and stays unverified', () => {
+    const { record, warnings } = extractListing(listing(), 'https://www.ebay.ca/itm/204269906390', {
+      expectedPostalCode: 'M6H 2W9',
+      verifiedDestination: { postalCode: '', verified: false },
+    });
+    expect(record.shipping?.destinationPostalCode).toBe('M6H 0A1');
+    expect(record.shipping?.destinationVerified).toBe(false);
+    const warning = warnings.find((w) => w.startsWith('DESTINATION_UNVERIFIED'));
+    expect(warning).toContain('M6H 0A1');
+    expect(warning).toContain('M6H 2W9');
+    expect(warning).toMatch(/forward sortation area/);
+  });
+
+  it('a live read that saw the same different code is reported the same way, never as "nothing stated"', () => {
+    const { record, warnings } = extractListing(listing(), 'https://www.ebay.ca/itm/204269906390', {
+      expectedPostalCode: 'M6H 2W9',
+      verifiedDestination: { postalCode: 'M6H 0A1', verified: false },
+    });
+    expect(record.shipping?.destinationPostalCode).toBe('M6H 0A1');
+    expect(record.shipping?.destinationVerified).toBe(false);
+    const warning = warnings.find((w) => w.startsWith('DESTINATION_UNVERIFIED'));
+    expect(warning).toContain('M6H 0A1');
+    expect(warning).toContain('M6H 2W9');
+  });
+
+  it('still says nothing is stated when neither the live flow nor the page names a destination', () => {
+    const bare = parseHTML(
+      `<h1 class="x-item-title__mainTitle">Lot</h1><div class="x-price-primary">C $1.00</div>
+       <div class="ux-labels-values ux-labels-values--shipping"><div class="ux-labels-values__values">C $12.00 Canada Post</div></div>`,
+    ).document as unknown as Document;
+    const { record, warnings } = extractListing(bare, 'https://www.ebay.ca/itm/100000000001', {
+      expectedPostalCode: 'M6H 2W9',
+      verifiedDestination: { postalCode: '', verified: false },
+    });
+    expect(record.shipping?.destinationPostalCode).toBeNull();
+    expect(record.shipping?.destinationVerified).toBe(false);
+    const warning = warnings.find((w) => w.startsWith('DESTINATION_UNVERIFIED'));
+    expect(warning).toMatch(/states no destination/);
+    expect(warning).toContain('M6H 2W9');
+  });
+});

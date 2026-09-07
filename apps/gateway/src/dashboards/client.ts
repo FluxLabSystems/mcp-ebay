@@ -90,10 +90,61 @@ function toIdentity(listing: Record<string, unknown>): Record<string, unknown> {
 function toProjection(listing: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (listing.id !== undefined) out.id = listing.id;
+  // Paths already written whole: a deeper path under one is contained in it,
+  // and writing into that object would write into the upstream record.
+  const written = new Set<string>();
   for (const field of fields) {
-    if (listing[field] !== undefined) out[field] = listing[field];
+    if (field === 'id') continue;
+    const value = readPath(listing, field);
+    if (value === undefined) continue;
+    const segments = field.split('.');
+    if (segments.some((_, i) => i > 0 && written.has(segments.slice(0, i).join('.')))) continue;
+    let target = out;
+    for (const segment of segments.slice(0, -1)) {
+      const existing = target[segment];
+      if (existing === null || typeof existing !== 'object' || Array.isArray(existing)) target[segment] = {};
+      target = target[segment] as Record<string, unknown>;
+    }
+    target[segments[segments.length - 1]!] = value;
+    written.add(field);
   }
   return out;
+}
+
+/** Segments that would read or write a prototype rather than the listing. */
+const UNSAFE_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/**
+ * One field by name, with the same rule the dashboard API applies to
+ * `?fields=` (2026-09-07, dashboard-records-fields-projection-silently-
+ * drops-nested-paths): a dotted name walks nested plain objects — never
+ * arrays, strings or prototypes — and is undefined wherever the walk finds
+ * nothing.
+ */
+function readPath(listing: Record<string, unknown>, field: string): unknown {
+  let value: unknown = listing;
+  for (const segment of field.split('.')) {
+    if (segment.length === 0 || UNSAFE_SEGMENTS.has(segment)) return undefined;
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    if (!Object.prototype.hasOwnProperty.call(value, segment)) return undefined;
+    value = (value as Record<string, unknown>)[segment];
+  }
+  return value;
+}
+
+/**
+ * The API's `unresolvedFields` — requested names no record on the page
+ * carries — as the warning the extract tools already use for the same
+ * situation. A projection that quietly returns bare ids is a read the caller
+ * cannot tell from "those records hold nothing", which is exactly what the
+ * 2026-09-07 deals fire could not tell.
+ */
+function unknownFieldsWarning(root: Record<string, unknown>): string | null {
+  const unresolved = Array.isArray(root.unresolvedFields)
+    ? root.unresolvedFields.filter((name): name is string => typeof name === 'string')
+    : [];
+  if (unresolved.length === 0) return null;
+  return `UNKNOWN_FIELDS_IGNORED: ${unresolved.map((name) => `"${name}"`).join(', ')} resolved on no record of this page — a dotted path (analysis.fairValueCad) walks nested objects; a name absent from every returned record is spelled wrong or is not stored on this scope`;
 }
 
 function statusOf(listing: Record<string, unknown>): string | null {
@@ -248,7 +299,8 @@ export class DashboardClient {
       query: Object.fromEntries(query),
     });
     const listings = Array.isArray(root.listings) ? (root.listings as Record<string, unknown>[]) : [];
-    return { ...root, dashboard, listings };
+    const warning = unknownFieldsWarning(root);
+    return { ...root, dashboard, listings, ...(warning === null ? {} : { warnings: [warning] }) };
   }
 
   /** Counts only, GET /v1/{scope}/summary — no records at all. */

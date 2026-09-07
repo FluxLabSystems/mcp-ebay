@@ -223,11 +223,18 @@ Inventing a number because the rows were not in context is not.
   and qualification; the figures here are the run-level summary, not a
   replacement.
 - **Toronto destination caveat.** Shipping is only destination-verified
-  when the page actually shows **M6H 2W9**. The extraction record carries
-  `shipping.destinationVerified` and a `DESTINATION_UNVERIFIED` warning —
-  honour them. Never substitute a U.S.-destination quote for a Toronto one,
-  and keep `shippingResolved` false until a destination-resolved page
-  proves the number used.
+  when the page actually shows the configured ship-to (**M6H 2W9** by
+  default, `EBAY_DESTINATION_POSTAL_CODE` on the agent) — in a delivery
+  row or, since 2026-09-07, inside the shipping block's own estimate
+  ("Get it between … to M6H0A1"). The extraction record carries
+  `shipping.destinationVerified` and a `DESTINATION_UNVERIFIED` warning that
+  names the code the page stated and the code the agent expects — honour
+  them. A warning naming two different codes in the same forward sortation
+  area is a ship-to mismatch between the eBay account and the agent's
+  configuration, for the operator to settle; it is not an extractor defect
+  and never a reason to set the flag by hand. Never substitute a
+  U.S.-destination quote for a Toronto one, and keep `shippingResolved`
+  false until a destination-resolved page proves the number used.
 - eBay auctions now expose `endsAt` / `timeLeftText` where the page states
   them. Both are `null` when the page states neither: that is "unknown",
   not "no deadline".

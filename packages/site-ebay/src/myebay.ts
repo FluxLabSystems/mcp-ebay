@@ -262,7 +262,14 @@ const MONEY_SOURCE = String.raw`(?:C\s?\$|US\s?\$|CA\s?\$|\$)\s?\d[\d,]*(?:\.\d{
  */
 const SELLER_TEXT_RE =
   /(?:\bseller|\bsold\s+by|\bfrom\s+seller|\bfrom)\s*:\s*([A-Za-z0-9._*-]{2,64})(?:\s*\((\d[\d,]*)\))?(?:\s*(\d{1,3}(?:\.\d)?%))?|(?:\bfrom\s+seller|\bsold\s+by)\s+([A-Za-z0-9._*-]{3,64})(?:\s*\((\d[\d,]*)\))?(?:\s*(\d{1,3}(?:\.\d)?%))?/i;
-const SELLER_FEEDBACK_RE = /\b([A-Za-z0-9._*-]{3,64})\s*\((\d[\d,]*)\)(?:\s*(\d{1,3}(?:\.\d)?%))?/;
+/**
+ * The unlabelled "name (count) percent" run. The percentage is REQUIRED and
+ * the count is bounded to a feedback score's size: without both, the last
+ * word of a title followed by the item id in parentheses — "VTG(267676402924)",
+ * "MINIFIGURES(820069821768)" on the 2026-09-07 offers page — reads as a
+ * seller with a twelve-digit feedback score.
+ */
+const SELLER_FEEDBACK_RE = /\b([A-Za-z0-9._*-]{3,64})\s*\((\d{1,3}(?:,\d{3}){0,2}|\d{1,7})\)\s*(\d{1,3}(?:\.\d)?%)/;
 const SELLER_OFFER_RE =
   /((?:seller\s+sent\s+(?:you\s+)?an?\s+offer|offer\s+from\s+(?:the\s+)?seller|you(?:'ve|\s+have)\s+(?:received|got)\s+an?\s+offer|seller'?s?\s+offer|new\s+offer|counter\s*offer)[^|•·\n]{0,80})/i;
 /**
@@ -360,19 +367,36 @@ function myEbayCardRoot(anchor: Element): Element {
   return cardRootFor(anchor);
 }
 
-function sellerFrom(card: Element): { seller: string | null; sellerText: string | null } {
-  let seller: string | null = null;
+interface SellerRead {
+  seller: string | null;
+  sellerText: string | null;
+  /** Every distinct /usr/ login id the card links when there is more than one — the card is then no one seller's row. */
+  ambiguous: string[] | null;
+}
+
+/**
+ * The seller of one card: the /usr/ link's login id, and a bounded text
+ * form from a labelled run, an unlabelled "name (count) percent" run, or the
+ * seller links themselves. A card linking two different login ids names
+ * neither (the climb from an /itm/ anchor may have spanned a neighbouring
+ * row — 267676402924 read a seller its item page contradicts on 2026-09-07);
+ * a card linking none and carrying no labelled run stays null rather than
+ * borrowing adjacent title text.
+ */
+function sellerFrom(card: Element): SellerRead {
+  const slugs: string[] = [];
   try {
     for (const link of Array.from(card.querySelectorAll('a[href*="/usr/"]'))) {
       const slug = /\/usr\/([^/?#]+)/.exec(link.getAttribute('href') ?? '')?.[1];
-      if (slug !== undefined) {
-        seller = decodeURIComponent(slug);
-        break;
-      }
+      if (slug === undefined) continue;
+      const loginId = decodeURIComponent(slug);
+      if (!slugs.includes(loginId)) slugs.push(loginId);
     }
   } catch {
-    seller = null;
+    // an unreadable href is no seller
   }
+  if (slugs.length > 1) return { seller: null, sellerText: null, ambiguous: slugs };
+  const seller = slugs[0] ?? null;
   const text = normalizeText(card.textContent);
   const labelled = SELLER_TEXT_RE.exec(text);
   const feedback = SELLER_FEEDBACK_RE.exec(text);
@@ -382,7 +406,7 @@ function sellerFrom(card: Element): { seller: string | null; sellerText: string 
       : feedback !== null
         ? bounded(feedback[0], 96)
         : sellerTextFromLinks(card);
-  return { seller, sellerText };
+  return { seller, sellerText, ambiguous: null };
 }
 
 /**
@@ -391,9 +415,12 @@ function sellerFrom(card: Element): { seller: string | null; sellerText: string 
  * link reading "<loginId> username" and the feedback-profile link reading
  * "100% (283) Feedback score is 283 for <loginId>". Composed as
  * "<loginId> 100% (283)" from the login id and the feedback link's leading
- * figures; null when the row links neither.
+ * figures; null when the row links neither. The offers page (2026-09-07)
+ * renders the /usr/ link's accessible name as "<loginId>user ID, click for
+ * member's profile", with no separator — that suffix is stripped the same
+ * way (a login id never contains a space or a comma).
  */
-const USR_LINK_NAME_RE = /^(.{2,64}?)(?:\s+username)?$/i;
+const USR_LINK_NAME_RE = /^(.{2,64}?)(?:\s+username|\s*user ID, click for member'?s profile)?$/i;
 const FEEDBACK_LEAD_RE = /^(\d{1,3}(?:\.\d)?%\s*\(\d[\d,]*\))/;
 
 function sellerTextFromLinks(card: Element): string | null {
@@ -1035,6 +1062,8 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
   const observedAt = (context.observedAt ?? new Date()).toISOString();
   const candidates: OfferCandidate[] = [];
   const bidRowIds: string[] = [];
+  const sellerUnstatedIds: string[] = [];
+  const sellerAmbiguous: Array<{ itemId: string; loginIds: string[] }> = [];
   let orderedByValue = 0;
 
   for (const { anchor, itemId, url } of itemAnchors(document, pageUrl)) {
@@ -1118,7 +1147,9 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
     }
     const expires = EXPIRES_RE.exec(blob);
     const expiresText = expires === null ? null : bounded(normalizeText(expires[1]!), 60);
-    const { seller, sellerText } = sellerFrom(card);
+    const { seller, sellerText, ambiguous } = sellerFrom(card);
+    if (ambiguous !== null) sellerAmbiguous.push({ itemId, loginIds: ambiguous });
+    else if (seller === null && sellerText === null) sellerUnstatedIds.push(itemId);
     candidates.push({
       itemId,
       url,
@@ -1169,6 +1200,21 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
     if (orderedByValue > 0) {
       warnings.push(
         `OFFERS_AMOUNTS_ORDERED_BY_VALUE: ${orderedByValue} of ${candidates.length} row(s) carry two amounts with no wording that labels the offer, or label the higher one as the offer; an offer is never above the ask, so on them offerPrice is the lower figure and listPrice the higher (proven 2026-09-04 against three item pages, where the higher figure was the listing's own ask).`,
+      );
+    }
+    if (sellerUnstatedIds.length > 0) {
+      const ids = sellerUnstatedIds.slice(0, 10).join(', ');
+      warnings.push(
+        `OFFERS_SELLER_UNSTATED: ${sellerUnstatedIds.length} of ${candidates.length} row(s) link no /usr/ login id and carry no labelled seller (ids: ${ids}${sellerUnstatedIds.length > 10 ? ', …' : ''}); seller and sellerText are null on them — never the title's last word — and roster matching for those rows needs the item page.`,
+      );
+    }
+    if (sellerAmbiguous.length > 0) {
+      const detail = sellerAmbiguous
+        .slice(0, 10)
+        .map((row) => `${row.itemId}: ${row.loginIds.join(' / ')}`)
+        .join('; ');
+      warnings.push(
+        `OFFERS_SELLER_AMBIGUOUS: ${sellerAmbiguous.length} of ${candidates.length} row(s) link more than one login id (${detail}${sellerAmbiguous.length > 10 ? '; …' : ''}) — the card boundary spanned a neighbouring row or a seller module, so seller is null on them rather than the first link's; capture ONE such row's outerHTML (not a snapshot) so the row boundary can be pinned.`,
       );
     }
     const bidRows = new Set(bidRowIds);

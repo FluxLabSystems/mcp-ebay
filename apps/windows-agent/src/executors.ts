@@ -1061,7 +1061,16 @@ async function executeExtract(
   });
 
   const allWarnings = [...intentWarnings, ...warnings];
-  if (verifiedDestination !== undefined && !verifiedDestination.verified) {
+  // The extractor decides destinationVerified from the live read AND the
+  // page's own delivery text, and its warning names the codes involved; the
+  // bare marker is added only when the extractor had no shipping block to
+  // say anything about (2026-09-07: a page whose estimate stated the
+  // configured ship-to was still stamped unverified by this line).
+  if (
+    verifiedDestination !== undefined &&
+    record.shipping?.destinationVerified !== true &&
+    !warnings.some((warning) => warning.startsWith('DESTINATION_UNVERIFIED'))
+  ) {
     allWarnings.push('DESTINATION_UNVERIFIED');
   }
   return {
