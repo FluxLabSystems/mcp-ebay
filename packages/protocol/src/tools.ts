@@ -946,7 +946,13 @@ export const DashboardRecordsInput = z.strictObject({
   dashboard: z.enum(DASHBOARD_IDS),
   /** live (not archived, the default), archived, or all. Archived-ness is derived server-side, never stored. */
   state: z.enum(['live', 'archived', 'all']).default('live'),
-  /** Field projection; `id` is always included. An unknown name yields nothing rather than an error. */
+  /**
+   * Field projection; `id` is always included. A dotted name
+   * (analysis.fairValueCad) walks the nested object and comes back at the
+   * same depth. An unknown name yields nothing rather than an error, and the
+   * response's unresolvedFields (plus an UNKNOWN_FIELDS_IGNORED warning)
+   * names every requested field no returned record carries.
+   */
   fields: z.array(z.string().min(1).max(64)).min(1).max(64).optional(),
   /** ISO 8601. Keeps records whose last activity is at or after it, plus records with no timestamp at all. */
   since: z.iso.datetime({ offset: true }).optional(),
@@ -979,6 +985,10 @@ export const DashboardRecordsOutput = z.looseObject({
   archivedCount: z.int().optional(),
   /** null on the last page. */
   nextCursor: z.union([z.int(), z.null()]).optional(),
+  /** With `fields`: the requested names no record on this page carries (null when the page is empty). */
+  unresolvedFields: z.union([z.array(z.string()), z.null()]).optional(),
+  /** UNKNOWN_FIELDS_IGNORED when unresolvedFields is non-empty. */
+  warnings: z.array(z.string()).optional(),
   listings: z.array(z.looseObject({})),
 });
 export const DashboardSummaryInput = z.strictObject({

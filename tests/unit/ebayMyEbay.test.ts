@@ -912,3 +912,68 @@ describe('watch list: the action link discriminates the format (2026-09-05 15:30
     expect(page.warnings.find((warning) => warning.startsWith('WATCHLIST_FORMAT_UNSTATED'))).toMatch(/2 of 2/);
   });
 });
+
+// 2026-09-07 04:0xZ deals fire (site-ebay+extractor_defect+offers-row-seller-
+// and-sellertext-carry-the-title-tail-not-the-seller): on the live
+// /mye/myebay/bidsoffers page sellerText read "VTG(267676402924)",
+// "Is.(137295398934)", "Part(257661593113)", "MINIFIGURES(820069821768)" —
+// the last word of the title followed by the item id in parentheses, which
+// the "<name> (<count>)" feedback pattern accepted as a seller with a
+// twelve-digit feedback score. Rows that DID read correctly carried a
+// /usr/ link whose accessible name is "<loginId>user ID, click for member's
+// profile". A seller comes from that link or from a labelled run; a row that
+// links no seller says so (OFFERS_SELLER_UNSTATED) rather than borrowing
+// title text.
+describe('offers page: the title tail is never the seller (2026-09-07 fire)', () => {
+  function offersDoc(rows: string): Document {
+    const { document } = parseHTML(
+      `<html><head><title>Bids and offers | My eBay</title></head><body>
+       <div class="filter-menu" role="tablist"><button role="tab" aria-selected="true">All (37)</button></div>
+       <ul>${rows}</ul></body></html>`,
+    );
+    return document as unknown as Document;
+  }
+  const linked =
+    `<li class="offer-card"><a href="https://www.ebay.ca/itm/267676402924">LEGO Castle Knights Lot VTG</a><span>(267676402924)</span>` +
+    `<div><span>OFFER RECEIVED</span><span>C $40.00</span><span>C $55.00</span></div>` +
+    `<a href="https://www.ebay.ca/usr/philjn555">philjn555user ID, click for member's profile</a></li>`;
+  const unlinked =
+    `<li class="offer-card"><a href="https://www.ebay.ca/itm/820069821768">LEGO Star Wars MINIFIGURES</a><span>(820069821768)</span>` +
+    `<div><span>OFFER EXPIRED</span><span>C $12.00</span><span>C $20.00</span></div></li>`;
+  const twoSellers =
+    `<li class="offer-card"><a href="https://www.ebay.ca/itm/137295398934">Brick Lot As Is.</a><span>(137295398934)</span>` +
+    `<div><span>OFFER RECEIVED</span><span>C $5.00</span><span>C $9.00</span></div>` +
+    `<a href="https://www.ebay.ca/usr/double_duncan_treasures">double_duncan_treasuresuser ID, click for member's profile</a>` +
+    `<a href="https://www.ebay.ca/usr/philjn555">philjn555user ID, click for member's profile</a></li>`;
+
+  it('reads the seller from the /usr/ link and a sellerText that names it, never the title tail', () => {
+    const page = extractOffersPage(offersDoc(linked), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    const row = page.candidates[0]!;
+    expect(row.seller).toBe('philjn555');
+    expect(row.sellerText).toContain('philjn555');
+    expect(row.sellerText).not.toMatch(/VTG/);
+    expect(row.sellerText).not.toMatch(/267676402924/);
+    expect(row.sellerText).not.toMatch(/click for member/);
+  });
+
+  it('leaves seller and sellerText null on a row that links no seller, and says so once for the page', () => {
+    const page = extractOffersPage(offersDoc(unlinked), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    const row = page.candidates[0]!;
+    expect(row.seller).toBeNull();
+    expect(row.sellerText).toBeNull();
+    const warning = page.warnings.find((w) => w.startsWith('OFFERS_SELLER_UNSTATED'));
+    expect(warning).toContain('820069821768');
+    expect(warning).toMatch(/1 of 1/);
+  });
+
+  it('a row that links two different login ids names neither as the seller', () => {
+    const page = extractOffersPage(offersDoc(twoSellers), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    const row = page.candidates[0]!;
+    expect(row.seller).toBeNull();
+    expect(row.sellerText).toBeNull();
+    const warning = page.warnings.find((w) => w.startsWith('OFFERS_SELLER_AMBIGUOUS'));
+    expect(warning).toContain('137295398934');
+    expect(warning).toContain('double_duncan_treasures');
+    expect(warning).toContain('philjn555');
+  });
+});

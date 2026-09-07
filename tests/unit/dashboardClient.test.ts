@@ -314,3 +314,51 @@ describe('gateway dashboard configuration', () => {
     expect(() => loadGatewayConfig({ ...BASE_ENV, VACATION_INGEST_TOKEN: 'a' })).toThrow(/DASHBOARD_API_BASE_URL/);
   });
 });
+
+// 2026-09-07 04:2xZ deals fire (gateway+connector_defect+dashboard-records-
+// fields-projection-silently-drops-nested-paths): fields
+// ['id','analysis.fairValueCad','analysis.verdict'] came back as bare {id}
+// rows with no warning. The API now walks dotted paths and names what it
+// could not resolve; the gateway's own feed projection follows the same rule
+// and the records path turns unresolvedFields into the warning the extract
+// tools already use.
+describe('DashboardClient dotted field paths (2026-09-07 fire)', () => {
+  it('feed fields walks a dotted path into the nested object and keeps the record shape', async () => {
+    const root = {
+      schemaVersion: 3,
+      listings: [
+        { id: 'kijiji-1743008202', title: 'a', analysis: { fairValueCad: 42, verdict: 'watch', reasoning: 'long' } },
+        { id: 'kijiji-1735248476', title: 'b' },
+      ],
+    };
+    const client = clientWith(async () => jsonResponse(200, root));
+    const projected = await client.feed('deals', 'full', { fields: ['analysis.fairValueCad', 'analysis.verdict', 'nope', '__proto__.x'] });
+    expect(projected.root.listings).toEqual([
+      { id: 'kijiji-1743008202', analysis: { fairValueCad: 42, verdict: 'watch' } },
+      { id: 'kijiji-1735248476' },
+    ]);
+    // The upstream object was projected from, never written into.
+    expect(root.listings[0]!.analysis).toEqual({ fairValueCad: 42, verdict: 'watch', reasoning: 'long' });
+    const both = await client.feed('deals', 'full', { fields: ['analysis.verdict', 'analysis'] });
+    expect((both.root.listings as Record<string, unknown>[])[0]!.analysis).toEqual({ fairValueCad: 42, verdict: 'watch', reasoning: 'long' });
+  });
+
+  it("records surfaces the API's unresolvedFields as an UNKNOWN_FIELDS_IGNORED warning, and stays silent when every field resolved", async () => {
+    const page = {
+      state: 'all', total: 664, matched: 664, returned: 2, nextCursor: 2,
+      fields: ['id', 'analysis.fairValueCad', 'anaylsis.verdict'],
+      unresolvedFields: ['anaylsis.verdict'],
+      listings: [{ id: 'kijiji-1743008202', analysis: { fairValueCad: 42 } }, { id: 'kijiji-1735248476' }],
+    };
+    const client = clientWith(async () => jsonResponse(200, page));
+    const result = await client.records('deals', { state: 'all', fields: ['id', 'analysis.fairValueCad', 'anaylsis.verdict'], limit: 2 });
+    expect(result.unresolvedFields).toEqual(['anaylsis.verdict']);
+    expect(result.warnings).toEqual([expect.stringMatching(/^UNKNOWN_FIELDS_IGNORED: "anaylsis\.verdict" resolved on no record/)]);
+
+    const clean = clientWith(async () => jsonResponse(200, { ...page, unresolvedFields: [], listings: page.listings }));
+    const ok = await clean.records('deals', { state: 'all', fields: ['id', 'analysis.fairValueCad'] });
+    expect('warnings' in ok).toBe(false);
+    const empty = clientWith(async () => jsonResponse(200, { ...page, returned: 0, unresolvedFields: null, listings: [] }));
+    expect('warnings' in (await empty.records('deals', { fields: ['title'] }))).toBe(false);
+  });
+});
