@@ -43,6 +43,13 @@ describe('wardrobe-vendors.v1 roster', () => {
       'www.rushordertees.com',
       'www.spreadshirt.ca',
       'www.spreadshirt.com',
+      // 2026-09-07: Spreadshirt's designer script host and font CDN
+      // (create-omat.spreadshirt.net /lib/design.js — the create-your-own
+      // designer's own application bundle, ORIGIN_DENIED on every fire;
+      // assets.spreadshirt.net web fonts) and its product image server.
+      'create-omat.spreadshirt.net',
+      'assets.spreadshirt.net',
+      'image.spreadshirtmedia.com',
       'www.printful.com',
       'www.gs-jj.com',
       // 2026-09-05: GS-JJ's own image CDN and products API domain.
@@ -55,6 +62,10 @@ describe('wardrobe-vendors.v1 roster', () => {
     }
     // A shared cloud-storage endpoint is not a vendor domain, roster or not.
     expect(hostMatchesAllowlist('gs-jj-us-static.oss-accelerate.aliyuncs.com', hosts)).toBe(false);
+    // Nor is a shared third-party DAM the storefront pulls one image from
+    // (cdn.media.amplience.net, 2026-09-07): the operator's call, not the roster's.
+    expect(hostMatchesAllowlist('cdn.media.amplience.net', hosts)).toBe(false);
+    expect(hostMatchesAllowlist('spreadshirt.net.attacker.io', hosts)).toBe(false);
     expect(hostMatchesAllowlist('gs-souvenir.com.attacker.io', hosts)).toBe(false);
   });
 

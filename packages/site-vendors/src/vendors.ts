@@ -57,10 +57,26 @@ export const WARDROBE_VENDORS: readonly WardrobeVendor[] = [
   },
   {
     vendor: 'Spreadshirt',
-    hosts: ['spreadshirt.ca', 'spreadshirt.com'],
+    // spreadshirt.net is Spreadshirt's script and font domain:
+    // create-omat.spreadshirt.net serves the create-your-own designer's
+    // own application bundle (/lib/design.js), ORIGIN_DENIED on every fire
+    // since 2026-09-04, which is why the designer never painted past its
+    // header/footer shell (wardrobe 2026-09-07 10:18Z, fingerprint
+    // gateway+coverage_gap+spreadshirt-create-your-own-designer-never-
+    // renders — the §2(c) probe run in full: consent already dismissed,
+    // 49-node shell after networkIdle, the tally naming this origin);
+    // assets.spreadshirt.net serves the storefront's web fonts.
+    // spreadshirtmedia.com is its product image server
+    // (image.spreadshirtmedia.com/image-server/v1/products/…, every
+    // product photograph on the storefront). NOT here, on the same test
+    // that excluded GS-JJ's aliyuncs.com endpoint: cdn.media.amplience.net,
+    // a shared third-party DAM the storefront pulls one image from, is not
+    // a Spreadshirt registrable domain and is the operator's call.
+    hosts: ['spreadshirt.ca', 'spreadshirt.com', 'spreadshirt.net', 'spreadshirtmedia.com'],
     addedOn: '2026-09-02',
-    source: REPORT_2026_09_02,
-    needsLiveVerification: 'asset CDN host(s); whether .ca serves CAD pricing',
+    source: `${REPORT_2026_09_02}; spreadshirt.net and spreadshirtmedia.com added 2026-09-07 on gateway+coverage_gap+spreadshirt-create-your-own-designer-never-renders (2026-09-07 wardrobe fire)`,
+    needsLiveVerification:
+      'whether the create-your-own designer paints and states a personalized MOQ-1 price with create-omat.spreadshirt.net allowed (.ca prices confirmed in CAD 2026-09-07: C$39.99 catalog, C$59.99 PDP, minimum order 30 CAD)',
   },
   {
     vendor: 'Printful',

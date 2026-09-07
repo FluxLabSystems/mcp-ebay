@@ -117,6 +117,17 @@ export interface WatchlistPage {
   totalCount: number | null;
   /** Where totalCount was read from, for the audit; null with totalCount. */
   totalCountSource: string | null;
+  /**
+   * The number the page's count label stated, kept even when it was
+   * rejected as the total (WATCHLIST_TOTAL_REJECTED: a label below the rows
+   * rendered). Equal to totalCount when the label was accepted; null when
+   * no label rendered. A walk audits the gap between this and the unique
+   * rows it read instead of losing the stated figure (2026-09-07: 314
+   * stated, 318 rendered).
+   */
+  statedCount: number | null;
+  /** Where statedCount was read from; null with statedCount. */
+  statedCountSource: string | null;
   currentPage: number | null;
   hasNextPage: boolean;
   nextPageUrl: string | null;
@@ -169,6 +180,9 @@ export interface OffersPage {
   /** The count the page states for its rows ("All (39)"); null when it states none. */
   totalCount: number | null;
   totalCountSource: string | null;
+  /** The label's number even when rejected as the total (see WatchlistPage.statedCount). */
+  statedCount: number | null;
+  statedCountSource: string | null;
   hasNextPage: boolean;
   nextPageUrl: string | null;
   warnings: string[];
@@ -663,12 +677,19 @@ function checkedTotalCount(
   renderedRows: number,
   prefix: string,
   warnings: string[],
-): { count: number | null; source: string | null } {
-  if (read.count === null || read.count >= renderedRows) return read;
+): { count: number | null; source: string | null; statedCount: number | null; statedCountSource: string | null } {
+  const stated = { statedCount: read.count, statedCountSource: read.count === null ? null : read.source };
+  if (read.count === null || read.count >= renderedRows) return { ...read, ...stated };
+  // The number is rejected as the total, not forgotten: on 2026-09-07 the
+  // selected All Categories chip read 314 while the overflow render of the
+  // same list carried 318 unique rows (reconciled exactly against stored
+  // state), and nulling the count outright left the walk unable to audit
+  // the 4-row gap. statedCount keeps what the page said; totalResults
+  // stays null because a count below the rows is not the list's total.
   warnings.push(
-    `${prefix}: the page's count label "${read.source ?? ''}" reads ${read.count}, below the ${renderedRows} rows this page rendered, so it is not the list total and totalResults is null; audit rows read against a count the page has not stated, and file the label through the improvement queue with a browser_snapshot so the real list-count element can be pinned.`,
+    `${prefix}: the page's count label "${read.source ?? ''}" reads ${read.count}, below the ${renderedRows} rows this page rendered, so it is not accepted as the list total and totalResults is null; the label's number is kept as statedCount (${read.count}) for the audit. Count coverage as unique item ids after dedupe, and never use the label to decide whether an overflow read got the whole list — it passes a read that is short by the same margin (2026-09-07: "All Categories (314)" against 318 rendered rows). If the label names some other thing (one row's "1 item"), file it through the improvement queue with a browser_snapshot so the real list-count element can be pinned.`,
   );
-  return { count: null, source: null };
+  return { count: null, source: null, ...stated };
 }
 
 function pageNumberOf(pageUrl: string): number | null {
@@ -872,7 +893,7 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
   const signedIn = detectSignedIn(document, candidates.length);
   const { categoryChips, chips, ...readTotal } = readTotalCount(document);
   const categories = readCategoryChips(chips, pageUrl);
-  const { count: totalCount, source: totalCountSource } = checkedTotalCount(
+  const { count: totalCount, source: totalCountSource, statedCount, statedCountSource } = checkedTotalCount(
     readTotal,
     candidates.length,
     'WATCHLIST_TOTAL_REJECTED',
@@ -944,6 +965,8 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
     signedIn,
     totalCount,
     totalCountSource,
+    statedCount,
+    statedCountSource,
     currentPage: pagination.currentPage,
     hasNextPage: pagination.hasNextPage,
     nextPageUrl: pagination.nextPageUrl,
@@ -1172,7 +1195,7 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
 
   const pageTitle = documentTitle(document);
   const signedIn = detectSignedIn(document, candidates.length);
-  const { count: totalCount, source: totalCountSource } = checkedTotalCount(
+  const { count: totalCount, source: totalCountSource, statedCount, statedCountSource } = checkedTotalCount(
     readTotalCount(document),
     candidates.length,
     'OFFERS_TOTAL_REJECTED',
@@ -1256,6 +1279,8 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
     signedIn,
     totalCount,
     totalCountSource,
+    statedCount,
+    statedCountSource,
     hasNextPage: pagination.hasNextPage,
     nextPageUrl: pagination.nextPageUrl,
     warnings,
