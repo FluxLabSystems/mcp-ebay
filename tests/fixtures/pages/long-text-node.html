@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<!-- Browser-integration fixture: a storefront promotion block shaped the way
+     the 2026-09-07 wardrobe fire saw spreadshirt.ca render its storewide
+     offer terms (gateway+schema_drift+browser-snapshot-truncates-node-text-
+     at-200-chars-silently). The terms paragraph is one visible element of
+     311 characters carrying a currency amount, so the collector returns it
+     as a role "text" node — and the node's text is cut at the collector's
+     200-character bound. The cut must be marked on the node. A short price
+     node sits beside it so the unmarked case is pinned too. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Storewide offer | Fixture Storefront</title></head>
+<body>
+  <main>
+    <h1>20% off everything</h1>
+    <section class="promo">
+      <div class="code">Use code FIXTURE20 at checkout</div>
+      <p class="terms">Valid until 09.08.26 on this storefront only, but not in partner shops. Minimum order value: 30 CAD. Can't be combined with promo codes. Applies to the 5 products with the lowest price. The volume discount is an additional discount and applied first. Does not apply to purchases of gift cards.</p>
+    </section>
+    <section class="product">
+      <div class="price">C$ 39.99</div>
+      <a href="/pages/second.html">Men's premium T-shirt</a>
+    </section>
+  </main>
+</body>
+</html>

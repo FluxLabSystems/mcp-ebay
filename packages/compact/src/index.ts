@@ -393,6 +393,11 @@ const PRESERVED_ROOT_FIELDS = [
   'signedIn',
   'currentPage',
   'totalCountSource',
+  // The count label's number even when it was rejected as the total (a
+  // label below the rows rendered nulls totalResults): the audit compares
+  // unique rows against it instead of losing the stated figure.
+  'statedCount',
+  'statedCountSource',
   // The watch list's category-filter rail: per-category URLs with their own
   // counts, the deterministic walk path the deals routine prefers over the
   // unstable ?page=N slices. Compacting it away would leave the walk with

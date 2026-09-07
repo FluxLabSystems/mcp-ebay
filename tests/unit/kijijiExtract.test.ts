@@ -484,6 +484,55 @@ describe('description excerpt says when it is cut (2026-09-05)', () => {
     expect(cut).toMatch(/the whole ad text the Bridge returns/);
   });
 
+  // 2026-09-07 deals fire (site-kijiji+extractor_defect+description-
+  // truncated-warning-carries-office-domain-boilerplate): on three LEGO
+  // toy ads (1726961659, 1735545637, 1742648036) the warning sent the reader
+  // to "the MLS record the ad syndicates (realtor.ca …)" for "square
+  // footage, TMI, lease structure". realtor.ca does not syndicate a
+  // minifigure lot. The cap and the screenshot remedy are category-neutral;
+  // the MLS sentence belongs only to an ad that is real estate — the
+  // commercial-office category the office routine walks, or a body that
+  // carries a brokerage syndication reference.
+  it('names only the screenshot remedy on a non-real-estate ad, never the MLS record', () => {
+    const toys = (body: string): Document =>
+      parseHTML(
+        `<html><head><title>LEGO Friends minifigure lot | Kijiji</title><link rel="canonical" href="https://www.kijiji.ca/v-toys-games/city-of-toronto/lego-friends-minifigure-random-15-lot-more-than-200-figures/1726961659"></head>
+         <body><h1>LEGO Friends minifigure random 15 lot</h1><div data-testid="vip-price">$40</div>
+         <div data-testid="vip-description-wrapper">${body}</div></body></html>`,
+      ).document as unknown as Document;
+    const lego = 'Random lot of fifteen LEGO Friends minifigures from a collection of more than two hundred figures, all complete with accessories. ';
+    const body = lego.repeat(5); // over the 500-character excerpt, like ad 1726961659 (512)
+    const { warnings } = extractKijijiListing(
+      toys(body),
+      'https://www.kijiji.ca/v-toys-games/city-of-toronto/lego-friends-minifigure-random-15-lot-more-than-200-figures/1726961659',
+    );
+    const cut = warnings.find((warning) => warning.startsWith('DESCRIPTION_TRUNCATED'));
+    expect(cut).toBeDefined();
+    expect(cut).toMatch(new RegExp(`${body.trim().length} characters`));
+    expect(cut).toMatch(/browser_screenshot/);
+    expect(cut).toMatch(/Show More/);
+    expect(cut).not.toMatch(/realtor\.ca/);
+    expect(cut).not.toMatch(/MLS/);
+    expect(cut).not.toMatch(/square footage|TMI|lease structure/);
+  });
+
+  it('keeps the MLS remedy on a non-office ad whose body carries a brokerage syndication reference', () => {
+    const condo = (body: string): Document =>
+      parseHTML(
+        `<html><head><title>Condo for rent | Kijiji</title><link rel="canonical" href="https://www.kijiji.ca/v-apartments-condos/city-of-toronto/x/1743000000"></head>
+         <body><h1>1 bed condo</h1><div data-testid="vip-price">$2,300</div>
+         <div data-testid="vip-description-wrapper">${body}</div></body></html>`,
+      ).document as unknown as Document;
+    const { warnings } = extractKijijiListing(
+      condo(`${sentence.repeat(12)} (id:41870) MLS# C9123456`),
+      'https://www.kijiji.ca/v-apartments-condos/city-of-toronto/x/1743000000',
+    );
+    const cut = warnings.find((warning) => warning.startsWith('DESCRIPTION_TRUNCATED'));
+    expect(cut).toBeDefined();
+    expect(cut).toMatch(/realtor\.ca/);
+    expect(cut).toMatch(/browser_screenshot/);
+  });
+
   it('stays silent on a body that fits the excerpt', () => {
     const { record, warnings } = extractKijijiListing(vip(sentence.repeat(3)), 'https://www.kijiji.ca/v-commercial-office-space/oakville-halton-region/x/1738813761');
     expect(record.description?.value.length).toBeLessThan(500);

@@ -13,6 +13,9 @@ interface RawSnapshotNode {
   role: string;
   name: string;
   text: string;
+  /** true when text was cut at the collector's bound; textLength is the length before the cut. */
+  textTruncated: boolean;
+  textLength: number;
   /** Resolved absolute destination of a link-like element; null otherwise. */
   href: string | null;
   disabled: boolean;
@@ -43,6 +46,8 @@ export interface SnapshotResult {
  */
 function collectInPage(args: { revision: number; maxNodes: number }): { nodes: RawSnapshotNode[]; truncated: boolean } {
   const { revision, maxNodes } = args;
+  /** Per-node text bound; the tool description states it. */
+  const TEXT_BOUND = 200;
   const SELECTOR = [
     'a[href]',
     'button',
@@ -186,7 +191,14 @@ function collectInPage(args: { revision: number; maxNodes: number }): { nodes: R
     if (priceText && !isPriceText(el)) continue;
     if (!visible(el)) continue;
     const html = el as HTMLElement;
-    const text = (html.innerText ?? '').trim().replace(/\s+/g, ' ').slice(0, 200);
+    // Node text is bounded at TEXT_BOUND characters (the transport's size
+    // trade-off) and the cut is MARKED: on 2026-09-07 a storewide-offer
+    // terms node came back as exactly 200 characters with no sign it was
+    // cut, and the three terms past the cut were only recovered from an
+    // element screenshot. A reader must be able to tell a complete quote
+    // from a partial one from the response alone.
+    const fullText = (html.innerText ?? '').trim().replace(/\s+/g, ' ');
+    const text = fullText.slice(0, TEXT_BOUND);
     if (priceText && !moneyLike(text)) continue;
     const role = priceText ? 'text' : roleOf(el);
     const name = priceText ? text.slice(0, 120) : nameOf(el);
@@ -221,6 +233,8 @@ function collectInPage(args: { revision: number; maxNodes: number }): { nodes: R
       role,
       name,
       text,
+      textTruncated: fullText.length > TEXT_BOUND,
+      textLength: fullText.length,
       href: hrefOf(el),
       disabled,
       checked,
@@ -250,6 +264,9 @@ export async function snapshot(
       role: node.role,
       name: node.name,
       text: secret ? '' : node.text,
+      // A redacted node states nothing about its text, its length included.
+      textTruncated: secret ? false : node.textTruncated,
+      textLength: secret ? null : node.textLength,
       href: node.href,
       disabled: node.disabled,
       checked: node.checked,

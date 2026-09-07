@@ -38,6 +38,21 @@ export const SemanticNodeSchema = z.strictObject({
    * redeploy plus a claude.ai connector reconnect applies.
    */
   href: z.union([z.string(), z.null()]),
+  /**
+   * Node text is bounded at 200 characters by the collector. Added
+   * 2026-09-07 (gateway+schema_drift+browser-snapshot-truncates-node-text-
+   * at-200-chars-silently): a cut node used to be indistinguishable from a
+   * complete one — no ellipsis, no flag — so promotion terms read from a
+   * snapshot were recorded as complete when they ended mid-sentence.
+   * textTruncated is true when text was cut; textLength is the length of
+   * the whole text before the cut (null on a redacted node, and on an
+   * older agent that does not send it — the defaults keep the gateway's
+   * output validation green until the agent is rebuilt).
+   * NOTE: adding these fields changed the advertised tool schema — a
+   * gateway redeploy plus a claude.ai connector reconnect applies.
+   */
+  textTruncated: z.boolean().default(false),
+  textLength: z.union([z.int().min(0), z.null()]).default(null),
   disabled: z.boolean(),
   checked: z.union([z.boolean(), z.null()]),
   valueRedacted: z.boolean(),

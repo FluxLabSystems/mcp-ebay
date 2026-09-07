@@ -184,6 +184,42 @@ describe('navigation + revisions + snapshot (FR-02/03, §14)', () => {
     await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
   });
 
+  // 2026-09-07 wardrobe fire (gateway+schema_drift+browser-snapshot-
+  // truncates-node-text-at-200-chars-silently): a storewide-offer terms node
+  // on spreadshirt.ca came back as exactly 200 characters ending "…the 5
+  // products with the lowest " — no ellipsis, no flag; the snapshot-level
+  // truncated:false refers to the node COUNT. A screenshot of the same
+  // element carried 311 characters and three material terms the cut had
+  // dropped. The collector's bound stays (it is the transport's size
+  // trade-off); what must not stay is the silence: a cut node says so, and
+  // says how long the text really is, so a run bound not to fabricate
+  // promotion terms can tell a complete quote from a partial one.
+  it('a node whose text exceeds the 200-character bound is marked textTruncated with its real length', async () => {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/long-text-node.html`, 'load', 20_000);
+    const snap = await snapshot(harness.session, tabId, 3000);
+    expect(snap.truncated).toBe(false);
+    const fullTerms =
+      "Valid until 09.08.26 on this storefront only, but not in partner shops. Minimum order value: 30 CAD. Can't be combined with promo codes. Applies to the 5 products with the lowest price. The volume discount is an additional discount and applied first. Does not apply to purchases of gift cards.";
+    expect(fullTerms.length).toBeGreaterThan(200);
+    const terms = snap.snapshot.filter((node) => node.role === 'text' && node.text.startsWith('Valid until 09.08.26'));
+    expect(terms).toHaveLength(1);
+    // The cut lands mid-sentence with no ellipsis, exactly as on the wire;
+    // the two markers are what tell the reader it is not the whole text.
+    expect(terms[0]!.text).toBe(fullTerms.slice(0, 200));
+    expect(terms[0]!.text.endsWith('The volume dis')).toBe(true);
+    expect(terms[0]!.textTruncated).toBe(true);
+    expect(terms[0]!.textLength).toBe(fullTerms.length);
+    // A node under the bound is complete and says so.
+    const price = snap.snapshot.find((node) => node.role === 'text' && node.text === 'C$ 39.99');
+    expect(price).toBeDefined();
+    expect(price!.textTruncated).toBe(false);
+    expect(price!.textLength).toBe(8);
+    // Interactive nodes carry the same two fields.
+    const link = snap.snapshot.find((node) => node.role === 'link' && node.name === "Men's premium T-shirt");
+    expect(link).toMatchObject({ textTruncated: false, textLength: "Men's premium T-shirt".length });
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
+  });
+
   // 2026-09-04 wardrobe fire (gateway+connector_defect+snapshot-omits-pdp-
   // own-price-node): on Printful and Spreadshirt product pages the subject
   // product's price is styled text in a generic container, so the

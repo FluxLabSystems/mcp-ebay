@@ -930,6 +930,10 @@ async function executeExtract(
     // compares rows read against it.
     record.totalResults = page.totalCount;
     record.totalCountSource = page.totalCountSource;
+    // The label's number survives a rejection (a count below the rows
+    // rendered nulls totalResults but the audit still wants the figure).
+    record.statedCount = page.statedCount;
+    record.statedCountSource = page.statedCountSource;
     if (kind === 'watchlist') {
       const watchlist = page as ReturnType<typeof extractWatchlistPage>;
       record.currentPage = watchlist.currentPage;

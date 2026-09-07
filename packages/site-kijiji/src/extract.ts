@@ -550,6 +550,14 @@ function toIsoOrNull(raw: string | null | undefined): string | null {
  * ads). Either half alone counts; the match is quoted in the warning.
  */
 const MLS_SYNDICATION_RE = /\(id:\s*\d+\)\s*(?:MLS\s*#?\s*[A-Z]?\d{5,})?|\bMLS\s*#\s*[A-Z]?\d{5,}\b/i;
+/**
+ * The Kijiji category whose ads are known to syndicate an MLS record
+ * (realtor.ca): commercial & office space (c40), the one the office routine
+ * walks. Other real-estate categories are not listed here because no capture
+ * of one exists; an ad in any category whose body carries a syndication
+ * reference is treated as syndicated by MLS_SYNDICATION_RE instead.
+ */
+const MLS_CATEGORY_PATH_RE = /\/v-commercial-office-space\//i;
 
 function excerpt(raw: string): string {
   return raw.replace(/\s+/g, ' ').trim().slice(0, 500);
@@ -899,11 +907,22 @@ export function extractKijijiListing(
   // (browser-core snapshot.ts, TEXT_SELECTOR + the 400-character bound).
   // The excerpt IS the whole ad text the Bridge returns; the cut terms are
   // read from the MLS record the ad syndicates or from a screenshot.
+  // The MLS half of that remedy is real estate's: on 2026-09-07 three LEGO
+  // toy ads carried it verbatim, sending a reader to realtor.ca for "square
+  // footage, TMI, lease structure" a minifigure lot does not have. It is
+  // named only for an ad in the commercial-office category the office
+  // routine walks, or whose body carries a brokerage syndication reference;
+  // every other category gets the category-neutral cap and screenshot remedy.
   if (descriptionBody !== null) {
     const collapsedLength = descriptionBody.replace(/\s+/g, ' ').trim().length;
     if (collapsedLength > 500) {
+      const realEstate =
+        MLS_CATEGORY_PATH_RE.test(canonicalUrl?.value ?? pageUrl) || MLS_SYNDICATION_RE.test(descriptionBody);
+      const remedy = realEstate
+        ? 'the terms the cut may hide (square footage, TMI, lease structure) are read from the MLS record the ad syndicates (realtor.ca, on the office-sources.v1 roster) or from a browser_screenshot of the description after clicking Show More'
+        : 'whatever the cut hides is read from a browser_screenshot of the description after clicking Show More';
       warnings.push(
-        `DESCRIPTION_TRUNCATED: the description excerpt is capped at 500 characters and the ad body is ${collapsedLength} characters (whitespace-collapsed) — the excerpt ends mid-text, so do not read it as the whole ad. The excerpt is the whole ad text the Bridge returns: browser_snapshot carries interactive elements and short money-bearing text, never description prose, so the terms the cut may hide (square footage, TMI, lease structure) are read from the MLS record the ad syndicates (realtor.ca, on the office-sources.v1 roster) or from a browser_screenshot of the description after clicking Show More; when neither is available the field stays unresolved`,
+        `DESCRIPTION_TRUNCATED: the description excerpt is capped at 500 characters and the ad body is ${collapsedLength} characters (whitespace-collapsed) — the excerpt ends mid-text, so do not read it as the whole ad. The excerpt is the whole ad text the Bridge returns: browser_snapshot carries interactive elements and short money-bearing text, never description prose, so ${remedy}; when that is not available the field stays unresolved`,
       );
     }
   }

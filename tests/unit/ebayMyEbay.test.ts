@@ -392,6 +392,49 @@ describe('watch list: a stated count below the rendered rows is rejected (2026-0
     expect(rejected).toMatch(/3 rows/);
   });
 
+  // 2026-09-07 deals fire (site-ebay+extractor_defect+watchlist-all-
+  // categories-chip-count-below-overflow-row-count): page 1 stated 314 from
+  // the selected All Categories chip; the ?page=33 overflow render of the
+  // same list rendered 318 unique rows minutes later (reconciled exactly
+  // against stored state: 356 - 63 + 25), so the label was rejected and
+  // totalResults nulled — correctly, a count below the rows is not the
+  // total — but the stated number was lost with it, and a walk could no
+  // longer audit the 4-row gap. The label's number survives as statedCount.
+  it('keeps the stated count beside a nulled totalResults when the label reads below the rows rendered', () => {
+    const page = extractWatchlistPage(
+      watchlistDoc('<div role="tablist"><button role="tab">All (314)</button></div>', 318),
+      'https://www.ebay.ca/mye/myebay/watchlist?page=33',
+      { observedAt: OBSERVED_AT },
+    );
+    expect(page.candidates).toHaveLength(318);
+    expect(page.totalCount).toBeNull();
+    expect(page.totalCountSource).toBeNull();
+    expect(page.statedCount).toBe(314);
+    expect(page.statedCountSource).toBe('All (314)');
+    const rejected = page.warnings.find((warning) => warning.startsWith('WATCHLIST_TOTAL_REJECTED'));
+    expect(rejected).toBeDefined();
+    expect(rejected).toMatch(/reads 314/);
+    expect(rejected).toMatch(/318 rows/);
+    expect(rejected).toMatch(/statedCount/);
+    expect(rejected).toMatch(/unique/i);
+    expect(rejected).toMatch(/never .*whether an overflow read .*whole list/i);
+  });
+
+  it('statedCount equals totalResults when the label was accepted, and both are null when none rendered', () => {
+    const accepted = extractWatchlistPage(
+      watchlistDoc('<div role="tablist"><button role="tab">All (312)</button></div>'),
+      'https://www.ebay.ca/mye/myebay/watchlist',
+      { observedAt: OBSERVED_AT },
+    );
+    expect(accepted.totalCount).toBe(312);
+    expect(accepted.statedCount).toBe(312);
+    expect(accepted.statedCountSource).toBe('All (312)');
+    const none = extractWatchlistPage(watchlistDoc(''), 'https://www.ebay.ca/mye/myebay/watchlist', { observedAt: OBSERVED_AT });
+    expect(none.totalCount).toBeNull();
+    expect(none.statedCount).toBeNull();
+    expect(none.statedCountSource).toBeNull();
+  });
+
   it('prefers the "All (N)" tab over an "N items" heading when both render', () => {
     const page = extractWatchlistPage(
       watchlistDoc('<div role="tablist"><button role="tab">All (312)</button></div><h2>1 item</h2>'),
