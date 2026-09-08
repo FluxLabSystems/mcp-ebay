@@ -296,6 +296,16 @@ const DEFAULT_EBAY_CANDIDATE_FIELDS = [
   'bidCount',
   'itemLocationText',
   'isNewListing',
+  // The seller the CARD states (null on most templates) and whether the row
+  // sits below the "Results matching fewer words" divider: on an _ssn=
+  // seller search these are what separate "the seller's listing" from "a
+  // result of the query" (2026-09-07: 227509015721 for
+  // _ssn=dkbooksandtreasures was fantasma713's). Dropping them would turn
+  // every row back into an unattributed one. Their default values (null,
+  // 'primary') are elided from the default projection — see
+  // DEFAULT_VALUED_MARKERS — so only the rows that say something carry them.
+  'seller',
+  'matchScope',
 ] as const;
 
 /**
@@ -398,6 +408,13 @@ const PRESERVED_ROOT_FIELDS = [
   // unique rows against it instead of losing the stated figure.
   'statedCount',
   'statedCountSource',
+  // The eBay search page (2026-09-08): which page the site says it served
+  // and where that was read, which page the URL asked for (the two differ
+  // on eBay's silent last-page clamp), and the _ssn= seller the query was
+  // for — the field that makes "whose rows are these" answerable.
+  'currentPageSource',
+  'requestedPage',
+  'sellerQuery',
   // The watch list's category-filter rail: per-category URLs with their own
   // counts, the deterministic walk path the deals routine prefers over the
   // unstable ?page=N slices. Compacting it away would leave the walk with
@@ -656,7 +673,9 @@ export function compactSearchPage(
   }
 
   const window = matched.slice(options.offset, options.offset + options.limit);
-  const candidates = window.map((row) => projectCandidate(row, allowed, site, options.canonicalizeUrls));
+  const candidates = window.map((row) =>
+    projectCandidate(row, allowed, site, options.canonicalizeUrls, options.fields === undefined ? DEFAULT_VALUED_MARKERS : null),
+  );
 
   // C3: absent is explicit, never silent. projectCandidate now emits null
   // for a known-but-unreadable field; summarize the gaps once per page so a
@@ -718,16 +737,33 @@ export function compactSearchPage(
   return { record: out, warnings };
 }
 
+/**
+ * Row markers whose DEFAULT value the page has already spoken for, elided
+ * from the default projection so 240 rows do not carry 240 copies of it:
+ * `matchScope` is 'primary' on every row above the "fewer words" divider
+ * (the SEARCH_REWRITE_ROWS warning names the rows below it, and those keep
+ * the key), and `seller` is null on every card that states no seller (the
+ * root `sellerQuery` field and the SELLER_SEARCH_* warnings say the
+ * extractor looked). The 2026-09-08 byte-budget test measured the two at
+ * ~8.7 KB across a 240-row page — the default projection's whole margin.
+ * A caller who names either field gets the explicit value on every row
+ * (C3 below still holds for named fields), and an older agent whose rows
+ * carry neither key is told apart by the absent root `sellerQuery`.
+ */
+const DEFAULT_VALUED_MARKERS: Readonly<Record<string, unknown>> = { matchScope: 'primary', seller: null };
+
 function projectCandidate(
   row: Unknown,
   allowed: readonly string[],
   site: Site,
   canonicalize: boolean,
+  elide: Readonly<Record<string, unknown>> | null,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const key of allowed) {
     let value = row[key];
     let known = key in row;
+    if (elide !== null && key in elide && known && value === elide[key]) continue;
     if (value === undefined || value === null) {
       for (const alias of CANDIDATE_FIELD_ALIASES[key] ?? []) {
         known = known || alias in row;

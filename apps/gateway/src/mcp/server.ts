@@ -268,7 +268,30 @@ function registerBridgeTool(
             });
           }
         }
-        const structured = shapeStructuredContent(entry.name, outcome.structured, outcome.artifacts);
+        const shaped = shapeStructuredContent(entry.name, outcome.structured, outcome.artifacts);
+        // What goes out is the PARSED output, never the agent's raw payload.
+        // The SDK validates structuredContent with this same zod schema and
+        // then sends the handler's original object, while tools/list
+        // advertises the output-mode JSON Schema — where a defaulted field
+        // is REQUIRED. So a field the protocol added with a default for an
+        // older agent's sake (SemanticNode.textTruncated / textLength,
+        // mcp-ebay#58) validated here and was rejected by every client:
+        // "data/snapshot/0 must have required property 'textTruncated'" on
+        // every browser_snapshot of the 2026-09-08 office fire. Parsing
+        // applies the defaults the schema promises; a payload that still
+        // does not match is a gateway/agent contract bug and is reported as
+        // one, with the issues named, instead of as an opaque client-side
+        // rejection (tests/integration/snapshotOutputSkew.test.ts).
+        const checked = entry.outputSchema.safeParse(shaped);
+        if (!checked.success) {
+          throw new BridgeError('INTERNAL_ERROR', `${entry.name} produced a result that does not match its output schema.`, {
+            tool: entry.name,
+            issues: checked.error.issues
+              .slice(0, 5)
+              .map((issue) => ({ path: issue.path.map(String).join('.'), message: issue.message })),
+          });
+        }
+        const structured = checked.data as Record<string, unknown>;
         content.push({ type: 'text', text: JSON.stringify(structured) });
         return { content, structuredContent: structured };
       } catch (err) {

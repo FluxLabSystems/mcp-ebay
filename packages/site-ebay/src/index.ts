@@ -6,3 +6,5 @@ export * from './extract.js';
 export * from './traversal.js';
 export * from './destination.js';
 export * from './myebay.js';
+export * from './pagination.js';
+export * from './searchPage.js';

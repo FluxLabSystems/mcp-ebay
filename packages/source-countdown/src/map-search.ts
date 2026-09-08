@@ -31,7 +31,11 @@ import { SearchResponseSchema, parseCountdownBody, type SearchPrice, type Search
 /** The vendor filter a set of rows came back under; the ONLY source of a row's format. */
 export type RetrievedUnder = 'buy_it_now' | 'auction' | 'accepts_offers' | 'unfiltered';
 
-export interface ApiListingCandidate extends Omit<ListingCandidate, 'isNewListing'> {
+// The Bridge card fields the API has no equivalent for are omitted rather
+// than nulled: `seller` on a card is a rendered seller-info element (the API
+// row carries sellerName instead) and `matchScope` is a position on a
+// rendered results page.
+export interface ApiListingCandidate extends Omit<ListingCandidate, 'isNewListing' | 'seller' | 'matchScope'> {
   /** API rows carry no badge; the compactor tolerates null. */
   isNewListing: boolean | null;
   /** `shipping_cost` as a number; null when the card showed nothing the vendor could read. Never inferred as free. */

@@ -89,7 +89,54 @@ describe('browser_extract dispatches by page kind instead of refusing', () => {
     expect(record.candidateCount).toBeGreaterThan(0);
     expect(record.candidates[0]!.itemId).toMatch(/^\d+$/);
     expect(record.candidates[0]!.url).toContain('/itm/');
-    expect(parsed.warnings).toEqual([]);
+    // 2026-09-08: a search page that states no total and no pagination says
+    // so, instead of returning a record with no such keys at all.
+    expect(parsed.warnings.map((w) => w.split(':')[0])).toEqual(['SEARCH_TOTAL_UNSTATED', 'SEARCH_PAGINATION_UNSTATED']);
+  });
+
+  // 2026-09-07 deals fire (first full watched-seller drill-down, 36 sellers):
+  // an _ssn= page returned no totalResults/hasNextPage/nextPageUrl, so the
+  // walk paged blind and could not audit its counts, and every row was, by
+  // omission, the seller's. The fields ride the record through compaction.
+  it('an _ssn= seller search carries its total, its next page and whose rows these are', async () => {
+    const pageUrl = 'https://www.ebay.ca/sch/i.html?_ssn=dkbooksandtreasures&_sop=10&_ipg=240';
+    const outcome = await runExtract(pageUrl, fixture('ebay', 'search-seller-ssn-page.html'), 'ebay.ca.v1');
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as {
+      pageKind: string;
+      totalResults: number | null;
+      hasNextPage: boolean | null;
+      nextPageUrl: string | null;
+      currentPage: number | null;
+      requestedPage: number | null;
+      sellerQuery: string | null;
+      candidates: { itemId: string; seller: string | null; matchScope: string }[];
+    };
+    expect(record.pageKind).toBe('search');
+    expect(record.totalResults).toBe(1113);
+    expect(record.hasNextPage).toBe(true);
+    expect(record.nextPageUrl).toContain('_pgn=2');
+    expect(record.currentPage).toBe(1);
+    expect(record.requestedPage).toBeNull();
+    expect(record.sellerQuery).toBe('dkbooksandtreasures');
+    const row = record.candidates.find((candidate) => candidate.itemId === '227509015721');
+    expect(row).toMatchObject({ seller: 'fantasma713', matchScope: 'primary' });
+    expect(record.candidates.find((candidate) => candidate.itemId === '296523775920')).toMatchObject({ matchScope: 'rewrite' });
+    const prefixes = parsed.warnings.map((w) => w.split(':')[0]);
+    expect(prefixes).toContain('SELLER_SEARCH_ROW_MISMATCH');
+    expect(prefixes).toContain('SELLER_SEARCH_ROWS_UNATTRIBUTED');
+    expect(prefixes).toContain('SEARCH_REWRITE_ROWS');
+  });
+
+  it('a _pgn past the last page is named as the clamp, not counted as a new page', async () => {
+    const pageUrl = 'https://www.ebay.ca/sch/i.html?_ssn=treasurequestca&_sop=10&_ipg=240&_pgn=3';
+    const outcome = await runExtract(pageUrl, fixture('ebay', 'search-seller-ssn-clamped.html'), 'ebay.ca.v1');
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as { hasNextPage: boolean | null; currentPage: number | null; requestedPage: number | null };
+    expect(record.requestedPage).toBe(3);
+    expect(record.currentPage).toBe(2);
+    expect(record.hasNextPage).toBe(false);
+    expect(parsed.warnings.some((w) => w.startsWith('SEARCH_PAGE_CLAMPED'))).toBe(true);
   });
 
   it('eBay seller store pages return candidates for seller drill-downs', async () => {
