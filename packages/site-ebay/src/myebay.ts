@@ -35,6 +35,7 @@ import {
   isNewListingCard,
   normalizeText,
   readShippingSnippet,
+  readSoldCaption,
   type ListingCandidate,
 } from './traversal.js';
 
@@ -772,6 +773,9 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
       shippingSnippetServiceNamed: shippingSnippet.serviceNamed,
       itemLocationText: null,
       isNewListing: isNewListingCard(card, rawTitle),
+      // The same caption read as a search row's; the watch list's own
+      // status vocabulary (watchlistStatus) is read separately and decides.
+      ...readSoldCaption(card, rawTitle),
       order: candidates.length,
       timeLeftText,
       endsAt: timeLeftText === null ? null : toIso(observedAt, countdownMs(timeLeftText)),

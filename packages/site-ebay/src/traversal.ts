@@ -62,6 +62,26 @@ export interface ListingCandidate {
   /** The badge cleanTitle strips out of the title, kept as a flag. */
   isNewListing: boolean;
   /**
+   * The sold caption the card renders, verbatim ("Sold Sep 3, 2026", or a
+   * bare "Sold Item" tag); null when the card carries none. A row is a sold
+   * comp only when this is set: the 2026-09-08 deals fire's
+   * LH_Sold=1&LH_Complete=1 search rendered 247 rows with no field
+   * separating a sold row from a live ask, and the routine's rule that "a
+   * row without a sold date is not a sold row" had nothing to read. A
+   * quantity badge ("12 sold") is never this caption. NEEDS-LIVE-VERIFICATION:
+   * the classic template's `.s-item__caption--signal` is the selector this
+   * was written against; no live sold page has been captured.
+   */
+  soldText: string | null;
+  /**
+   * The caption's date as YYYY-MM-DD — a calendar date, because the card
+   * states no time or zone; null when there is no caption or it carries no
+   * readable date ("Sold Item"). On a row that carries it, snippetPrice is
+   * the figure the card shows beside the caption: the sold price as the card
+   * states it, a hint the item page confirms like every other card field.
+   */
+  soldAt: string | null;
+  /**
    * The seller login id the CARD states, from its seller-info element
    * ("fantasma713 (1,234) 99.5%"); null when the card states none, which on
    * the search templates captured so far is most cards. Never inferred from
@@ -348,8 +368,8 @@ function cardFormatText(card: Element, rawTitle: string | null): string {
   const parts: string[] = [];
   try {
     for (const el of Array.from(card.querySelectorAll(CARD_FORMAT_SELECTOR))) {
-      const text = el.textContent;
-      if (text) parts.push(text);
+      const text = spacedText(el);
+      if (text.length > 0) parts.push(text);
     }
   } catch {
     // fall through to the card's own text
@@ -357,9 +377,92 @@ function cardFormatText(card: Element, rawTitle: string | null): string {
   if (parts.length > 0) return normalizeText(parts.join(' '));
   // No named format element on this template, so the card's own text has to
   // do -- minus the title, because a listing title is free to say
-  // "BUY IT NOW" and that is the seller talking, not the format.
-  const whole = normalizeText(card.textContent);
-  return rawTitle === null ? whole : whole.split(rawTitle).join(' ');
+  // "BUY IT NOW" and that is the seller talking, not the format -- and with
+  // a space at every element boundary. textContent ran the price element
+  // into the bids element ("C $24.95" + "1 bid" = "C $24.951 bid"), and the
+  // bid regex below read 951 bids on a one-bid auction, 820 on a zero-bid
+  // one: every implausible card bidCount the deals fires filed (2026-09-02,
+  // 09-06, 09-08) ended in the item page's true count with a two-digit run
+  // in front of it.
+  return withoutTitle(spacedText(card), card, rawTitle);
+}
+
+/**
+ * The card's text with the title taken out, in every form the title takes:
+ * the concatenated rawTitle the caller read, the title element's own spaced
+ * text, and the spaced text of each /itm/ anchor (the anchor wraps the title
+ * on every template, and a badge span inside it makes the concatenated form
+ * differ from the spaced one).
+ */
+function withoutTitle(text: string, card: Element, rawTitle: string | null): string {
+  const forms = new Set<string>();
+  if (rawTitle !== null && rawTitle.length > 0) forms.add(rawTitle);
+  try {
+    const titleEl = card.querySelector(CARD_TITLE_SELECTOR);
+    if (titleEl !== null) {
+      const spaced = spacedText(titleEl);
+      if (spaced.length > 0) forms.add(spaced);
+    }
+    for (const anchor of Array.from(card.querySelectorAll('a[href*="/itm/"]'))) {
+      const spaced = spacedText(anchor);
+      if (spaced.length > 0) forms.add(spaced);
+    }
+  } catch {
+    // the title forms already collected still apply
+  }
+  let out = text;
+  for (const form of forms) out = out.split(form).join(' ');
+  return normalizeText(out);
+}
+
+/**
+ * The sold caption of a sold/completed-search row. NEEDS-LIVE-VERIFICATION:
+ * written against the classic template's `.s-item__caption--signal.POSITIVE`
+ * "Sold  Sep 3, 2026" and the `.s-item__title--tagblock` "Sold Item" tag; no
+ * live sold page has been captured (www.ebay.ca 403s dev boxes, and the
+ * 2026-09-08 fire that finally saw the sold view render could not take the
+ * snapshot). When no caption element matches, the dated "Sold <month> <day>,
+ * <year>" phrase is read from the card's own text with the title removed, so
+ * a template change degrades to "no caption read" (and the page-level
+ * SOLD_FILTER_ROWS_UNMARKED warning) rather than to a guess. A quantity
+ * badge ("12 sold") matches neither pattern.
+ */
+const CARD_SOLD_SELECTOR =
+  '.s-item__caption--signal, .s-item__caption, .s-card__caption, .s-item__title--tagblock, .s-card__title--tagblock';
+const SOLD_CAPTION_RE =
+  /\bsold\s+(?:on\s+)?((jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4}))\b/i;
+const SOLD_TAG_RE = /\bsold\s+item\b/i;
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+function isoDateFrom(month: string, day: string, year: string): string | null {
+  const monthIndex = MONTHS.indexOf(month.slice(0, 3).toLowerCase());
+  const dayNumber = Number.parseInt(day, 10);
+  if (monthIndex < 0 || !Number.isFinite(dayNumber) || dayNumber < 1 || dayNumber > 31) return null;
+  return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(dayNumber).padStart(2, '0')}`;
+}
+
+export function readSoldCaption(card: Element, rawTitle: string | null): { soldText: string | null; soldAt: string | null } {
+  const sources: string[] = [];
+  try {
+    for (const el of Array.from(card.querySelectorAll(CARD_SOLD_SELECTOR))) {
+      const text = spacedText(el);
+      if (text.length > 0) sources.push(text);
+    }
+  } catch {
+    // fall through to the card's own text
+  }
+  sources.push(withoutTitle(spacedText(card), card, rawTitle));
+  for (const source of sources) {
+    const dated = SOLD_CAPTION_RE.exec(source);
+    if (dated !== null) {
+      return { soldText: normalizeText(dated[0]), soldAt: isoDateFrom(dated[2]!, dated[3]!, dated[4]!) };
+    }
+  }
+  for (const source of sources) {
+    const tag = SOLD_TAG_RE.exec(source);
+    if (tag !== null) return { soldText: normalizeText(tag[0]), soldAt: null };
+  }
+  return { soldText: null, soldAt: null };
 }
 
 export interface CardFormatOptions {
@@ -473,6 +576,7 @@ export function extractListingCandidates(document: Document, pageUrl: string): L
         shippingSnippetServiceNamed: shippingSnippet.serviceNamed,
         itemLocationText: cardText(card, CARD_LOCATION_SELECTOR),
         isNewListing: isNewListingCard(card, rawTitle),
+        ...readSoldCaption(card, rawTitle),
         seller: readCardSeller(card),
         matchScope: rewriteAnchors.has(anchor) ? 'rewrite' : 'primary',
         order: candidates.length,

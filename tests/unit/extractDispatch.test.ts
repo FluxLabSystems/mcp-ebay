@@ -9,7 +9,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { BrowserSessionRuntime } from '@browser-bridge/browser-core';
-import { ExtractOutput, WIRE_PROTOCOL_VERSION, type CommandEnvelope } from '@browser-bridge/protocol';
+import { ExtractOutput, SearchCompactionInput, WIRE_PROTOCOL_VERSION, type CommandEnvelope } from '@browser-bridge/protocol';
+import { compactSearchPage } from '@browser-bridge/compact';
 import { mergeSiteProfiles } from '@browser-bridge/policy';
 import { ebaySiteProfile } from '@browser-bridge/site-ebay';
 import {
@@ -627,5 +628,79 @@ describe('search-card shipping figures are named service-unlabelled at page leve
     );
     const parsed = ExtractOutput.parse(outcome.result);
     expect(parsed.warnings.some((warning) => warning.startsWith('SHIPPING_SNIPPET_SERVICE_UNLABELLED'))).toBe(false);
+  });
+});
+
+// 2026-09-08 04:1xZ deals fire (site-ebay+coverage_gap+sold-search-renders-rows-
+// but-candidate-schema-carries-no-solddate-or-soldprice): the sold/completed
+// form rendered 247 rows under the ordinary live-search title and nothing on
+// the record said whether any row had sold. The record now states what the
+// URL asked for and how many rows answered it, so "the sold view rendered"
+// and "these are sold comps" stop being the same claim.
+describe('sold/completed searches say what they asked for and what the rows answered', () => {
+  const SOLD_URL = 'https://www.ebay.ca/sch/i.html?_nkw=lego+baseplate+6092+32x32+ramp&LH_Sold=1&LH_Complete=1&_sop=13';
+
+  it('the 2026-09-08 render: filters requested, no row marked sold, SOLD_FILTER_ROWS_UNMARKED', async () => {
+    const outcome = await runExtract(SOLD_URL, fixture('ebay', 'search-results.html'), 'ebay.ca.v1');
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as Record<string, unknown>;
+    expect(record.soldFilterRequested).toBe(true);
+    expect(record.completedFilterRequested).toBe(true);
+    expect(record.soldRowCount).toBe(0);
+    const rows = record.candidates as Array<Record<string, unknown>>;
+    expect(rows.every((row) => row.soldAt === null && row.soldText === null)).toBe(true);
+    const unmarked = parsed.warnings.find((warning) => warning.startsWith('SOLD_FILTER_ROWS_UNMARKED'));
+    expect(unmarked).toBeDefined();
+    expect(unmarked).toContain('LH_Sold=1');
+    expect(unmarked).toContain('LH_Complete=1');
+    expect(unmarked).toContain('2 card(s)');
+    expect(unmarked).toMatch(/sold-search-renders-rows-but-candidate-schema-carries-no-solddate-or-soldprice/);
+    expect(parsed.warnings.some((warning) => warning.startsWith('SOLD_ROWS'))).toBe(false);
+  });
+
+  it('rows carrying a sold caption are counted, and the compact default projection carries soldAt on that page', async () => {
+    const outcome = await runExtract(
+      SOLD_URL,
+      `<html><head><title>Lego Baseplate 6092 32x32 Ramp for sale | eBay</title></head><body><ul class="srp-results">
+         <li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/307149482142"><h3 class="s-item__title">Lego Baseplate 6092 32x32 Ramp</h3></a><span class="s-item__price">C $27.60</span><div class="s-item__caption"><span class="s-item__caption--signal POSITIVE">Sold  Sep 3, 2026</span></div></li>
+         <li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/398222039071"><h3 class="s-item__title">LEGO 6092 Raised Baseplate</h3></a><span class="s-item__price">C $38.74</span><div class="s-item__caption"><span class="s-item__caption--signal POSITIVE">Sold Item</span></div></li>
+         <li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/358504681378"><h3 class="s-item__title">Lego baseplate ramp 6092</h3></a><span class="s-item__price">C $24.89</span></li>
+       </ul></body></html>`,
+      'ebay.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as Record<string, unknown>;
+    expect(record.soldRowCount).toBe(2);
+    const soldRows = parsed.warnings.find((warning) => warning.startsWith('SOLD_ROWS'));
+    expect(soldRows).toContain('2 of 3');
+    const undated = parsed.warnings.find((warning) => warning.startsWith('SOLD_CAPTION_UNDATED'));
+    expect(undated).toContain('398222039071');
+    expect(parsed.warnings.some((warning) => warning.startsWith('SOLD_FILTER_ROWS_UNMARKED'))).toBe(false);
+
+    // The same page through the default compaction keeps soldAt on every row
+    // and the three root fields; a live page's default projection is unchanged.
+    const compacted = compactSearchPage(record, SearchCompactionInput.parse({}));
+    expect(compacted.record.soldFilterRequested).toBe(true);
+    expect(compacted.record.soldRowCount).toBe(2);
+    const compactRows = compacted.record.candidates as Array<Record<string, unknown>>;
+    expect(compactRows.map((row) => row.soldAt)).toEqual(['2026-09-03', null, null]);
+    expect(compactRows[0]!.soldText).toBeUndefined();
+  });
+
+  it('a live search record carries the three fields as false/false/0 and no soldAt in its default projection', async () => {
+    const outcome = await runExtract(
+      'https://www.ebay.ca/sch/i.html?_nkw=lego+minifig+lot&_sop=10',
+      fixture('ebay', 'search-results.html'),
+      'ebay.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as Record<string, unknown>;
+    expect(record.soldFilterRequested).toBe(false);
+    expect(record.completedFilterRequested).toBe(false);
+    expect(record.soldRowCount).toBe(0);
+    expect(parsed.warnings.some((warning) => /^SOLD_/.test(warning))).toBe(false);
+    const compacted = compactSearchPage(record, SearchCompactionInput.parse({}));
+    const compactRows = compacted.record.candidates as Array<Record<string, unknown>>;
+    expect('soldAt' in compactRows[0]!).toBe(false);
   });
 });

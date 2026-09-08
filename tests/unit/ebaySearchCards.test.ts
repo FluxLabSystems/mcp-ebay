@@ -306,3 +306,140 @@ describe('search-card shipping snippets name no service (2026-09-06)', () => {
     expect(named).toMatchObject({ shippingSnippetAmount: { value: 29, currency: 'CAD' }, shippingSnippetServiceNamed: true });
   });
 });
+
+// 2026-09-02 / 2026-09-06 / 2026-09-08 deals fires (site-ebay+extractor_defect+
+// search-card-bidcount-hundreds-where-item-page-reports-one, filed three times
+// under three keys): search cards read bidCount 781 and 910, then 971 and 951
+// on two ONE-bid auctions (377462787285, 287567907370), then 350 and 280, then
+// 820 and 740 on two ZERO-bid auctions (147558210462, 278348633712). Every
+// figure ends in the item page's true bid count, and the digits in front of
+// it are a two-digit number — the shape of a price's cents run into the bids
+// text: textContent concatenates adjacent elements, so "C $24.95" followed by
+// "1 bid" reads "C $24.951 bid" and the bid regex captures 951. The named bid
+// element (.s-item__bids / .s-card__bids) never had this problem; the fallback
+// over the card's own text did, on every template whose bids live under a
+// class the selectors do not know. NEEDS-LIVE-VERIFICATION: no such card has
+// been captured (three fires asked for one), so the element in front of the
+// bids text is the price by inference from the figures; the fix — a space at
+// every element boundary before the regex runs — holds whatever it is.
+describe('search-card bidCount is never another element\'s digits (2026-09-08)', () => {
+  function cardCandidates(html: string): ListingCandidate[] {
+    const { document } = parseHTML(`<div class="srp-river-results">${html}</div>`);
+    return extractListingCandidates(
+      document as unknown as Document,
+      'https://www.ebay.ca/sch/i.html?_nkw=lego+raised+baseplate&_sop=10&_ipg=240',
+    );
+  }
+
+  it('reads 1 bid, not 951, when the price element abuts an unnamed bids element', () => {
+    const [candidate] = cardCandidates(
+      `<div class="su-card-container">
+         <a class="su-link" href="https://www.ebay.ca/itm/377462787285"><img src="x.jpg"></a>
+         <span class="s-card__title">LEGO Baseplate Lot 32x32 Green Grey</span>
+         <span class="s-card__price">C $24.95</span><span class="s-card__attribute-row"><span>1 bid</span><span>·</span><span>4d 2h left</span></span>
+       </div>`,
+    );
+    expect(candidate?.sellingFormat).toBe('auction');
+    expect(candidate?.bidCount).toBe(1);
+  });
+
+  it('reads 0 bids, not 820, on a zero-bid auction priced C $12.82', () => {
+    const [candidate] = cardCandidates(
+      `<div class="su-card-container">
+         <a class="su-link" href="https://www.ebay.ca/itm/147558210462"><img src="x.jpg"></a>
+         <span class="s-card__title">LEGO Raised Baseplate 6092 Ramp</span>
+         <span class="s-card__price">C $12.82</span><span class="s-card__attribute-row"><span>0 bids</span><span>·</span><span>6d 23h left</span></span>
+       </div>`,
+    );
+    expect(candidate?.sellingFormat).toBe('auction');
+    expect(candidate?.bidCount).toBe(0);
+  });
+
+  it('still reads the named bids element first, and the title never feeds the count', () => {
+    const [candidate] = cardCandidates(
+      `<div class="su-card-container">
+         <a class="su-link" href="https://www.ebay.ca/itm/278348633712"><img src="x.jpg"></a>
+         <span class="s-card__title">LEGO 6092 baseplate lot of 3 bids welcome</span>
+         <span class="s-card__price">C $9.97</span><span class="s-card__bids">2 bids</span>
+       </div>`,
+    );
+    expect(candidate?.bidCount).toBe(2);
+  });
+
+  it('a title that ends in digits does not run into the bids text either', () => {
+    // The anchor-text title path (no title element): the badge span inside
+    // the anchor makes the concatenated title differ from the spaced one.
+    const [candidate] = cardCandidates(
+      `<div class="su-card-container">
+         <a class="su-link" href="https://www.ebay.ca/itm/298641348686"><span class="LIGHT_HIGHLIGHT">New Listing</span>LEGO Classic 10698 x 2</a>
+         <span class="su-styled-text">1 bid</span><span class="s-card__price">C $28.00</span>
+       </div>`,
+    );
+    expect(candidate?.bidCount).toBe(1);
+    expect(candidate?.sellingFormat).toBe('auction');
+  });
+});
+
+// 2026-09-08 04:1xZ deals fire (site-ebay+coverage_gap+sold-search-renders-rows-
+// but-candidate-schema-carries-no-solddate-or-soldprice): the sold/completed
+// search finally rendered (247 rows for _nkw=lego+baseplate+6092+32x32+ramp&
+// LH_Sold=1&LH_Complete=1&_sop=13) and every row came back shaped exactly like
+// a live ask — no sold date, nothing separating a comp from an ask — so the
+// fire fell back to live-ask medians. A row is a sold comp only when the card
+// SAYS it sold; the schema now has a place for that statement.
+// NEEDS-LIVE-VERIFICATION: the caption markup is the classic template's
+// `.s-item__caption--signal.POSITIVE` "Sold  Sep 3, 2026" as this was written
+// against; a live sold page has never been captured (www.ebay.ca 403s dev
+// boxes, and the 2026-09-08 snapshot could not be taken).
+describe('sold/completed-search rows state their sold date (2026-09-08)', () => {
+  function rows(html: string, url = 'https://www.ebay.ca/sch/i.html?_nkw=lego+baseplate+6092+32x32+ramp&LH_Sold=1&LH_Complete=1&_sop=13'): ListingCandidate[] {
+    const { document } = parseHTML(`<ul class="srp-results">${html}</ul>`);
+    return extractListingCandidates(document as unknown as Document, url);
+  }
+
+  it('reads the classic caption element into soldText and a date-only soldAt', () => {
+    const [candidate] = rows(
+      `<li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/307149482142"><h3 class="s-item__title">Lego Baseplate 6092 32x32 Ramp</h3></a>
+         <span class="s-item__price">C $27.60</span>
+         <div class="s-item__caption"><div class="s-item__caption--row"><span class="s-item__caption--signal POSITIVE"><span>Sold  Sep 3, 2026</span></span></div></div>
+       </li>`,
+    );
+    expect(candidate?.soldText).toBe('Sold Sep 3, 2026');
+    expect(candidate?.soldAt).toBe('2026-09-03');
+    expect(candidate?.snippetPrice).toEqual({ value: 27.6, currency: 'CAD' });
+  });
+
+  it('reads a dated "Sold" phrase from the card text when no caption element is named', () => {
+    const [candidate] = rows(
+      `<li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/398222039071"><h3 class="s-item__title">LEGO 6092 Raised Baseplate</h3></a>
+         <span class="s-item__price">C $38.74</span><span class="su-styled-text positive">Sold Aug 28, 2026</span>
+       </li>`,
+    );
+    expect(candidate?.soldText).toBe('Sold Aug 28, 2026');
+    expect(candidate?.soldAt).toBe('2026-08-28');
+  });
+
+  it('a live row carries null for both, and a "12 sold" quantity badge is not a sold caption', () => {
+    const candidates = rows(
+      `<li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/358504681378"><h3 class="s-item__title">Lego baseplate ramp 6092</h3></a>
+         <span class="s-item__price">C $24.89</span><span class="s-item__hotness">12 sold</span>
+       </li>
+       <li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/358504681379"><h3 class="s-item__title">Sold as seen LEGO lot Sep 3, 2026 build</h3></a>
+         <span class="s-item__price">C $10.00</span>
+       </li>`,
+      'https://www.ebay.ca/sch/i.html?_nkw=lego+baseplate+6092+32x32+ramp&_sop=10',
+    );
+    expect(candidates.map((row) => row.soldText)).toEqual([null, null]);
+    expect(candidates.map((row) => row.soldAt)).toEqual([null, null]);
+  });
+
+  it('a "Sold Item" tag without a date is a sold marker with soldAt null, never a guessed date', () => {
+    const [candidate] = rows(
+      `<li class="s-item"><a class="s-item__link" href="https://www.ebay.ca/itm/307149482143"><h3 class="s-item__title">Lego Baseplate 6092</h3></a>
+         <span class="s-item__title--tagblock"><span class="POSITIVE">Sold Item</span></span><span class="s-item__price">C $22.00</span>
+       </li>`,
+    );
+    expect(candidate?.soldText).toBe('Sold Item');
+    expect(candidate?.soldAt).toBeNull();
+  });
+});

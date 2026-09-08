@@ -1010,6 +1010,34 @@ async function executeExtract(
         `SHIPPING_SNIPPET_SERVICE_UNLABELLED: ${shippingUnlabelled} of ${candidates.length} card(s) quote a shipping amount (shippingSnippetAmount) that names no carrier, service level or destination; on 2026-09-06 such a card read C$83.34 for an item whose page quoted C$875.27 UPS Worldwide Saver to Canada. A card's shipping figure is a traversal hint and never a landed-cost input — cost only from the item page's shipping block (value, currency, serviceText, destinationVerified).`,
       );
     }
+    // 2026-09-08 deals fire: the sold/completed form (LH_Sold=1&LH_Complete=1)
+    // rendered 247 rows under the ordinary live-search title and nothing on
+    // the record said whether any row had sold, so the fire could not tell a
+    // comp from an ask. The record states what the URL asked for and how
+    // many rows carry a sold caption; a row without one is not a sold comp,
+    // whatever the URL requested.
+    const soldFilters = soldFiltersRequested(pageUrl);
+    const soldRows = candidates.filter((candidate) => candidate.soldText !== null);
+    const undatedSold = soldRows.filter((candidate) => candidate.soldAt === null);
+    if (soldRows.length > 0) {
+      warnings.push(
+        `SOLD_ROWS: ${soldRows.length} of ${candidates.length} card(s) carry a sold caption (soldText; soldAt is its calendar date), so on those rows snippetPrice is the figure the card shows beside the caption — the sold price as the card states it, a comp hint the item page confirms. The other rows carry no caption and are not sold comps, whatever the URL asked for.`,
+      );
+    }
+    if (undatedSold.length > 0) {
+      const ids = undatedSold.slice(0, 10).map((candidate) => candidate.itemId).join(', ');
+      warnings.push(
+        `SOLD_CAPTION_UNDATED: ${undatedSold.length} of ${soldRows.length} sold-captioned card(s) state no readable sale date (ids: ${ids}${undatedSold.length > 10 ? ', …' : ''}); soldAt is null on them and the item page's close date decides — never a date read off a neighbouring row.`,
+      );
+    }
+    if (soldRows.length === 0 && candidates.length > 0 && (soldFilters.sold || soldFilters.completed)) {
+      const asked = [soldFilters.sold ? 'LH_Sold=1' : null, soldFilters.completed ? 'LH_Complete=1' : null]
+        .filter((part): part is string => part !== null)
+        .join(' and ');
+      warnings.push(
+        `SOLD_FILTER_ROWS_UNMARKED: the URL asked for ${asked} and none of the ${candidates.length} card(s) carries a sold caption ("Sold <date>"), so no row here is a sold comp: either the site served the live result set under the filter (the 2026-09-05 LH_Sold=1-alone render and the 2026-09-08 04:1xZ LH_Sold=1&LH_Complete=1 render both carried the live-search title), or the caption renders under a class the extractor does not know (NEEDS-LIVE-VERIFICATION: no live sold page has been captured; the classic .s-item__caption--signal "Sold <date>" is what is read, plus the dated phrase anywhere in the card text). Capture ONE row — browser_snapshot (maxNodes 200) when the client accepts it, else a viewport browser_screenshot scrolled to the first row — and file it under sold-search-renders-rows-but-candidate-schema-carries-no-solddate-or-soldprice with this URL.`,
+      );
+    }
     const record: Record<string, unknown> = {
       siteProfile: EBAY_SITE_PROFILE_ID,
       pageKind: kind,
@@ -1018,6 +1046,12 @@ async function executeExtract(
       observedAt: source.capturedAt.toISOString(),
       candidateCount: candidates.length,
       candidates,
+      // What the URL asked for and what the rows answered, side by side:
+      // "the sold view rendered" and "these are sold comps" are different
+      // claims, and soldRowCount is the one that carries the second.
+      soldFilterRequested: soldFilters.sold,
+      completedFilterRequested: soldFilters.completed,
+      soldRowCount: soldRows.length,
       note: 'Candidate snippets are traversal hints; open each /itm/ URL and extract it for canonical evidence.',
     };
     if (kind === 'search' || kind === 'store') {
@@ -1105,6 +1139,21 @@ async function executeExtract(
  */
 function normalizeTitle(raw: string | null | undefined): string {
   return (raw ?? '').replace(/[\u00a0\u202f]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * eBay's sold / completed result filters as the URL requests them
+ * (`LH_Sold=1`, `LH_Complete=1`). A statement about the REQUEST only: the
+ * 2026-09-05 and 2026-09-08 deals fires both saw these filters answered with
+ * the live-search title, so what the rows are is read from the rows.
+ */
+function soldFiltersRequested(pageUrl: string): { sold: boolean; completed: boolean } {
+  try {
+    const params = new URL(pageUrl).searchParams;
+    return { sold: params.get('LH_Sold') === '1', completed: params.get('LH_Complete') === '1' };
+  } catch {
+    return { sold: false, completed: false };
+  }
 }
 
 function applySearchCompaction(
