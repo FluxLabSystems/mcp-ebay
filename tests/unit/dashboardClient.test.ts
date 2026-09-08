@@ -362,3 +362,46 @@ describe('DashboardClient dotted field paths (2026-09-07 fire)', () => {
     expect('warnings' in (await empty.records('deals', { fields: ['title'] }))).toBe(false);
   });
 });
+
+// 2026-09-08 deals fire (gateway+connector_defect+dashboard-records-unknown-
+// fields-warning-reads-as-field-not-stored-when-it-means-absent-from-this-
+// page): page 2 of a deals read carried no operatorFeedback on any of its 301
+// records, UNKNOWN_FIELDS_IGNORED said "not stored on this scope", and the
+// fire reported a correctness defect that did not exist. The API now says
+// which of the page's unresolved names resolve on NO record of the scope;
+// the two cases get two warnings, and an older API's page-only answer is
+// worded as page-only.
+describe('records tells a sparse page from an unknown field (2026-09-08)', () => {
+  const page = {
+    state: 'all', total: 801, matched: 801, returned: 2, nextCursor: null,
+    fields: ['id', 'operatorFeedback.state', 'anaylsis.verdict'],
+    unresolvedFields: ['operatorFeedback.state', 'anaylsis.verdict'],
+    listings: [{ id: 'kijiji-1743000309' }, { id: 'ebay-158079943209' }],
+  };
+
+  it('a name stored on the scope but absent from this page is FIELDS_ABSENT_ON_PAGE, a name absent from the scope is UNKNOWN_FIELDS_IGNORED', async () => {
+    const client = clientWith(async () => jsonResponse(200, { ...page, unresolvedInScope: ['anaylsis.verdict'] }));
+    const result = await client.records('deals', { state: 'all', fields: page.fields, limit: 2 });
+    expect(result.warnings).toEqual([
+      expect.stringMatching(/^UNKNOWN_FIELDS_IGNORED: "anaylsis\.verdict" resolved on no record of this scope/),
+      expect.stringMatching(/^FIELDS_ABSENT_ON_PAGE: "operatorFeedback\.state" is stored on this scope but carried by no record on this page/),
+    ]);
+    expect((result.warnings as string[])[1]).toMatch(/not evidence that the field does not exist/);
+  });
+
+  it('only the page-level warning when every unresolved name is stored somewhere on the scope', async () => {
+    const client = clientWith(async () => jsonResponse(200, { ...page, unresolvedInScope: [] }));
+    const result = await client.records('deals', { state: 'all', fields: page.fields, limit: 2 });
+    expect(result.warnings).toHaveLength(1);
+    expect((result.warnings as string[])[0]).toMatch(/^FIELDS_ABSENT_ON_PAGE: "operatorFeedback\.state", "anaylsis\.verdict"/);
+  });
+
+  it('an API without unresolvedInScope gets the page-only wording, which claims nothing about the scope', async () => {
+    const client = clientWith(async () => jsonResponse(200, page));
+    const result = await client.records('deals', { state: 'all', fields: page.fields, limit: 2 });
+    expect(result.warnings).toHaveLength(1);
+    expect((result.warnings as string[])[0]).toMatch(/^UNKNOWN_FIELDS_IGNORED: "operatorFeedback\.state", "anaylsis\.verdict" resolved on no record of THIS PAGE/);
+    expect((result.warnings as string[])[0]).toMatch(/says nothing about the scope/);
+    expect((result.warnings as string[])[0]).not.toMatch(/is not stored on this scope$/);
+  });
+});

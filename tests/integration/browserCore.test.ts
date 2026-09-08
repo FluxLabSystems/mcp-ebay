@@ -19,6 +19,7 @@ import {
   fetchImage,
   fill,
   launchPersistent,
+  markup,
   dismissConsent,
   navigate,
   pressKey,
@@ -614,5 +615,67 @@ describe('screenshots and gallery pipeline (FR-05/06, §16, §20.4)', () => {
     await navigate(harness.session, tabId, `${fixtures.baseUrl}/itm/123456789012`, 'load', 20_000);
     const pageScope = await enumerateImages(harness.session, tabId, 'page');
     expect(pageScope.images.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+// 2026-09-08 (site-ebay+extractor_defect+offers-row-seller-misattributed-to-
+// adjacent-row, third filing): three fires could not supply the offers-row
+// outerHTML the ledger asked for because no Bridge tool returned markup.
+// browser_markup returns ONE element's outerHTML, redacted and bounded, and
+// climbs to the row around a link because a snapshot never refs the row.
+describe("browser_markup: one element's outerHTML, redacted and bounded (2026-09-08)", () => {
+  async function itemLinkRef(): Promise<{ ref: string; pageRevision: number }> {
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/markup-row.html`, 'load', 20_000);
+    const snap = await snapshot(harness.session, tabId, 200);
+    const itemLink = snap.snapshot.find((node) => node.role === 'link' && (node.name ?? '').startsWith('VTG Lego lot'));
+    expect(itemLink?.elementRef).toBeTruthy();
+    return { ref: itemLink!.elementRef as string, pageRevision: snap.pageRevision };
+  }
+
+  it('returns the element itself at ancestors 0 and the row around it at ancestors 1', async () => {
+    const { ref, pageRevision } = await itemLinkRef();
+    const link = await markup(harness.session, tabId, ref, 0, 4000, 10_000);
+    expect(link).toMatchObject({ elementRef: ref, pageRevision, climbed: 0, tagName: 'a', truncated: false });
+    expect(link.markup).toContain('href="/pages/second.html?item=267676402924"');
+    expect(link.markup).toContain(`data-bb-ref="${ref}"`);
+    expect(link.markup).not.toMatch(/onclick=/i);
+    expect(link.redactedAttributes).toBe(1);
+
+    const row = await markup(harness.session, tabId, ref, 1, 4000, 10_000);
+    expect(row).toMatchObject({ climbed: 1, tagName: 'li', truncated: false });
+    expect(row.length).toBe(row.markup.length);
+    // The row carries its OWN seller link and not the neighbouring row's —
+    // exactly the boundary question the offers-page report could not answer.
+    expect(row.markup).toContain('href="/usr/philjn555"');
+    expect(row.markup).not.toContain('double_duncan_treasures');
+    expect(row.markup).toContain('data-testid="offer-row"');
+    // Redaction: no script, style, handler, form value, data: URL, textarea text or inline style.
+    expect(row.markup).not.toMatch(/<script/i);
+    expect(row.markup).not.toMatch(/<style/i);
+    expect(row.markup).not.toMatch(/onclick=/i);
+    expect(row.markup).not.toMatch(/42\.00/);
+    expect(row.markup).not.toMatch(/iVBORw0KGgo/);
+    expect(row.markup).toMatch(/data:\[redacted\]/);
+    expect(row.markup).not.toMatch(/private note/);
+    expect(row.markup).not.toMatch(/style="color:blue"/);
+    expect(row.markup).not.toMatch(/<path/i);
+    expect(row.markup).toMatch(/<svg[^>]*><\/svg>/i);
+    // onclick, value, data: src, textarea text, style = 5 attribute-level redactions; script + style + svg = 3 element-level.
+    expect(row.redactedAttributes).toBe(5);
+    expect(row.redactedElements).toBe(3);
+  });
+
+  it('stops the climb at the document root, cuts at maxChars, reports the full length, and refuses a stale ref', async () => {
+    const { ref } = await itemLinkRef();
+    const whole = await markup(harness.session, tabId, ref, 8, 16_000, 10_000);
+    expect(whole.tagName).toBe('body');
+    expect(whole.climbed).toBeLessThan(8);
+    const cut = await markup(harness.session, tabId, ref, 2, 200, 10_000);
+    expect(cut.tagName).toBe('ul');
+    expect(cut.truncated).toBe(true);
+    expect(cut.markup).toHaveLength(200);
+    expect(cut.length).toBeGreaterThan(200);
+    await navigate(harness.session, tabId, `${fixtures.baseUrl}/pages/markup-row.html`, 'load', 20_000);
+    await expect(markup(harness.session, tabId, ref, 1, 4000, 10_000)).rejects.toMatchObject({ code: 'STALE_ELEMENT' });
   });
 });

@@ -650,3 +650,54 @@ describe('kijiji search-card postedAt provenance (2026-09-06 deals fire)', () =>
     expect(bare.warnings.some((warning) => warning.startsWith('POSTED_AT_FROM_RELATIVE_LABEL'))).toBe(false);
   });
 });
+
+// 2026-09-08 deals fire (site-kijiji+extractor_defect+ad-description-
+// truncated-at-500-chars-withholds-the-valuation-basis): 13 of 35 opened ads
+// were cut at 500 characters and on set and minifigure lots the cut text IS
+// the valuation basis (1743100906: 500 of 5,174 — the set list). The 500-
+// character excerpt keeps its bound; a caller who says a lot's value depends
+// on its body asks for the body, bounded, under its own field.
+describe('description body on request (2026-09-08)', () => {
+  const vip = (body: string): Document =>
+    parseHTML(
+      `<html><head><title>27 LEGO 80s and 90s sets bulk sale | Kijiji</title><link rel="canonical" href="https://www.kijiji.ca/v-toys-games/markham-york-region/27-lego-80s-and-90s-sets-bulk-sale/1743100906"></head>
+       <body><h1>27 LEGO 80s and 90s sets bulk sale</h1><div data-testid="vip-price">$2,950</div>
+       <div data-testid="vip-description-wrapper">${body}</div></body></html>`,
+    ).document as unknown as Document;
+  const URL = 'https://www.kijiji.ca/v-toys-games/markham-york-region/27-lego-80s-and-90s-sets-bulk-sale/1743100906';
+  const line = '6285 Black Seas Barracuda complete with box and instructions *NCS 6270 Forbidden Island 6276 Eldorado Fortress ';
+  const body = line.repeat(48); // ~5,170 characters whitespace-collapsed, like ad 1743100906
+
+  it('without the option the excerpt stays at 500, descriptionFull is null and the warning names the opt-in', () => {
+    const { record, warnings } = extractKijijiListing(vip(body), URL);
+    expect(record.description?.value.length).toBe(500);
+    expect(record.descriptionFull).toBeNull();
+    const cut = warnings.find((warning) => warning.startsWith('DESCRIPTION_TRUNCATED'));
+    expect(cut).toBeDefined();
+    expect(cut).toMatch(/descriptionMaxChars/);
+    expect(cut).toMatch(/6000/);
+  });
+
+  it('with descriptionMaxChars the collapsed body comes back whole under descriptionFull and nothing warns', () => {
+    const { record, warnings } = extractKijijiListing(vip(body), URL, { descriptionMaxChars: 6000 });
+    const collapsed = body.replace(/\s+/g, ' ').trim();
+    expect(record.description?.value.length).toBe(500);
+    expect(record.descriptionFull).toEqual({ value: collapsed, source: 'dom', confidence: 0.9, maxChars: 6000 });
+    expect(warnings.some((warning) => warning.startsWith('DESCRIPTION_TRUNCATED'))).toBe(false);
+  });
+
+  it('a body longer than the requested cap is cut at the cap and still warns with both figures', () => {
+    const { record, warnings } = extractKijijiListing(vip(body), URL, { descriptionMaxChars: 1000 });
+    expect(record.descriptionFull?.value.length).toBe(1000);
+    const cut = warnings.find((warning) => warning.startsWith('DESCRIPTION_TRUNCATED'));
+    expect(cut).toBeDefined();
+    expect(cut).toMatch(/1000/);
+    expect(cut).toMatch(new RegExp(`${body.replace(/\s+/g, ' ').trim().length} characters`));
+  });
+
+  it('a body inside the excerpt bound never gets a descriptionFull, requested or not', () => {
+    const { record } = extractKijijiListing(vip('Short ad body, complete set.'), URL, { descriptionMaxChars: 6000 });
+    expect(record.descriptionFull).toBeNull();
+    expect(record.description?.value).toBe('Short ad body, complete set.');
+  });
+});

@@ -772,6 +772,7 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
       shippingSnippetAmount: shippingSnippet.amount,
       shippingSnippetServiceNamed: shippingSnippet.serviceNamed,
       itemLocationText: null,
+      itemLocationSource: null,
       isNewListing: isNewListingCard(card, rawTitle),
       // The same caption read as a search row's; the watch list's own
       // status vocabulary (watchlistStatus) is read separately and decides.
@@ -781,6 +782,8 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
       endsAt: timeLeftText === null ? null : toIso(observedAt, countdownMs(timeLeftText)),
       watchlistStatus: status,
       seller,
+      // The watch-list seller is the /usr/ link's login id (sellerFrom), an element read.
+      sellerSource: seller === null ? null : 'element',
       // My eBay lists have no "fewer words" divider; every row is primary.
       matchScope: 'primary',
       sellerText,

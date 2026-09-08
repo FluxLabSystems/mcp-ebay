@@ -68,6 +68,8 @@ import {
   WaitInput,
   WaitOutput,
   type DashboardId,
+  MarkupInput,
+  MarkupOutput,
 } from './tools.js';
 
 export const SCOPE_READ = 'browser:read';
@@ -211,6 +213,17 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     outputSchema: ScreenshotOutput,
   },
   {
+    name: 'browser_markup',
+    command: 'markup',
+    scope: SCOPE_READ,
+    policyClass: 'read',
+    timeoutMs: SNAPSHOT_TIMEOUT_MS,
+    description:
+      'Return ONE element\'s outerHTML for the current page revision, by a browser_snapshot elementRef, climbing `ancestors` parents first (0-8; a snapshot refs links and text, never the row around them, so the row is its link\'s ref plus the climb) — the capture that pins a selector or a row boundary when a semantic snapshot cannot (an offers-page row reading a neighbouring row\'s seller, a card whose seller line sits under an unknown element). Redacted and bounded: script/style/template/noscript/iframe/object/embed descendants removed, svg emptied, every on* handler, style, srcset and value attribute dropped (a form value is never returned), data: URLs replaced, whitespace collapsed, then cut at maxChars (default 4000, at most 16000) with length and truncated saying so. Read-only; use it to file evidence through the improvement queue, not to read prose (browser_screenshot mode "element" does that).',
+    inputSchema: MarkupInput,
+    outputSchema: MarkupOutput,
+  },
+  {
     name: 'browser_images',
     command: 'images',
     scope: SCOPE_READ,
@@ -313,7 +326,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'read',
     timeoutMs: DEFAULT_TIMEOUT_MS,
     description:
-      'Run versioned site-profile extraction on the current page, dispatched by page kind. eBay (ebay.ca.v1): item /itm/ pages return the full listing record with provenance and confidence; search /sch/ and seller store /str/ or /usr/ pages return an ordered listing-candidate list for traversal; the signed-in My eBay watch list (/mye/myebay/watchlist, /myb/WatchList) returns pageKind "watchlist" — candidates carrying timeLeftText, endsAt, watchlistStatus, seller and any sellerOffer the card advertises, plus signedIn, totalResults (the count the page states; null with WATCHLIST_TOTAL_REJECTED when the label read below the rows rendered, the label\'s number then kept as statedCount for the audit), categories (the per-category filter chips the page renders — label, categoryId, site, count, url — a deterministic per-category walk path; empty when the template renders no rail) and next-page pagination — and the bids/offers page (/mye/myebay/bidsoffers, /myb/BidsOffers) returns pageKind "offers" with one row per offer (offerPrice, direction from_seller/from_you, offerStatus, expiresText); both are read in the eBay research profile that holds the session, and a sign-in wall is reported as SIGN_IN_REQUIRED rather than as an empty list. Kijiji (kijiji.ca.v1): ad (VIP) pages return the full record, including the poster\'s sellerId, sellerListingsUrl (/o-profile/<posterId>/1, the "View all listings (N)" link) and sellerListingCount; search /b-* pages return candidates plus next-page pagination; a seller /o-profile/ page returns pageKind "seller" with the same candidate list (no live capture of that page kind exists yet — SELLER_PAGE_UNVERIFIED says what to check). Zazzle (zazzle.com.v1): product pages return the wardrobe record (listed-currency prices, priceBasis discriminator, personalization/promo evidence); /s/ and /c/ pages return candidates. Candidate snippets are traversal hints - follow each candidate URL and extract the item page for canonical evidence.',
+      'Run versioned site-profile extraction on the current page, dispatched by page kind. eBay (ebay.ca.v1): item /itm/ pages return the full listing record with provenance and confidence; search /sch/ and seller store /str/ or /usr/ pages return an ordered listing-candidate list for traversal; the signed-in My eBay watch list (/mye/myebay/watchlist, /myb/WatchList) returns pageKind "watchlist" — candidates carrying timeLeftText, endsAt, watchlistStatus, seller and any sellerOffer the card advertises, plus signedIn, totalResults (the count the page states; null with WATCHLIST_TOTAL_REJECTED when the label read below the rows rendered, the label\'s number then kept as statedCount for the audit), categories (the per-category filter chips the page renders — label, categoryId, site, count, url — a deterministic per-category walk path; empty when the template renders no rail) and next-page pagination — and the bids/offers page (/mye/myebay/bidsoffers, /myb/BidsOffers) returns pageKind "offers" with one row per offer (offerPrice, direction from_seller/from_you, offerStatus, expiresText); both are read in the eBay research profile that holds the session, and a sign-in wall is reported as SIGN_IN_REQUIRED rather than as an empty list. Kijiji (kijiji.ca.v1): ad (VIP) pages return the full record, including the poster\'s sellerId, sellerListingsUrl (/o-profile/<posterId>/1, the "View all listings (N)" link) and sellerListingCount; search /b-* pages return candidates plus next-page pagination; a seller /o-profile/ page returns pageKind "seller" with the same candidate list (no live capture of that page kind exists yet — SELLER_PAGE_UNVERIFIED says what to check). Zazzle (zazzle.com.v1): product pages return the wardrobe record (listed-currency prices, priceBasis discriminator, personalization/promo evidence); /s/ and /c/ pages return candidates. Candidate snippets are traversal hints - follow each candidate URL and extract the item page for canonical evidence. On a Kijiji ad page the description is a 500-character excerpt (DESCRIPTION_TRUNCATED says when the body is longer); descriptionMaxChars (500-6000) also returns the body under descriptionFull, cut at that length, for an ad whose value depends on its text.',
     inputSchema: ExtractInput,
     outputSchema: ExtractOutput,
   },
@@ -328,7 +341,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'reversible',
     timeoutMs: DEFAULT_TIMEOUT_MS,
     description:
-      'Navigate a tab to an allowed HTTPS URL and run site-profile extraction on the page it lands on, in one call. Returns exactly what browser_extract returns plus finalUrl and navigationStatus. On a search, store, watch-list or offers page the optional search object reduces the candidate list server-side (canonical URLs, limit/offset, a field allow-list, and title/price/format filters) and is applied with its defaults when omitted, so a full results page arrives compact rather than as a hundred-kilobyte candidate dump. limit/offset walk the candidates the fetched page rendered, never the whole result set: hasMore/nextOffset are page-local, the result set continues through hasNextPage/nextPageUrl (navigate it and extract again), and a window the page could not fill is named by a PAGE_LOCAL_LIMIT warning. search.include.titleRegex is a JavaScript pattern compiled case-insensitively: a leading (?i) is accepted and ignored, any other inline flag group is refused by name.',
+      'Navigate a tab to an allowed HTTPS URL and run site-profile extraction on the page it lands on, in one call. Returns exactly what browser_extract returns plus finalUrl and navigationStatus. On a search, store, watch-list or offers page the optional search object reduces the candidate list server-side (canonical URLs, limit/offset, a field allow-list, and title/price/format filters) and is applied with its defaults when omitted, so a full results page arrives compact rather than as a hundred-kilobyte candidate dump. limit/offset walk the candidates the fetched page rendered, never the whole result set: hasMore/nextOffset are page-local, the result set continues through hasNextPage/nextPageUrl (navigate it and extract again), and a window the page could not fill is named by a PAGE_LOCAL_LIMIT warning. search.include.titleRegex is a JavaScript pattern compiled case-insensitively: a leading (?i) is accepted and ignored, any other inline flag group is refused by name. descriptionMaxChars (500-6000) applies as on browser_extract: a Kijiji ad body returned under descriptionFull.',
     inputSchema: OpenAndExtractInput,
     outputSchema: OpenAndExtractOutput,
   },
@@ -344,7 +357,7 @@ export const TOOL_CATALOG: readonly ToolCatalogEntry[] = [
     policyClass: 'reversible',
     timeoutMs: EXTRACT_MANY_TIMEOUT_MS,
     description:
-      `Traverse up to ${EXTRACT_MANY_MAX_URLS} item or ad URLs in one call and return one compact record per URL. Read and traversal only: it navigates and extracts, nothing else. Each URL gets its own result slot with its own error, so one dead or blocked page never fails the batch. A page that loads but is not a listing (an error, removed-listing, or deleted-ad page) is ok:false with error.code LISTING_UNAVAILABLE and keeps its record as evidence — only upsert slots with ok:true. mode "auto" answers inline for a batch that fits this tool's deadline and otherwise returns a jobId to poll with browser_job_status.`,
+      `Traverse up to ${EXTRACT_MANY_MAX_URLS} item or ad URLs in one call and return one compact record per URL. Read and traversal only: it navigates and extracts, nothing else. Each URL gets its own result slot with its own error, so one dead or blocked page never fails the batch. A page that loads but is not a listing (an error, removed-listing, or deleted-ad page) is ok:false with error.code LISTING_UNAVAILABLE and keeps its record as evidence — only upsert slots with ok:true. mode "auto" answers inline for a batch that fits this tool's deadline and otherwise returns a jobId to poll with browser_job_status. descriptionMaxChars (500-6000) applies to every Kijiji ad in the batch: the body returned under descriptionFull, cut at that length.`,
     inputSchema: ExtractManyInput,
     outputSchema: ExtractManyOutput,
   },
@@ -446,7 +459,7 @@ export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
     operation: 'records',
     timeoutMs: 30_000,
     description:
-      'Read a Fluxology dashboard (deals, office, jobs, vacation, or wardrobe) through the compact read path instead of the whole feed: state live|archived|all (archived is derived — inactive and quiet past the retention window, or a terminal operator decision that old; never stored, never deleted), a field projection (id always included; a dotted name such as analysis.fairValueCad walks the nested object, and unresolvedFields plus an UNKNOWN_FIELDS_IGNORED warning name any requested field no returned record carries), since (ISO 8601; undated records are kept because undated is unknown, not unchanged), recordType, sort changed|added|discovered with dir, and limit/cursor paging (nextCursor is null on the last page). The response carries total, matched, returned and archivedCount so "nothing matched" and "the scope is empty" are distinguishable. This is the read a routine makes; dashboard_feed is for a whole-board diff.',
+      'Read a Fluxology dashboard (deals, office, jobs, vacation, or wardrobe) through the compact read path instead of the whole feed: state live|archived|all (archived is derived — inactive and quiet past the retention window, or a terminal operator decision that old; never stored, never deleted), a field projection (id always included; a dotted name such as analysis.fairValueCad walks the nested object; unresolvedFields names any requested field no record on THIS PAGE carries and unresolvedInScope the subset no record of the scope carries at all — UNKNOWN_FIELDS_IGNORED for the latter (misspelled or not stored), FIELDS_ABSENT_ON_PAGE for a stored field this page happens not to carry, which is never evidence that the scope lacks it), since (ISO 8601; undated records are kept because undated is unknown, not unchanged), recordType, sort changed|added|discovered with dir, and limit/cursor paging (nextCursor is null on the last page). The response carries total, matched, returned and archivedCount so "nothing matched" and "the scope is empty" are distinguishable. This is the read a routine makes; dashboard_feed is for a whole-board diff.',
     inputSchema: DashboardRecordsInput,
     outputSchema: DashboardRecordsOutput,
   },

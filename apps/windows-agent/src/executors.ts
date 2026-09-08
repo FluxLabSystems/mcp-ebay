@@ -10,6 +10,7 @@ import {
   enumerateImages,
   fetchImage,
   handoff,
+  markup,
   navigate,
   pressKey,
   screenshot,
@@ -36,6 +37,7 @@ import {
   ImagesInput,
   JobStatusInput,
   KeyInput,
+  MarkupInput,
   MAX_INLINE_BATCH_ITEMS,
   NavigateInput,
   newArtifactId,
@@ -411,6 +413,15 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
           artifacts: [{ artifactId, mimeType: capture.mimeType, buffer: capture.buffer }],
         };
       }
+      case 'markup': {
+        const input = MarkupInput.parse({
+          browserSessionHandle: envelope.browserSessionHandle,
+          tabId,
+          ...(args as object),
+        });
+        const read = await markup(session, tabId, input.elementRef, input.ancestors, input.maxChars, budget);
+        return { result: { ...read }, pageRevision: read.pageRevision, artifacts: [] };
+      }
       case 'images': {
         const input = ImagesInput.parse({
           browserSessionHandle: envelope.browserSessionHandle,
@@ -526,7 +537,7 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
           typeof destinationPostalCode === 'string' && destinationPostalCode.length > 0
             ? destinationPostalCode
             : host.expectedPostalCode;
-        return executeExtract(host, session, tabId, expectedPostal, input.siteProfile, input.search);
+        return executeExtract(host, session, tabId, expectedPostal, input.siteProfile, input.search, input.descriptionMaxChars);
       }
       case 'open_and_extract': {
         // Same F-09 treatment as extract: the destination rides the
@@ -555,6 +566,7 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
           expectedPostal,
           input.siteProfile,
           input.search ?? DEFAULT_SEARCH_COMPACTION,
+          input.descriptionMaxChars,
         );
         return {
           result: {
@@ -592,6 +604,8 @@ async function executeExtract(
   declaredSiteProfile: string = EBAY_SITE_PROFILE_ID,
   /** Present only when the caller asked for a reduced candidate list. */
   searchOptions?: SearchCompaction,
+  /** Present only when the caller asked for the Kijiji ad body (descriptionFull). */
+  descriptionMaxChars?: number,
 ): Promise<ExecutionOutcome> {
   const tab = session.getTab(tabId);
   const pageUrl = tab.page.url();
@@ -800,6 +814,7 @@ async function executeExtract(
     const { record, warnings } = extractKijijiListing(document, pageUrl, {
       pageRevision: tab.revision,
       observedAt: source.capturedAt,
+      ...(descriptionMaxChars === undefined ? {} : { descriptionMaxChars }),
     });
     return {
       result: {
@@ -1254,10 +1269,11 @@ async function traverseOne(
   expectedPostalCode: string,
   compact: boolean,
   budgetMs: number,
+  descriptionMaxChars?: number,
 ): Promise<BatchExtractItem> {
   try {
     const nav = await navigate(session, tabId, url, waitUntil, budgetMs);
-    const outcome = await executeExtract(host, session, tabId, expectedPostalCode, siteProfile);
+    const outcome = await executeExtract(host, session, tabId, expectedPostalCode, siteProfile, undefined, descriptionMaxChars);
     const result = outcome.result;
     const warnings = Array.isArray(result.warnings) ? (result.warnings as string[]) : [];
     const profile = typeof result.siteProfile === 'string' ? result.siteProfile : siteProfile;
@@ -1306,6 +1322,7 @@ interface BatchPlan {
   siteProfile: string;
   expectedPostalCode: string;
   compact: boolean;
+  descriptionMaxChars?: number;
 }
 
 /**
@@ -1335,6 +1352,7 @@ async function runBatch(
       plan.expectedPostalCode,
       plan.compact,
       Math.min(BATCH_ITEM_BUDGET_MS, remaining),
+      plan.descriptionMaxChars,
     );
     onItem(item);
   }
@@ -1406,6 +1424,7 @@ async function executeExtractMany(
     siteProfile: input.siteProfile,
     expectedPostalCode,
     compact: input.compact,
+    ...(input.descriptionMaxChars === undefined ? {} : { descriptionMaxChars: input.descriptionMaxChars }),
   };
 
   // §18 promotion rule: 'auto' answers inline only for a batch that fits

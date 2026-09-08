@@ -5,7 +5,15 @@
  * normalizations (source "computed"). Search-results snippets are never
  * accepted as canonical listing evidence.
  */
-import { canonicalListingUrl, cleanTitle, itemIdFromUrl, normalizePostalCode, parseMoney, postalCodesMatch } from './normalize.js';
+import {
+  canonicalListingUrl,
+  cleanTitle,
+  itemIdFromUrl,
+  marketplaceCurrencyFor,
+  normalizePostalCode,
+  parseMoney,
+  postalCodesMatch,
+} from './normalize.js';
 import { EBAY_DESTINATION_POSTAL_CODE, EBAY_PROFILE_REVISION } from './profile.js';
 import type { ExtractionRecord, FieldSource, ListingStatus } from './record.js';
 
@@ -911,11 +919,14 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
       itemPrice = { value, currency: jsonldCurrency.toUpperCase(), source: 'jsonld', confidence: 0.98 };
     }
   }
+  // A bare "$" is the page host's currency (USD on www.ebay.com); JSON-LD,
+  // when present, already states priceCurrency and is preferred above.
+  const marketplaceCurrency = marketplaceCurrencyFor(pageUrl);
   if (itemPrice === null) {
     for (const selector of PRICE_SELECTORS) {
       const text = textOf(document, selector);
       if (!text) continue;
-      const parsed = parseMoney(text);
+      const parsed = parseMoney(text, marketplaceCurrency);
       if (parsed) {
         if (parsed.approximate) warnings.push(`itemPrice parsed from a range: "${text}"`);
         itemPrice = { value: parsed.value, currency: parsed.currency, source: 'dom', confidence: 0.99 };
@@ -946,7 +957,7 @@ export function extractListing(document: Document, pageUrl: string, context: Ext
   for (const selector of SHIPPING_SELECTORS) {
     const text = textOf(document, selector);
     if (!text) continue;
-    const parsed = parseMoney(text);
+    const parsed = parseMoney(text, marketplaceCurrency);
     if (parsed) {
       if (parsed.approximate) warnings.push(`shipping parsed from a range: "${text}"`);
       if (parsed.ambiguousFree) {

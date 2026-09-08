@@ -158,3 +158,55 @@ describe('a seller search row belongs to the seller only when a card says so', (
     expect(sellerQueryOf('https://www.ebay.ca/sch/i.html?_ssn=magellan_store&_sop=10')).toBe('magellan_store');
   });
 });
+
+// 2026-09-08 deals fire (site-ebay+extractor_defect+search-card-seller-and-
+// location-null-on-every-row-of-a-broad-sch-page): the report asked for a
+// page-level warning that separates "this template renders no seller line"
+// from "the selector missed". With the text fallback in place, a page whose
+// rows all read their seller from card text is a selector miss to pin, and a
+// page whose rows carry no seller-shaped text at all renders none.
+describe('page-level seller and location provenance (2026-09-08)', () => {
+  const BROAD = 'https://www.ebay.ca/sch/i.html?_nkw=lego+minifigure+lot&_sop=10&_ipg=240';
+  const cards = (attributes: string) =>
+    parseHTML(
+      `<html><body><h1 class="srp-controls__count-heading"><span class="BOLD">2</span> results for lego minifigure lot</h1>
+       <div class="srp-river-results">
+         <div class="su-card-container"><a class="su-link" href="https://www.ebay.ca/itm/336123456789"><img src="a.jpg"></a><span class="s-card__title">LEGO minifigure lot 40 figures</span><span class="s-card__price">C $59.99</span><div class="su-card-container__attributes">${attributes}</div></div>
+         <div class="su-card-container"><a class="su-link" href="https://www.ebay.ca/itm/336123456790"><img src="b.jpg"></a><span class="s-card__title">LEGO minifigure lot 12 figures</span><span class="s-card__price">C $19.99</span><div class="su-card-container__attributes">${attributes}</div></div>
+       </div></body></html>`,
+    ).document as unknown as Document;
+
+  function warningsFor(attributes: string): string[] {
+    const document = cards(attributes);
+    const candidates = extractListingCandidates(document, BROAD);
+    const warnings: string[] = [];
+    extractSearchPageMeta({ document, pageUrl: BROAD, candidates, pageKind: 'search', warnings });
+    return warnings;
+  }
+
+  it('names the selector miss when every seller and location came from card text', () => {
+    const warnings = warningsFor('<span class="su-styled-text">brickvault_ca (1,234) 99.5%</span><span class="su-styled-text">Located in Canada</span>');
+    const seller = warnings.find((w) => w.startsWith('CARD_SELLER_SELECTOR_MISSED'));
+    expect(seller).toBeDefined();
+    expect(seller).toMatch(/2 of 2/);
+    expect(seller).toMatch(/336123456789/);
+    const location = warnings.find((w) => w.startsWith('CARD_LOCATION_SELECTOR_MISSED'));
+    expect(location).toBeDefined();
+    expect(warnings.some((w) => w.startsWith('CARD_SELLER_UNRENDERED'))).toBe(false);
+  });
+
+  it('says the template renders no seller line or location when no card carries either', () => {
+    const warnings = warningsFor('<span class="su-styled-text">Free shipping</span>');
+    const seller = warnings.find((w) => w.startsWith('CARD_SELLER_UNRENDERED'));
+    expect(seller).toBeDefined();
+    expect(seller).toMatch(/2 card\(s\)/);
+    expect(seller).toMatch(/item page/);
+    expect(warnings.find((w) => w.startsWith('CARD_LOCATION_UNRENDERED'))).toBeDefined();
+    expect(warnings.some((w) => w.startsWith('CARD_SELLER_SELECTOR_MISSED'))).toBe(false);
+  });
+
+  it('stays silent when the named elements read', () => {
+    const warnings = warningsFor('<span class="s-item__seller-info-text">brickvault_ca (1,234) 99.5%</span><span class="s-item__location">from Toronto, ON, Canada</span>');
+    expect(warnings.some((w) => /^CARD_(SELLER|LOCATION)_/.test(w))).toBe(false);
+  });
+});
