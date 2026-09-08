@@ -299,6 +299,16 @@ const DEFAULT_EBAY_CANDIDATE_FIELDS = [
 ] as const;
 
 /**
+ * The default search projection on a page that asked for sold/completed
+ * listings, or on which any row carries a sold caption: the calendar date
+ * the card states (2026-09-08 — a sold view rendered 247 rows and nothing in
+ * the compact row separated a comp from a live ask). A live page's default
+ * projection is unchanged, so 240 live rows do not carry 240 nulls; the
+ * verbatim caption (soldText) is available by naming it.
+ */
+const DEFAULT_EBAY_SOLD_SEARCH_FIELDS = [...DEFAULT_EBAY_CANDIDATE_FIELDS, 'soldAt'] as const;
+
+/**
  * A watch-list row carries what a triage of the operator's OWN list reads:
  * the countdown (what ends before the next fire), the card's state, the
  * seller, and any offer the seller sent — the row Track O reads first.
@@ -398,6 +408,13 @@ const PRESERVED_ROOT_FIELDS = [
   // unique rows against it instead of losing the stated figure.
   'statedCount',
   'statedCountSource',
+  // The eBay search page's sold/completed reading (2026-09-08): what the URL
+  // asked for and how many rows carry a sold caption. Compacting them away
+  // would turn "the sold view rendered with no sold row" back into "a page
+  // of comps".
+  'soldFilterRequested',
+  'completedFilterRequested',
+  'soldRowCount',
   // The watch list's category-filter rail: per-category URLs with their own
   // counts, the deterministic walk path the deals routine prefers over the
   // unstable ?page=N slices. Compacting it away would leave the walk with
@@ -622,6 +639,8 @@ export function compactSearchPage(
   }
 
   const pageKind = readString(source.pageKind);
+  const soldPage =
+    source.soldFilterRequested === true || (typeof source.soldRowCount === 'number' && source.soldRowCount > 0);
   const allowed =
     options.fields ??
     (site === 'kijiji'
@@ -632,7 +651,9 @@ export function compactSearchPage(
           ? DEFAULT_EBAY_WATCHLIST_FIELDS
           : pageKind === 'offers'
             ? DEFAULT_EBAY_OFFERS_FIELDS
-            : DEFAULT_EBAY_CANDIDATE_FIELDS);
+            : soldPage
+              ? DEFAULT_EBAY_SOLD_SEARCH_FIELDS
+              : DEFAULT_EBAY_CANDIDATE_FIELDS);
 
   // B3: a caller-named field that resolves to NO key on any scanned row —
   // directly or through an alias — is a typo or a wrong-profile name, and

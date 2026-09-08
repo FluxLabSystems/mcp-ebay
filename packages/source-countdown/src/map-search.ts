@@ -188,6 +188,10 @@ export function mapSearchRows(input: MapSearchRowsInput): Mapped<ApiListingCandi
       shippingSnippetServiceNamed: null,
       itemLocationText,
       isNewListing: null,
+      // API rows render no sold caption; `endedType` is the vendor's word on
+      // an ended row, and the item page decides.
+      soldText: null,
+      soldAt: null,
       order,
       shippingCost: shippingCost ?? null,
       priceRange,
