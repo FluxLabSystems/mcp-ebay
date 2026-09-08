@@ -150,6 +150,8 @@ export interface CompactKijijiAd {
   sellerListingsUrl: string | null;
   sellerListingCount: number | null;
   description: string | null;
+  /** The ad body the caller asked for (descriptionMaxChars); null unless requested and longer than the excerpt. */
+  descriptionFull: string | null;
   imageCount: number | null;
   listingStatus: string | null;
 }
@@ -175,6 +177,7 @@ export function compactKijijiAd(record: unknown): CompactKijijiAd {
     sellerListingsUrl: readString(ad.sellerListingsUrl),
     sellerListingCount: readNumber(ad.sellerListingCount),
     description: readString(ad.description),
+    descriptionFull: readString(ad.descriptionFull),
     imageCount: readNumber(ad.imageCount),
     listingStatus: readString(ad.listingStatus),
   };

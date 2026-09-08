@@ -92,7 +92,14 @@ describe('browser_extract dispatches by page kind instead of refusing', () => {
     expect(record.candidates[0]!.url).toContain('/itm/');
     // 2026-09-08: a search page that states no total and no pagination says
     // so, instead of returning a record with no such keys at all.
-    expect(parsed.warnings.map((w) => w.split(':')[0])).toEqual(['SEARCH_TOTAL_UNSTATED', 'SEARCH_PAGINATION_UNSTATED']);
+    expect(parsed.warnings.map((w) => w.split(':')[0])).toEqual([
+      'SEARCH_TOTAL_UNSTATED',
+      'SEARCH_PAGINATION_UNSTATED',
+      // 2026-09-08: the fixture's cards render neither a seller line nor a
+      // location, and the page says so rather than leaving the nulls mute.
+      'CARD_SELLER_UNRENDERED',
+      'CARD_LOCATION_UNRENDERED',
+    ]);
   });
 
   // 2026-09-07 deals fire (first full watched-seller drill-down, 36 sellers):

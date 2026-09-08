@@ -110,6 +110,60 @@ const CURRENCY_MARKER =
 const MONEY_RE = new RegExp(`${CURRENCY_MARKER}\\s?([\\d,]+(?:\\.\\d{1,2})?)`, 'gi');
 const APPROX_RE = new RegExp(`approx(?:imately|\\.)?\\s*${CURRENCY_MARKER}\\s?([\\d,]+(?:\\.\\d{1,2})?)`, 'i');
 
+/**
+ * What a bare "$" means on the marketplace a page was read from. The
+ * ebay.ca.v1 profile reads ebay.com pages too (the enterprise sweeps walk
+ * both), and on 2026-09-08 five items read on both marketplaces came back
+ * with .ca/.com price pairs of exactly 1.3814 — the run's USD→CAD rate —
+ * because a "$90.00" card on www.ebay.com took the .ca default and wore the
+ * CAD label. The host decides the default; an explicit marker ("C $",
+ * "US $") still wins inside parseMoney. The list is closed to the ISO codes
+ * MONEY_RE knows; any other host, and any unparseable URL, keeps the
+ * profile's CAD.
+ */
+export function marketplaceCurrencyFor(pageUrl: string): string {
+  let host: string;
+  try {
+    host = new URL(pageUrl).hostname.toLowerCase();
+  } catch {
+    return 'CAD';
+  }
+  const site = /(?:^|\.)ebay\.([a-z.]+)$/.exec(host)?.[1];
+  switch (site) {
+    case 'ca':
+      return 'CAD';
+    case 'com':
+      return 'USD';
+    case 'com.au':
+      return 'AUD';
+    case 'co.uk':
+      return 'GBP';
+    case 'ie':
+    case 'de':
+    case 'fr':
+    case 'it':
+    case 'es':
+    case 'nl':
+    case 'be':
+    case 'at':
+      return 'EUR';
+    case 'ch':
+      return 'CHF';
+    case 'com.hk':
+      return 'HKD';
+    case 'com.sg':
+      return 'SGD';
+    case 'com.mx':
+      return 'MXN';
+    case 'co.jp':
+      return 'JPY';
+    case 'cn':
+      return 'CNY';
+    default:
+      return 'CAD';
+  }
+}
+
 function currencyOfSymbol(rawSymbol: string, defaultCurrency: string): string {
   const symbol = rawSymbol.toUpperCase().replace(/\s/g, '');
   if (symbol === '$') return defaultCurrency;

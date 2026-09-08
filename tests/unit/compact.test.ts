@@ -220,6 +220,7 @@ describe('compact item records tolerate the record shape they are given', () => 
       sellerListingsUrl: 'https://www.kijiji.ca/o-profile/81273541/1',
       sellerListingCount: 12,
       description: 'Mixed bricks, no minifigs.',
+      descriptionFull: null,
       imageCount: 6,
       listingStatus: 'active',
     });

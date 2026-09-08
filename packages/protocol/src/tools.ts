@@ -202,6 +202,57 @@ export const ScreenshotOutput = z.strictObject({
   height: z.int(),
 });
 
+/** The most markup one browser_markup call returns, after redaction and whitespace collapse. */
+export const MARKUP_MAX_CHARS = 16_000;
+/**
+ * One element's outerHTML, bounded and redacted (2026-09-08, site-ebay
+ * offers-row-seller-misattributed-to-adjacent-row): three fires in a row
+ * could not pin the offers-page row boundary because nothing on the Bridge
+ * returned markup — a snapshot returns semantic nodes, a screenshot pixels,
+ * and the boundary is an element. This is the capture that closes such a
+ * report. Read-only, scoped to one elementRef of the current page revision.
+ * NOTE: a new tool changes the advertised tool list — a gateway redeploy
+ * plus a connector reconnect applies.
+ */
+export const MarkupInput = z.strictObject({
+  browserSessionHandle: z.string(),
+  tabId: z.string(),
+  /** A browser_snapshot elementRef of the current page revision. */
+  elementRef: z.string(),
+  /**
+   * Climb this many parent elements from the referenced element before
+   * serializing (0 = the element itself). A snapshot refs interactive and
+   * text nodes, never a row container, so the row an /itm/ link sits in is
+   * its link's ref plus the climb; `climbed` reports how far the climb got.
+   */
+  ancestors: z.int().min(0).max(8).default(0),
+  /** Where the returned markup is cut; `length` reports the full size so a cut is never silent. */
+  maxChars: z.int().min(200).max(MARKUP_MAX_CHARS).default(4000),
+});
+export const MarkupOutput = z.strictObject({
+  elementRef: z.string(),
+  pageRevision: z.int(),
+  /** Parent elements actually climbed (fewer than asked at the document root). */
+  climbed: z.int(),
+  /** Lower-case tag name of the serialized element. */
+  tagName: z.string(),
+  /**
+   * The element's outerHTML after redaction: script, style, template,
+   * noscript, iframe, object and embed descendants removed, svg contents
+   * emptied, every on* handler, style, srcset and value attribute dropped
+   * (form values are never returned), data: URLs replaced, runs of
+   * whitespace collapsed to one space, then cut at maxChars.
+   */
+  markup: z.string(),
+  /** Characters the redacted markup had before the cut. */
+  length: z.int(),
+  truncated: z.boolean(),
+  /** Attributes dropped by redaction. */
+  redactedAttributes: z.int(),
+  /** Descendant elements removed or emptied by redaction. */
+  redactedElements: z.int(),
+});
+
 export const ImagesInput = z.strictObject({
   browserSessionHandle: z.string(),
   tabId: z.string(),
@@ -704,6 +755,17 @@ export const ExtractInput = z.strictObject({
    * SearchCompactionInput for what it does when present.
    */
   search: SearchCompactionInput.optional(),
+  /**
+   * kijiji.ca.v1 ad (VIP) pages only: also return the ad body under
+   * `descriptionFull`, whitespace-collapsed and cut at this many characters
+   * (500..6000), beside the 500-character `description` excerpt, which keeps
+   * its bound (2026-09-08: on identified-set and minifigure lots the cut
+   * text was the valuation basis). Omitted, nothing changes; ignored on
+   * every other page kind and profile. NOTE: adding this field changed the
+   * advertised tool schema — a gateway redeploy plus a connector reconnect
+   * applies.
+   */
+  descriptionMaxChars: z.int().min(500).max(6000).optional(),
 });
 export const ExtractOutput = z.strictObject({
   siteProfile: z.string(),
@@ -746,6 +808,17 @@ export const OpenAndExtractInput = z.strictObject({
    * Ignored on item/ad pages, which have no candidate list to reduce.
    */
   search: SearchCompactionInput.optional(),
+  /**
+   * kijiji.ca.v1 ad (VIP) pages only: also return the ad body under
+   * `descriptionFull`, whitespace-collapsed and cut at this many characters
+   * (500..6000), beside the 500-character `description` excerpt, which keeps
+   * its bound (2026-09-08: on identified-set and minifigure lots the cut
+   * text was the valuation basis). Omitted, nothing changes; ignored on
+   * every other page kind and profile. NOTE: adding this field changed the
+   * advertised tool schema — a gateway redeploy plus a connector reconnect
+   * applies.
+   */
+  descriptionMaxChars: z.int().min(500).max(6000).optional(),
 });
 export const OpenAndExtractOutput = z.strictObject({
   siteProfile: z.string(),
@@ -868,6 +941,17 @@ export const ExtractManyInput = z.strictObject({
    * runs out of budget returns status 'partial' rather than timing out.
    */
   mode: z.enum(['auto', 'inline', 'job']).default('auto'),
+  /**
+   * kijiji.ca.v1 ad (VIP) pages only: also return the ad body under
+   * `descriptionFull`, whitespace-collapsed and cut at this many characters
+   * (500..6000), beside the 500-character `description` excerpt, which keeps
+   * its bound (2026-09-08: on identified-set and minifigure lots the cut
+   * text was the valuation basis). Omitted, nothing changes; ignored on
+   * every other page kind and profile. NOTE: adding this field changed the
+   * advertised tool schema — a gateway redeploy plus a connector reconnect
+   * applies.
+   */
+  descriptionMaxChars: z.int().min(500).max(6000).optional(),
 });
 export const ExtractManyOutput = z.strictObject(BatchExtractProgressShape);
 

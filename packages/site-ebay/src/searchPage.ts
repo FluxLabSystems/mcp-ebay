@@ -219,6 +219,7 @@ export function extractSearchPageMeta(input: SearchPageMetaInput): SearchPageMet
     }
   }
 
+  pushCardProvenanceWarnings(candidates, kindLabel, warnings);
   return {
     totalResults,
     totalCountSource,
@@ -231,4 +232,46 @@ export function extractSearchPageMeta(input: SearchPageMetaInput): SearchPageMet
     requestedPage,
     sellerQuery,
   };
+}
+
+/**
+ * Whether the cards' seller and location came from a known element, from
+ * the card text, or from nowhere — the page-level distinction the 2026-09-08
+ * deals fire asked for after CANDIDATE_FIELDS_NULL named seller and location
+ * null on 240 of 240 rows of three broad /sch/ pages: "this template renders
+ * no seller line" and "the selector missed" call for different fixes, and
+ * the null counts alone cannot tell them apart. Rows read from the text are
+ * a selector to pin (the values stand, as traversal hints); a page of nulls
+ * with no seller-shaped text renders none, and the item page is the read.
+ */
+function pushCardProvenanceWarnings(candidates: readonly ListingCandidate[], kindLabel: string, warnings: string[]): void {
+  const rendered = candidates.length;
+  if (rendered === 0) return;
+  const idsOf = (rows: readonly ListingCandidate[]): string =>
+    `${rows
+      .slice(0, 5)
+      .map((row) => row.itemId)
+      .join(', ')}${rows.length > 5 ? ', …' : ''}`;
+
+  const sellerFromText = candidates.filter((row) => row.sellerSource === 'text');
+  if (sellerFromText.length > 0) {
+    warnings.push(
+      `CARD_SELLER_SELECTOR_MISSED: ${sellerFromText.length} of ${rendered} card(s) on this ${kindLabel} read their seller from the card text ("login_id (count) percent"), not from a seller-info element the extractor knows (ids: ${idsOf(sellerFromText)}) — the template renders a seller line under an element the selectors miss. The values stand as traversal hints (the item page's seller still decides); capture ONE such card (browser_snapshot, maxNodes 60, scrolled to the row) and file it under search-card-seller-and-location-null-on-every-row-of-a-broad-sch-page so the selector can be pinned.`,
+    );
+  } else if (candidates.every((row) => row.seller === null)) {
+    warnings.push(
+      `CARD_SELLER_UNRENDERED: seller is null on all ${rendered} card(s) of this ${kindLabel} and no card's text carries a seller line ("login_id (count) percent"), so this template renders no seller on the card — not a selector miss. The seller is read from the item page (browser_extract_many over the shortlist), and any same-seller rule can only run after those pages are opened.`,
+    );
+  }
+
+  const locationFromText = candidates.filter((row) => row.itemLocationSource === 'text');
+  if (locationFromText.length > 0) {
+    warnings.push(
+      `CARD_LOCATION_SELECTOR_MISSED: ${locationFromText.length} of ${rendered} card(s) on this ${kindLabel} read their location from the card text ("from <place>", "Located in <place>"), not from a location element the extractor knows (ids: ${idsOf(locationFromText)}) — a selector to pin from the same card capture as CARD_SELLER_SELECTOR_MISSED; the values stand as traversal hints and the item page's location decides.`,
+    );
+  } else if (candidates.every((row) => row.itemLocationText === null)) {
+    warnings.push(
+      `CARD_LOCATION_UNRENDERED: itemLocationText is null on all ${rendered} card(s) of this ${kindLabel} and no card's text carries a location phrase, so this template renders no location on the card — not a selector miss; the item page states the item location.`,
+    );
+  }
 }

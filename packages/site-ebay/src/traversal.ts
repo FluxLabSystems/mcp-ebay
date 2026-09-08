@@ -4,7 +4,7 @@
  * traversal hints only and are never accepted as canonical listing
  * evidence (§20.2).
  */
-import { cleanTitle, itemIdFromUrl, parseMoney } from './normalize.js';
+import { cleanTitle, itemIdFromUrl, marketplaceCurrencyFor, parseMoney } from './normalize.js';
 import type { SellingFormatKind } from './record.js';
 
 export interface ListingCandidate {
@@ -59,6 +59,8 @@ export interface ListingCandidate {
    */
   shippingSnippetServiceNamed: boolean | null;
   itemLocationText: string | null;
+  /** How `itemLocationText` was read: a location element, the "from <place>" / "Located in <place>" phrase in the card text, or not at all. */
+  itemLocationSource: 'element' | 'text' | 'api' | null;
   /** The badge cleanTitle strips out of the title, kept as a flag. */
   isNewListing: boolean;
   /**
@@ -92,6 +94,17 @@ export interface ListingCandidate {
    * hint like every other card field; the item page's seller decides.
    */
   seller: string | null;
+  /**
+   * How `seller` was read: 'element' from a seller-info element the
+   * extractor knows, 'text' from the "login_id (count) percent" run in the
+   * card's text when no such element matched (2026-09-08: seller null on
+   * 240 of 240 rows of three broad /sch/ pages whose template is
+   * NEEDS-LIVE-VERIFICATION), null when the card states no seller either
+   * way. A page whose rows read 'text' is a selector to pin
+   * (CARD_SELLER_SELECTOR_MISSED); a page of nulls renders no seller line
+   * (CARD_SELLER_UNRENDERED).
+   */
+  sellerSource: 'element' | 'text' | 'api' | null;
   /**
    * Where the row sits on the results page: 'primary' above eBay's
    * "Results matching fewer words" divider, 'rewrite' below it, where the
@@ -162,10 +175,72 @@ const REWRITE_DIVIDER_TEXT_RE = /^results\s+matching\s+fewer\s+words\b/i;
  * 2026-09-07).
  */
 export function readCardSeller(card: Element): string | null {
-  const text = cardText(card, CARD_SELLER_SELECTOR);
-  if (text === null) return null;
-  const match = CARD_SELLER_RE.exec(text);
-  return match === null ? null : match[1]!;
+  return readCardSellerWithSource(card, null).seller;
+}
+
+/**
+ * The seller run as a card's text carries it when no seller-info element
+ * matched: "login_id (1,234) 99.5%" — the login id, the feedback count in
+ * parentheses and the positive-feedback percentage. The three together are
+ * the signature; a title's last word is never followed by "(count) percent",
+ * and the title is stripped first regardless.
+ */
+const CARD_SELLER_TEXT_RE = /(?:^|\s)([A-Za-z0-9][A-Za-z0-9._*-]{1,63})\s*\(\s*[\d,]+\s*\)\s*\d{1,3}(?:\.\d+)?%/;
+
+/**
+ * `seller` and where it came from. The named element wins; when none
+ * matched, the card's own text is read for the seller run (2026-09-08:
+ * three broad /sch/ pages returned seller null on every one of 240 rows —
+ * whether the live template renders the line under an element the
+ * selectors do not know, or renders none, is what the source tells the
+ * page-level reader). NEEDS-LIVE-VERIFICATION: no broad-page card has been
+ * captured; the fallback pins the text shape, not an element.
+ */
+export function readCardSellerWithSource(
+  card: Element,
+  rawTitle: string | null,
+): { seller: string | null; source: 'element' | 'text' | null } {
+  const elementText = cardText(card, CARD_SELLER_SELECTOR);
+  if (elementText !== null) {
+    const match = CARD_SELLER_RE.exec(elementText);
+    if (match !== null) return { seller: match[1]!, source: 'element' };
+  }
+  const fromText = CARD_SELLER_TEXT_RE.exec(textWithoutTitle(card, rawTitle));
+  if (fromText !== null) return { seller: fromText[1]!, source: 'text' };
+  return { seller: null, source: null };
+}
+
+/**
+ * The location phrase as a card's text renders it when no location element
+ * matched: "from United States", "Located in Canada", "Ships from
+ * Mississauga, ON, Canada". The place must start with a capital letter so
+ * that a title's "lot from my collection" (already stripped) or a shipping
+ * line's "from" never reads as a location. NEEDS-LIVE-VERIFICATION, as the
+ * seller run above.
+ */
+const CARD_LOCATION_TEXT_RE =
+  /\b((?:[Ll]ocated in|[Ss]hips from|[Ff]rom)\s+[A-Z][A-Za-z.'-]*(?:,?\s+(?:[A-Z][A-Za-z.'-]*|ON|QC|BC|AB|MB|SK|NS|NB|PE|NL|YT|NT|NU))*)/;
+
+/** `itemLocationText` and where it came from: a known element, the card's text, or nowhere. */
+export function readCardLocationWithSource(
+  card: Element,
+  rawTitle: string | null,
+): { text: string | null; source: 'element' | 'text' | null } {
+  const elementText = cardText(card, CARD_LOCATION_SELECTOR);
+  if (elementText !== null) return { text: elementText, source: 'element' };
+  // The seller run is stripped first: "from United States Lego_Lover99 (87)
+  // 100%" must not read the login id's capitalised head as part of the place.
+  const blob = textWithoutTitle(card, rawTitle).replace(CARD_SHIPPING_PHRASE_RE, ' ').replace(CARD_SELLER_TEXT_RE, ' ');
+  const match = CARD_LOCATION_TEXT_RE.exec(blob);
+  if (match !== null) return { text: normalizeText(match[1]!), source: 'text' };
+  return { text: null, source: null };
+}
+
+/** The card's spaced text with the title removed, so a title never supplies a seller or a place. */
+function textWithoutTitle(card: Element, rawTitle: string | null): string {
+  let text = spacedText(card);
+  if (rawTitle !== null && rawTitle.length > 0) text = text.split(rawTitle).join(' ');
+  return text;
 }
 
 /**
@@ -301,11 +376,9 @@ const CARD_SHIPPING_TEXT_RE =
  * is the current price; that is the extent of the claim, and the value is
  * a traversal hint the item page still decides.
  */
-function priceFromCardText(card: Element, rawTitle: string | null): ReturnType<typeof parseMoney> {
-  let text = spacedText(card);
-  if (rawTitle !== null && rawTitle.length > 0) text = text.split(rawTitle).join(' ');
-  text = text.replace(CARD_SHIPPING_PHRASE_RE, ' ');
-  return parseMoney(text);
+function priceFromCardText(card: Element, rawTitle: string | null, defaultCurrency: string): ReturnType<typeof parseMoney> {
+  const text = textWithoutTitle(card, rawTitle).replace(CARD_SHIPPING_PHRASE_RE, ' ');
+  return parseMoney(text, defaultCurrency);
 }
 
 function shippingFromCardText(card: Element): string | null {
@@ -324,12 +397,15 @@ const SHIPPING_SERVICE_NAMED_RE =
   /\b(?:ups|usps|fedex|dhl|purolator|canpar|canada\s+post|expedited|economy|standard|priority|express|ground|first[\s-]class|worldwide|international\s+(?:priority|express|economy|standard))\b/i;
 
 /** The amount a shipping snippet states and whether it names a service; both null without a snippet. */
-export function readShippingSnippet(shippingSnippetText: string | null): {
+export function readShippingSnippet(
+  shippingSnippetText: string | null,
+  defaultCurrency = 'CAD',
+): {
   amount: { value: number; currency: string } | null;
   serviceNamed: boolean | null;
 } {
   if (shippingSnippetText === null) return { amount: null, serviceNamed: null };
-  const parsed = parseMoney(shippingSnippetText);
+  const parsed = parseMoney(shippingSnippetText, defaultCurrency);
   return {
     amount: parsed === null ? null : { value: parsed.value, currency: parsed.currency },
     serviceNamed: SHIPPING_SERVICE_NAMED_RE.test(shippingSnippetText),
@@ -527,6 +603,10 @@ export function extractListingCandidates(document: Document, pageUrl: string): L
   const seen = new Set<string>();
   const candidates: ListingCandidate[] = [];
   const rewriteAnchors = anchorsBelowRewriteDivider(document);
+  // A bare "$" on the card is the page host's currency: USD on www.ebay.com,
+  // CAD on www.ebay.ca (2026-09-08: .com cards wore the CAD label at the USD
+  // figure, 38% under the landed cost, on every enterprise sweep).
+  const marketplaceCurrency = marketplaceCurrencyFor(pageUrl);
   for (const selector of RESULT_LINK_SELECTOR_GROUPS) {
     let anchors: Element[];
     try {
@@ -556,12 +636,14 @@ export function extractListingCandidates(document: Document, pageUrl: string): L
       // empty string here would split the format blob character by character.
       const rawTitle = cardText(card, CARD_TITLE_SELECTOR) ?? (anchorText.length > 0 ? anchorText : null);
       const titleText = rawTitle === null ? null : cleanTitle(rawTitle);
-      const elementPrice = parseMoney(cardText(card, CARD_PRICE_SELECTOR) ?? '');
-      const textPrice = elementPrice === null ? priceFromCardText(card, rawTitle) : null;
+      const elementPrice = parseMoney(cardText(card, CARD_PRICE_SELECTOR) ?? '', marketplaceCurrency);
+      const textPrice = elementPrice === null ? priceFromCardText(card, rawTitle, marketplaceCurrency) : null;
       const parsedPrice = elementPrice ?? textPrice;
       const { sellingFormat, bidCount } = detectCardFormat(card, rawTitle, parsedPrice !== null);
       const shippingSnippetText = cardText(card, CARD_SHIPPING_SELECTOR) ?? shippingFromCardText(card);
-      const shippingSnippet = readShippingSnippet(shippingSnippetText);
+      const shippingSnippet = readShippingSnippet(shippingSnippetText, marketplaceCurrency);
+      const sellerRead = readCardSellerWithSource(card, rawTitle);
+      const locationRead = readCardLocationWithSource(card, rawTitle);
 
       candidates.push({
         itemId,
@@ -574,10 +656,12 @@ export function extractListingCandidates(document: Document, pageUrl: string): L
         shippingSnippetText,
         shippingSnippetAmount: shippingSnippet.amount,
         shippingSnippetServiceNamed: shippingSnippet.serviceNamed,
-        itemLocationText: cardText(card, CARD_LOCATION_SELECTOR),
+        itemLocationText: locationRead.text,
+        itemLocationSource: locationRead.source,
         isNewListing: isNewListingCard(card, rawTitle),
         ...readSoldCaption(card, rawTitle),
-        seller: readCardSeller(card),
+        seller: sellerRead.seller,
+        sellerSource: sellerRead.source,
         matchScope: rewriteAnchors.has(anchor) ? 'rewrite' : 'primary',
         order: candidates.length,
       });

@@ -35,7 +35,7 @@ export type RetrievedUnder = 'buy_it_now' | 'auction' | 'accepts_offers' | 'unfi
 // than nulled: `seller` on a card is a rendered seller-info element (the API
 // row carries sellerName instead) and `matchScope` is a position on a
 // rendered results page.
-export interface ApiListingCandidate extends Omit<ListingCandidate, 'isNewListing' | 'seller' | 'matchScope'> {
+export interface ApiListingCandidate extends Omit<ListingCandidate, 'isNewListing' | 'seller' | 'sellerSource' | 'matchScope'> {
   /** API rows carry no badge; the compactor tolerates null. */
   isNewListing: boolean | null;
   /** `shipping_cost` as a number; null when the card showed nothing the vendor could read. Never inferred as free. */
@@ -191,6 +191,7 @@ export function mapSearchRows(input: MapSearchRowsInput): Mapped<ApiListingCandi
       shippingSnippetAmount: null,
       shippingSnippetServiceNamed: null,
       itemLocationText,
+      itemLocationSource: itemLocationText === null ? null : 'api',
       isNewListing: null,
       // API rows render no sold caption; `endedType` is the vendor's word on
       // an ended row, and the item page decides.

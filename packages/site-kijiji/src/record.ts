@@ -6,6 +6,11 @@
  */
 import * as z from 'zod/v4';
 
+/** The record's own untrusted-data bound on the description excerpt. */
+export const KIJIJI_DESCRIPTION_EXCERPT_CHARS = 500;
+/** The most a caller may ask for under descriptionFull (descriptionMaxChars). */
+export const KIJIJI_DESCRIPTION_MAX_CHARS = 6000;
+
 export const KijijiFieldSourceSchema = z.enum(['dom', 'jsonld', 'meta', 'computed']);
 export type KijijiFieldSource = z.infer<typeof KijijiFieldSourceSchema>;
 
@@ -76,9 +81,26 @@ export const KijijiExtractionRecordSchema = z.strictObject({
   /** Description excerpt, whitespace-collapsed and capped at 500 chars. */
   description: z
     .strictObject({
-      value: z.string().max(500),
+      value: z.string().max(KIJIJI_DESCRIPTION_EXCERPT_CHARS),
       source: KijijiFieldSourceSchema,
       confidence: z.number().min(0).max(1),
+    })
+    .nullable(),
+  /**
+   * The ad body on request (2026-09-08, ad-description-truncated-at-500-
+   * chars-withholds-the-valuation-basis): present only when the caller
+   * asked for `descriptionMaxChars` AND the body exceeds the excerpt —
+   * whitespace-collapsed and cut at the requested cap (`maxChars`, at most
+   * KIJIJI_DESCRIPTION_MAX_CHARS). The 500-character excerpt keeps its
+   * bound; this is a second, caller-bounded read of the same untrusted text,
+   * never a default. Null otherwise.
+   */
+  descriptionFull: z
+    .strictObject({
+      value: z.string().max(KIJIJI_DESCRIPTION_MAX_CHARS),
+      source: KijijiFieldSourceSchema,
+      confidence: z.number().min(0).max(1),
+      maxChars: z.int().min(KIJIJI_DESCRIPTION_EXCERPT_CHARS).max(KIJIJI_DESCRIPTION_MAX_CHARS),
     })
     .nullable(),
   attributes: z.array(

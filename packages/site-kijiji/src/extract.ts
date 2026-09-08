@@ -11,11 +11,23 @@
  */
 import { isKijijiAdImageUrl, KIJIJI_GALLERY_SELECTORS, normalizeKijijiImageUrl } from './gallery.js';
 import { adIdFromUrl, canonicalAdUrl, parseKijijiPrice } from './normalize.js';
-import type { KijijiExtractionRecord, KijijiFieldSource, KijijiListingStatus } from './record.js';
+import {
+  KIJIJI_DESCRIPTION_EXCERPT_CHARS,
+  KIJIJI_DESCRIPTION_MAX_CHARS,
+  type KijijiExtractionRecord,
+  type KijijiFieldSource,
+  type KijijiListingStatus,
+} from './record.js';
 
 export interface KijijiExtractContext {
   observedAt?: Date;
   pageRevision?: number;
+  /**
+   * The caller asked for the ad body under `descriptionFull`, cut at this
+   * many characters (500..KIJIJI_DESCRIPTION_MAX_CHARS). Absent, the record
+   * carries only the 500-character excerpt.
+   */
+  descriptionMaxChars?: number;
 }
 
 export interface KijijiExtractOutcome {
@@ -560,7 +572,18 @@ const MLS_SYNDICATION_RE = /\(id:\s*\d+\)\s*(?:MLS\s*#?\s*[A-Z]?\d{5,})?|\bMLS\s
 const MLS_CATEGORY_PATH_RE = /\/v-commercial-office-space\//i;
 
 function excerpt(raw: string): string {
-  return raw.replace(/\s+/g, ' ').trim().slice(0, 500);
+  return collapse(raw).slice(0, KIJIJI_DESCRIPTION_EXCERPT_CHARS);
+}
+
+function collapse(raw: string): string {
+  return raw.replace(/\s+/g, ' ').trim();
+}
+
+/** The caller's descriptionMaxChars, clamped into the bound the record schema enforces; null when not asked. */
+function requestedDescriptionChars(context: KijijiExtractContext): number | null {
+  const asked = context.descriptionMaxChars;
+  if (typeof asked !== 'number' || !Number.isFinite(asked)) return null;
+  return Math.min(KIJIJI_DESCRIPTION_MAX_CHARS, Math.max(KIJIJI_DESCRIPTION_EXCERPT_CHARS, Math.floor(asked)));
 }
 
 export function extractKijijiListing(
@@ -913,16 +936,42 @@ export function extractKijijiListing(
   // named only for an ad in the commercial-office category the office
   // routine walks, or whose body carries a brokerage syndication reference;
   // every other category gets the category-neutral cap and screenshot remedy.
+  // 2026-09-08 deals fire (ad-description-truncated-at-500-chars-withholds-
+  // the-valuation-basis): 13 of 35 opened ads were cut, and on identified-
+  // set and minifigure lots the cut text IS what the routine values on
+  // (1743100906: 500 of 5,174 characters — the set list). The excerpt keeps
+  // its bound; a caller who says the body matters asks for it, bounded, and
+  // gets it under its own field. The warning names that opt-in first.
+  let descriptionFull: KijijiExtractionRecord['descriptionFull'] = null;
+  const requestedChars = requestedDescriptionChars(context);
   if (descriptionBody !== null) {
-    const collapsedLength = descriptionBody.replace(/\s+/g, ' ').trim().length;
-    if (collapsedLength > 500) {
+    const collapsed = collapse(descriptionBody);
+    const collapsedLength = collapsed.length;
+    if (collapsedLength > KIJIJI_DESCRIPTION_EXCERPT_CHARS && requestedChars !== null && description !== null) {
+      descriptionFull = {
+        value: collapsed.slice(0, requestedChars),
+        source: description.source,
+        confidence: description.confidence,
+        maxChars: requestedChars,
+      };
+    }
+    const returnedChars = descriptionFull === null ? KIJIJI_DESCRIPTION_EXCERPT_CHARS : descriptionFull.maxChars;
+    if (collapsedLength > returnedChars) {
       const realEstate =
         MLS_CATEGORY_PATH_RE.test(canonicalUrl?.value ?? pageUrl) || MLS_SYNDICATION_RE.test(descriptionBody);
       const remedy = realEstate
         ? 'the terms the cut may hide (square footage, TMI, lease structure) are read from the MLS record the ad syndicates (realtor.ca, on the office-sources.v1 roster) or from a browser_screenshot of the description after clicking Show More'
         : 'whatever the cut hides is read from a browser_screenshot of the description after clicking Show More';
+      const optIn =
+        descriptionFull === null
+          ? `The excerpt is the whole ad text the Bridge returns unless asked for more: when the body decides the ad's value (a set list, a figure count), re-extract with descriptionMaxChars (up to ${KIJIJI_DESCRIPTION_MAX_CHARS}) to get it under descriptionFull; otherwise`
+          : `descriptionFull carries the first ${returnedChars} characters as asked (descriptionMaxChars, at most ${KIJIJI_DESCRIPTION_MAX_CHARS}); for the rest`;
+      const bound =
+        descriptionFull === null
+          ? `the description excerpt is capped at ${KIJIJI_DESCRIPTION_EXCERPT_CHARS} characters`
+          : `descriptionFull is cut at the ${returnedChars} characters requested`;
       warnings.push(
-        `DESCRIPTION_TRUNCATED: the description excerpt is capped at 500 characters and the ad body is ${collapsedLength} characters (whitespace-collapsed) — the excerpt ends mid-text, so do not read it as the whole ad. The excerpt is the whole ad text the Bridge returns: browser_snapshot carries interactive elements and short money-bearing text, never description prose, so ${remedy}; when that is not available the field stays unresolved`,
+        `DESCRIPTION_TRUNCATED: ${bound} and the ad body is ${collapsedLength} characters (whitespace-collapsed) — the text ends mid-ad, so do not read it as the whole ad. ${optIn}: browser_snapshot carries interactive elements and short money-bearing text, never description prose, so ${remedy}; when that is not available the field stays unresolved`,
       );
     }
   }
@@ -1001,6 +1050,7 @@ export function extractKijijiListing(
     sellerListingsUrl,
     sellerListingCount,
     description,
+    descriptionFull,
     attributes,
     imageCount,
     listingStatus: detectKijijiListingStatus(document),

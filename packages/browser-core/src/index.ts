@@ -4,6 +4,7 @@ export * from './session.js';
 export * from './snapshot.js';
 export * from './actions.js';
 export * from './screenshot.js';
+export * from './markup.js';
 export * from './images.js';
 export * from './wait.js';
 export * from './consent.js';

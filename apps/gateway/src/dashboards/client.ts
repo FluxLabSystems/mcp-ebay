@@ -133,18 +133,46 @@ function readPath(listing: Record<string, unknown>, field: string): unknown {
 }
 
 /**
- * The API's `unresolvedFields` — requested names no record on the page
- * carries — as the warning the extract tools already use for the same
- * situation. A projection that quietly returns bare ids is a read the caller
- * cannot tell from "those records hold nothing", which is exactly what the
- * 2026-09-07 deals fire could not tell.
+ * The API's `unresolvedFields` — requested names no record on the PAGE
+ * carries — as warnings, in two grades. `unresolvedInScope` (dashboard-api,
+ * 2026-09-08) is the subset that resolves on no record of the scope in any
+ * state: those are spelled wrong or not stored, UNKNOWN_FIELDS_IGNORED. The
+ * rest are stored somewhere and merely absent from this page —
+ * FIELDS_ABSENT_ON_PAGE, which the 2026-09-08 deals fire needed: page 2 of a
+ * read carried no operatorFeedback on any of 301 records, the one-grade
+ * warning said "not stored on this scope", and the fire reported a
+ * correctness defect that did not exist. An API without `unresolvedInScope`
+ * gets the page-only wording, which claims nothing about the scope. A
+ * projection that quietly returns bare ids stays a read the caller cannot
+ * tell from "those records hold nothing" (the 2026-09-07 case).
  */
-function unknownFieldsWarning(root: Record<string, unknown>): string | null {
-  const unresolved = Array.isArray(root.unresolvedFields)
-    ? root.unresolvedFields.filter((name): name is string => typeof name === 'string')
-    : [];
-  if (unresolved.length === 0) return null;
-  return `UNKNOWN_FIELDS_IGNORED: ${unresolved.map((name) => `"${name}"`).join(', ')} resolved on no record of this page — a dotted path (analysis.fairValueCad) walks nested objects; a name absent from every returned record is spelled wrong or is not stored on this scope`;
+function projectionWarnings(root: Record<string, unknown>): string[] {
+  const names = (value: unknown): string[] | null =>
+    Array.isArray(value) ? value.filter((name): name is string => typeof name === 'string') : null;
+  const unresolved = names(root.unresolvedFields) ?? [];
+  if (unresolved.length === 0) return [];
+  const quote = (list: string[]): string => list.map((name) => `"${name}"`).join(', ');
+  const returned = typeof root.returned === 'number' ? root.returned : null;
+  const inScope = names(root.unresolvedInScope);
+  if (inScope === null) {
+    return [
+      `UNKNOWN_FIELDS_IGNORED: ${quote(unresolved)} resolved on no record of THIS PAGE — which says nothing about the scope: a stored field is absent from every record of a sparse page (operatorFeedback on a page carrying no decisions, 2026-09-08), and a misspelled or never-stored name resolves on no page; a dotted path (analysis.fairValueCad) walks nested objects. This API answers per page only, so read a page that carries the field, or a smaller projection, before concluding the scope does not store it`,
+    ];
+  }
+  const unknown = unresolved.filter((name) => inScope.includes(name));
+  const sparse = unresolved.filter((name) => !inScope.includes(name));
+  const warnings: string[] = [];
+  if (unknown.length > 0) {
+    warnings.push(
+      `UNKNOWN_FIELDS_IGNORED: ${quote(unknown)} resolved on no record of this scope (any state, any page) — a dotted path (analysis.fairValueCad) walks nested objects; a name absent from every record of the scope is spelled wrong or is not stored on it`,
+    );
+  }
+  if (sparse.length > 0) {
+    warnings.push(
+      `FIELDS_ABSENT_ON_PAGE: ${quote(sparse)} ${sparse.length === 1 ? 'is' : 'are'} stored on this scope but carried by no record on this page${returned === null ? '' : ` (${returned} record(s))`} — not evidence that the field does not exist; the records that carry it sit on other pages of this read, and an operator decision stored there is still a decision to honour`,
+    );
+  }
+  return warnings;
 }
 
 function statusOf(listing: Record<string, unknown>): string | null {
@@ -299,8 +327,8 @@ export class DashboardClient {
       query: Object.fromEntries(query),
     });
     const listings = Array.isArray(root.listings) ? (root.listings as Record<string, unknown>[]) : [];
-    const warning = unknownFieldsWarning(root);
-    return { ...root, dashboard, listings, ...(warning === null ? {} : { warnings: [warning] }) };
+    const warnings = projectionWarnings(root);
+    return { ...root, dashboard, listings, ...(warnings.length === 0 ? {} : { warnings }) };
   }
 
   /** Counts only, GET /v1/{scope}/summary — no records at all. */

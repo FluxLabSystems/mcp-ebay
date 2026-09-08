@@ -443,3 +443,110 @@ describe('sold/completed-search rows state their sold date (2026-09-08)', () => 
     expect(candidate?.soldAt).toBeNull();
   });
 });
+
+// 2026-09-08 deals fire (site-ebay+extractor_defect+ebay-com-search-card-
+// prices-are-usd-but-labelled-cad): five items read on both marketplaces
+// came back with .ca/.com price pairs of exactly 1.3814 — the run's USD→CAD
+// rate — because a bare "$" on a www.ebay.com card took the .ca default and
+// wore the CAD label. The marketplace the page was read from decides what a
+// bare "$" means; an explicit marker still wins.
+describe('a bare "$" is the marketplace currency of the page host (2026-09-08)', () => {
+  const card = (host: string, price: string) =>
+    parseHTML(
+      `<ul class="srp-results"><li class="s-item">
+         <a class="s-item__link" href="https://www.${host}/itm/237045332620">Mellanox SX6036 36-port 40GbE QSFP+ switch</a>
+         <span class="s-item__price">${price}</span>
+         <span class="s-item__shipping">+$26.79 shipping</span>
+       </li></ul>`,
+    ).document as unknown as Document;
+  const COM = 'https://www.ebay.com/sch/i.html?_nkw=40GbE+QSFP%2B+switch&_sop=15&_ipg=240';
+  const CA = 'https://www.ebay.ca/sch/i.html?_nkw=40GbE+QSFP%2B+switch&_sop=15&_ipg=240';
+
+  it('reads "$90.00" on www.ebay.com as USD, shipping included', () => {
+    const [candidate] = extractListingCandidates(card('ebay.com', '$90.00'), COM);
+    expect(candidate?.snippetPrice).toEqual({ value: 90, currency: 'USD' });
+    expect(candidate?.shippingSnippetAmount).toEqual({ value: 26.79, currency: 'USD' });
+  });
+
+  it('keeps "$124.33" on www.ebay.ca as CAD', () => {
+    const [candidate] = extractListingCandidates(card('ebay.ca', '$124.33'), CA);
+    expect(candidate?.snippetPrice).toEqual({ value: 124.33, currency: 'CAD' });
+    expect(candidate?.shippingSnippetAmount).toEqual({ value: 26.79, currency: 'CAD' });
+  });
+
+  it('an explicit marker beats the marketplace default on either host', () => {
+    const [onCom] = extractListingCandidates(card('ebay.com', 'C $124.33'), COM);
+    expect(onCom?.snippetPrice).toEqual({ value: 124.33, currency: 'CAD' });
+    const [onCa] = extractListingCandidates(card('ebay.ca', 'US $90.00'), CA);
+    expect(onCa?.snippetPrice).toEqual({ value: 90, currency: 'USD' });
+  });
+
+  it('the text-fallback price takes the same default', () => {
+    const { document } = parseHTML(
+      `<div class="srp-river-results"><div class="su-card-container">
+         <a class="su-link" href="https://www.ebay.com/itm/167300287674"><img src="x.jpg"></a>
+         <span class="s-card__title">Arista DCS-7050QX-32S 32-port 40GbE switch</span>
+         <span class="su-styled-text">$105.00</span>
+       </div></div>`,
+    );
+    const [candidate] = extractListingCandidates(document as unknown as Document, COM);
+    expect(candidate?.snippetPriceSource).toBe('text');
+    expect(candidate?.snippetPrice).toEqual({ value: 105, currency: 'USD' });
+  });
+});
+
+// 2026-09-08 deals fire (site-ebay+extractor_defect+search-card-seller-and-
+// location-null-on-every-row-of-a-broad-sch-page): CANDIDATE_FIELDS_NULL named
+// seller null on 240 of 240 rows and location null on 240 of 240 on three
+// broad keyword pages while price and bidCount read. The named element
+// selectors are the classic template's; when the card's text still carries
+// the seller line ("login_id (1,234) 99.5%") or the location phrase ("from
+// United States", "Located in Canada"), that is read, and the row says which
+// path produced it. NEEDS-LIVE-VERIFICATION: the wrapping element on the
+// live template is unknown — no broad-page card has been captured.
+describe('card seller and location fall back to the card text and say so (2026-09-08)', () => {
+  const BROAD = 'https://www.ebay.ca/sch/i.html?_nkw=lego+minifigure+lot&_sop=10&_ipg=240';
+  const page = (attributes: string) =>
+    parseHTML(
+      `<div class="srp-river-results"><div class="su-card-container">
+         <a class="su-link" href="https://www.ebay.ca/itm/336123456789"><img src="x.jpg"></a>
+         <span class="s-card__title">LEGO minifigure lot 40 figures</span>
+         <span class="s-card__price">C $59.99</span>
+         <div class="su-card-container__attributes">${attributes}</div>
+       </div></div>`,
+    ).document as unknown as Document;
+
+  it('reads the seller line and the location phrase out of an unknown template', () => {
+    const [candidate] = extractListingCandidates(
+      page('<span class="su-styled-text">brickvault_ca (1,234) 99.5%</span><span class="su-styled-text">Located in Canada</span>'),
+      BROAD,
+    );
+    expect(candidate?.seller).toBe('brickvault_ca');
+    expect(candidate?.sellerSource).toBe('text');
+    expect(candidate?.itemLocationText).toBe('Located in Canada');
+    expect(candidate?.itemLocationSource).toBe('text');
+  });
+
+  it('reads "from <place>" and a title-cased login id the same way, never the title', () => {
+    const [candidate] = extractListingCandidates(
+      page('<span class="su-styled-text">from United States</span><span class="su-styled-text">Lego_Lover99 (87) 100%</span>'),
+      BROAD,
+    );
+    expect(candidate?.itemLocationText).toBe('from United States');
+    expect(candidate?.seller).toBe('Lego_Lover99');
+  });
+
+  it('a card with neither a seller line nor a location phrase stays null with a null source', () => {
+    const [candidate] = extractListingCandidates(page('<span class="su-styled-text">Free shipping</span>'), BROAD);
+    expect(candidate?.seller).toBeNull();
+    expect(candidate?.sellerSource).toBeNull();
+    expect(candidate?.itemLocationText).toBeNull();
+    expect(candidate?.itemLocationSource).toBeNull();
+  });
+
+  it('the named element still wins and is marked element', () => {
+    const candidate = byId(carouselCandidates(), '555666777888');
+    expect(candidate.itemLocationText).toBe('from Toronto, ON, Canada');
+    expect(candidate.itemLocationSource).toBe('element');
+  });
+});

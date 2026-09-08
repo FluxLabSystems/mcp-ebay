@@ -57,6 +57,7 @@ const VALID_INPUTS: Record<string, Record<string, unknown>> = {
   'browser_navigate': { browserSessionHandle: HANDLE, tabId: TAB, url: 'https://www.ebay.ca/itm/1' },
   'browser_snapshot': { browserSessionHandle: HANDLE, tabId: TAB },
   'browser_screenshot': { browserSessionHandle: HANDLE, tabId: TAB, mode: 'viewport' },
+  'browser_markup': { browserSessionHandle: HANDLE, tabId: TAB, elementRef: 'el_1_0_abc' },
   'browser_images': { browserSessionHandle: HANDLE, tabId: TAB },
   'browser_image_get': { browserSessionHandle: HANDLE, tabId: TAB, imageId: 'img_0123456789' },
   'browser_click': { browserSessionHandle: HANDLE, tabId: TAB, elementRef: 'el_1_0_abc' },
@@ -84,15 +85,17 @@ const VALID_INPUTS: Record<string, Record<string, unknown>> = {
 };
 
 describe('tool catalog completeness (§15)', () => {
-  it('exposes exactly the 19 normative tools with scopes and policy classes', () => {
-    // 18 from SDD v0.5 §15 plus browser_dismiss_consent (operator decision 2026-09-04).
-    expect(TOOL_CATALOG).toHaveLength(19);
+  it('exposes exactly the 20 normative tools with scopes and policy classes', () => {
+    // 18 from SDD v0.5 §15 plus browser_dismiss_consent (operator decision
+    // 2026-09-04) and browser_markup (improvement queue, 2026-09-08).
+    expect(TOOL_CATALOG).toHaveLength(20);
     const expectations: Array<[string, string, string]> = [
       ['browser_session_open', SCOPE_INTERACT, 'reversible'],
       ['browser_tabs', SCOPE_READ, 'read'],
       ['browser_navigate', SCOPE_INTERACT, 'reversible'],
       ['browser_snapshot', SCOPE_READ, 'read'],
       ['browser_screenshot', SCOPE_READ, 'read'],
+      ['browser_markup', SCOPE_READ, 'read'],
       ['browser_images', SCOPE_READ, 'read'],
       ['browser_image_get', SCOPE_READ, 'read'],
       ['browser_click', SCOPE_INTERACT, 'reversible'],
@@ -468,7 +471,7 @@ describe('zod → JSON Schema derivation sanity', () => {
 
 describe('deals run checkpoint tools (Phase 4)', () => {
   it('are additive: the browser and dashboard catalogs are untouched', () => {
-    expect(TOOL_CATALOG).toHaveLength(19);
+    expect(TOOL_CATALOG).toHaveLength(20);
     expect(DASHBOARD_TOOL_CATALOG.map((entry) => entry.name)).toEqual([
       'dashboard_feed',
       'dashboard_records',
@@ -618,7 +621,7 @@ describe('source tool catalog (Countdown API, plan §3 and §6.3)', () => {
     }
     // The account probe is the one source tool that spends nothing.
     expect(SOURCE_TOOL_CATALOG.map((entry) => entry.spendsCredits)).toEqual([true, true, true, false]);
-    expect(TOOL_CATALOG).toHaveLength(19);
+    expect(TOOL_CATALOG).toHaveLength(20);
     expect(getSourceToolEntry('browser_extract')).toBeUndefined();
   });
 
