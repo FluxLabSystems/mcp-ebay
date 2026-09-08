@@ -57,6 +57,7 @@ import {
   extractListing,
   extractListingCandidates,
   extractOffersPage,
+  extractSearchPageMeta,
   extractWatchlistPage,
   isListingPage,
   normalizeEbayImageUrl,
@@ -1009,20 +1010,27 @@ async function executeExtract(
         `SHIPPING_SNIPPET_SERVICE_UNLABELLED: ${shippingUnlabelled} of ${candidates.length} card(s) quote a shipping amount (shippingSnippetAmount) that names no carrier, service level or destination; on 2026-09-06 such a card read C$83.34 for an item whose page quoted C$875.27 UPS Worldwide Saver to Canada. A card's shipping figure is a traversal hint and never a landed-cost input — cost only from the item page's shipping block (value, currency, serviceText, destinationVerified).`,
       );
     }
-    const ebayPage = applySearchCompaction(
-      {
-        siteProfile: EBAY_SITE_PROFILE_ID,
-        pageKind: kind,
-        pageUrl,
-        pageTitle,
-        observedAt: source.capturedAt.toISOString(),
-        candidateCount: candidates.length,
-        candidates,
-        note: 'Candidate snippets are traversal hints; open each /itm/ URL and extract it for canonical evidence.',
-      },
-      searchOptions,
-      warnings,
-    );
+    const record: Record<string, unknown> = {
+      siteProfile: EBAY_SITE_PROFILE_ID,
+      pageKind: kind,
+      pageUrl,
+      pageTitle,
+      observedAt: source.capturedAt.toISOString(),
+      candidateCount: candidates.length,
+      candidates,
+      note: 'Candidate snippets are traversal hints; open each /itm/ URL and extract it for canonical evidence.',
+    };
+    if (kind === 'search' || kind === 'store') {
+      // 2026-09-07 deals fire (first full seller drill-down): an _ssn= page
+      // reported only the page-local counts — no total, no next page — so
+      // the walk paged blind and eBay's silent last-page clamp counted one
+      // page twice. The page states a total and a next control; read them,
+      // and say whose rows these are (the query's, not the seller's, until
+      // a card or the item page says otherwise).
+      const meta = extractSearchPageMeta({ document, pageUrl, candidates, pageKind: kind, warnings });
+      Object.assign(record, meta);
+    }
+    const ebayPage = applySearchCompaction(record, searchOptions, warnings);
     return {
       result: {
         siteProfile: EBAY_SITE_PROFILE_ID,
