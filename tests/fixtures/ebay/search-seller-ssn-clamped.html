@@ -1,0 +1,41 @@
+<!doctype html>
+<!--
+  SYNTHETIC fixture, 2026-09-08 — NEEDS-LIVE-VERIFICATION.
+  What the 2026-09-07 deals report observed for _ssn=treasurequestca: a
+  request for _pgn=3 on a two-page result set answered with the LAST page
+  re-served (rows byte-identical to _pgn=2), status 200, no error. The
+  pagination widget marks page 2 as the one served and its next control is
+  disabled; the count heading states a total that fits in two pages of 240.
+  Read this fixture at a URL carrying _pgn=3&_ipg=240.
+-->
+<html>
+<head><title>treasurequestca | eBay</title></head>
+<body>
+<div class="srp-controls">
+  <div class="srp-controls__control srp-controls__count">
+    <h1 class="srp-controls__count-heading"><span class="BOLD">463</span> results</h1>
+  </div>
+</div>
+<ul class="srp-results srp-list clearfix">
+  <li class="s-item">
+    <div class="s-item__info">
+      <a class="s-item__link" href="https://www.ebay.ca/itm/157758966050"><div class="s-item__title"><span role="heading">LEGO minifigure lot vintage castle</span></div></a>
+      <div class="s-item__details"><span class="s-item__price">C $42.00</span></div>
+    </div>
+  </li>
+  <li class="s-item">
+    <div class="s-item__info">
+      <a class="s-item__link" href="https://www.ebay.ca/itm/267697673429"><div class="s-item__title"><span role="heading">LEGO Minifigure Lot (9) Vintage</span></div></a>
+      <div class="s-item__details"><span class="s-item__price">C $11.09</span></div>
+    </div>
+  </li>
+</ul>
+<nav class="pagination" aria-label="Pagination">
+  <ol class="pagination__items">
+    <li><a href="https://www.ebay.ca/sch/i.html?_ssn=treasurequestca&amp;_sop=10&amp;_ipg=240&amp;_pgn=1" class="pagination__item">1</a></li>
+    <li><a href="https://www.ebay.ca/sch/i.html?_ssn=treasurequestca&amp;_sop=10&amp;_ipg=240&amp;_pgn=2" class="pagination__item" aria-current="page">2</a></li>
+  </ol>
+  <button class="pagination__next icon-link" type="next" aria-label="Go to next search page" aria-disabled="true" disabled>Next</button>
+</nav>
+</body>
+</html>

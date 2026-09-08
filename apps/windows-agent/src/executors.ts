@@ -57,6 +57,7 @@ import {
   extractListing,
   extractListingCandidates,
   extractOffersPage,
+  extractSearchPageMeta,
   extractWatchlistPage,
   isListingPage,
   normalizeEbayImageUrl,
@@ -1037,26 +1038,33 @@ async function executeExtract(
         `SOLD_FILTER_ROWS_UNMARKED: the URL asked for ${asked} and none of the ${candidates.length} card(s) carries a sold caption ("Sold <date>"), so no row here is a sold comp: either the site served the live result set under the filter (the 2026-09-05 LH_Sold=1-alone render and the 2026-09-08 04:1xZ LH_Sold=1&LH_Complete=1 render both carried the live-search title), or the caption renders under a class the extractor does not know (NEEDS-LIVE-VERIFICATION: no live sold page has been captured; the classic .s-item__caption--signal "Sold <date>" is what is read, plus the dated phrase anywhere in the card text). Capture ONE row — browser_snapshot (maxNodes 200) when the client accepts it, else a viewport browser_screenshot scrolled to the first row — and file it under sold-search-renders-rows-but-candidate-schema-carries-no-solddate-or-soldprice with this URL.`,
       );
     }
-    const ebayPage = applySearchCompaction(
-      {
-        siteProfile: EBAY_SITE_PROFILE_ID,
-        pageKind: kind,
-        pageUrl,
-        pageTitle,
-        observedAt: source.capturedAt.toISOString(),
-        candidateCount: candidates.length,
-        candidates,
-        // What the URL asked for and what the rows answered, side by side:
-        // "the sold view rendered" and "these are sold comps" are different
-        // claims, and soldRowCount is the one that carries the second.
-        soldFilterRequested: soldFilters.sold,
-        completedFilterRequested: soldFilters.completed,
-        soldRowCount: soldRows.length,
-        note: 'Candidate snippets are traversal hints; open each /itm/ URL and extract it for canonical evidence.',
-      },
-      searchOptions,
-      warnings,
-    );
+    const record: Record<string, unknown> = {
+      siteProfile: EBAY_SITE_PROFILE_ID,
+      pageKind: kind,
+      pageUrl,
+      pageTitle,
+      observedAt: source.capturedAt.toISOString(),
+      candidateCount: candidates.length,
+      candidates,
+      // What the URL asked for and what the rows answered, side by side:
+      // "the sold view rendered" and "these are sold comps" are different
+      // claims, and soldRowCount is the one that carries the second.
+      soldFilterRequested: soldFilters.sold,
+      completedFilterRequested: soldFilters.completed,
+      soldRowCount: soldRows.length,
+      note: 'Candidate snippets are traversal hints; open each /itm/ URL and extract it for canonical evidence.',
+    };
+    if (kind === 'search' || kind === 'store') {
+      // 2026-09-07 deals fire (first full seller drill-down): an _ssn= page
+      // reported only the page-local counts — no total, no next page — so
+      // the walk paged blind and eBay's silent last-page clamp counted one
+      // page twice. The page states a total and a next control; read them,
+      // and say whose rows these are (the query's, not the seller's, until
+      // a card or the item page says otherwise).
+      const meta = extractSearchPageMeta({ document, pageUrl, candidates, pageKind: kind, warnings });
+      Object.assign(record, meta);
+    }
+    const ebayPage = applySearchCompaction(record, searchOptions, warnings);
     return {
       result: {
         siteProfile: EBAY_SITE_PROFILE_ID,

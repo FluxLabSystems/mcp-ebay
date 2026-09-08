@@ -50,6 +50,8 @@ function syntheticEbayCandidates(count: number) {
       shippingSnippetText: `+C $${(12 + (index % 30)).toFixed(2)} shipping estimate from United States to Canada`,
       itemLocationText: index % 2 === 0 ? 'Toronto, ON, Canada' : 'Buffalo, NY, United States',
       isNewListing: index % 7 === 0,
+      seller: index % 5 === 0 ? 'some_seller' : null,
+      matchScope: 'primary',
       order: index,
     };
   });
@@ -249,10 +251,23 @@ describe('search compaction', () => {
     expect(record.nextOffset).toBe(40);
     expect(record.candidates[0]!.url).toBe('https://www.ebay.ca/itm/226100000000');
     // The default projection drops the long shipping snippet and the order
-    // index; everything a triage decision reads survives.
+    // index; everything a triage decision reads survives. Row 0's card
+    // states a seller, so the key rides; matchScope 'primary' is the
+    // page's default and is elided (DEFAULT_VALUED_MARKERS).
     expect(Object.keys(record.candidates[0]!).sort()).toEqual(
-      ['bidCount', 'isNewListing', 'itemId', 'itemLocationText', 'sellingFormat', 'snippetPrice', 'title', 'url'].sort(),
+      ['bidCount', 'isNewListing', 'itemId', 'itemLocationText', 'seller', 'sellingFormat', 'snippetPrice', 'title', 'url'].sort(),
     );
+    expect(record.candidates[0]!.seller).toBe('some_seller');
+    // Row 1's card states no seller: the default projection elides the null
+    // (the page-level sellerQuery and SELLER_SEARCH_* warnings carry the
+    // "looked, none stated" fact), and a caller naming the field gets it.
+    expect(record.candidates[1]).not.toHaveProperty('seller');
+    expect(record.candidates[1]).not.toHaveProperty('matchScope');
+    const named = compactSearchPage(
+      searchRecord(3),
+      SearchCompactionInput.parse({ limit: 3, fields: ['itemId', 'seller', 'matchScope'] }),
+    ).record as { candidates: Record<string, unknown>[] };
+    expect(named.candidates[1]).toEqual({ itemId: '226100000001', url: 'https://www.ebay.ca/itm/226100000001', seller: null, matchScope: 'primary' });
   });
 
   it('offset walks the matched set', () => {

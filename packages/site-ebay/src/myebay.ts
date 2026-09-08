@@ -23,6 +23,7 @@
  */
 import { countdownMs } from './extract.js';
 import { cleanTitle, itemIdFromUrl, parseMoney } from './normalize.js';
+import { checkedTotalCount, readPagination, withPage } from './pagination.js';
 import type { SellingFormatKind } from './record.js';
 import {
   CARD_PRICE_SELECTOR,
@@ -668,115 +669,9 @@ const CATEGORY_FILTER_RE = /[?&]filter=category(?::|%3A)(\d+)(?:\.EBAY-([A-Za-z]
 const CHIP_NAME_RE = /^filter\s+watch\s*list\s+by\s+category\b/i;
 const ALL_CATEGORIES_CHIP_RE = /^filter\s+watch\s*list\s+by\s+category:\s*all\s+categories\b/i;
 
-/**
- * A stated total below the rows the page itself rendered cannot be the
- * list's total; it is some other label ("1 item" on one row). Drop it and
- * say so, rather than hand the audit a count it will compare rows against.
- */
-function checkedTotalCount(
-  read: { count: number | null; source: string | null },
-  renderedRows: number,
-  prefix: string,
-  warnings: string[],
-): { count: number | null; source: string | null; statedCount: number | null; statedCountSource: string | null } {
-  const stated = { statedCount: read.count, statedCountSource: read.count === null ? null : read.source };
-  if (read.count === null || read.count >= renderedRows) return { ...read, ...stated };
-  // The number is rejected as the total, not forgotten: on 2026-09-07 the
-  // selected All Categories chip read 314 while the overflow render of the
-  // same list carried 318 unique rows (reconciled exactly against stored
-  // state), and nulling the count outright left the walk unable to audit
-  // the 4-row gap. statedCount keeps what the page said; totalResults
-  // stays null because a count below the rows is not the list's total.
-  warnings.push(
-    `${prefix}: the page's count label "${read.source ?? ''}" reads ${read.count}, below the ${renderedRows} rows this page rendered, so it is not accepted as the list total and totalResults is null; the label's number is kept as statedCount (${read.count}) for the audit. Count coverage as unique item ids after dedupe, and never use the label to decide whether an overflow read got the whole list — it passes a read that is short by the same margin (2026-09-07: "All Categories (314)" against 318 rendered rows). If the label names some other thing (one row's "1 item"), file it through the improvement queue with a browser_snapshot so the real list-count element can be pinned.`,
-  );
-  return { count: null, source: null, ...stated };
-}
-
-function pageNumberOf(pageUrl: string): number | null {
-  try {
-    const url = new URL(pageUrl);
-    for (const key of ['page', 'pgn', 'pageNumber', 'ipg_page']) {
-      const raw = url.searchParams.get(key);
-      if (raw !== null && /^\d{1,4}$/.test(raw)) return Number.parseInt(raw, 10);
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function withPage(pageUrl: string, page: number): string | null {
-  try {
-    const url = new URL(pageUrl);
-    const key = ['page', 'pgn', 'pageNumber'].find((name) => url.searchParams.has(name)) ?? 'page';
-    url.searchParams.set(key, String(page));
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
-function isDisabled(el: Element): boolean {
-  return (
-    el.hasAttribute('disabled') ||
-    el.getAttribute('aria-disabled') === 'true' ||
-    /\b(?:disabled|is-disabled)\b/.test(el.getAttribute('class') ?? '')
-  );
-}
-
-/**
- * The next-page control, from the site's own markup: a rel=next anchor, an
- * aria-labelled control, or the pagination widget's next button. An anchor
- * gives the URL outright; a button (client-side pagination) gives only the
- * fact that there is a next page, so the URL is derived from the current
- * page number and said to be derived.
- */
-function readPagination(
-  document: Document,
-  pageUrl: string,
-  warnings: string[],
-): { hasNextPage: boolean; nextPageUrl: string | null; currentPage: number | null } {
-  const currentPage = pageNumberOf(pageUrl);
-  let controls: Element[] = [];
-  try {
-    controls = Array.from(
-      document.querySelectorAll(
-        'a[rel="next"], link[rel="next"], [aria-label="Next page" i], [aria-label="Next" i], [aria-label*="next page" i], a.pagination__next, button.pagination__next, .pagination__next a, .pagination__next button, a[class*="next"], button[class*="next"]',
-      ),
-    );
-  } catch {
-    controls = [];
-  }
-  for (const control of controls) {
-    const label = normalizeText(control.textContent).toLowerCase();
-    const aria = (control.getAttribute('aria-label') ?? '').toLowerCase();
-    // "next" has to be about pagination: a card's "next day delivery" span
-    // matches the class selector and must not become a page.
-    const looksLikeNext =
-      control.getAttribute('rel') === 'next' ||
-      /\bnext\b/.test(aria) ||
-      /^(?:next|next page|›|»|>)$/.test(label) ||
-      /\bpagination\b/.test(control.getAttribute('class') ?? '') ||
-      /\bpagination\b/.test(control.parentElement?.getAttribute('class') ?? '');
-    if (!looksLikeNext) continue;
-    if (isDisabled(control)) return { hasNextPage: false, nextPageUrl: null, currentPage };
-    const href = control.getAttribute('href');
-    if (href !== null && href.length > 0 && !/^(?:#|javascript:)/i.test(href)) {
-      try {
-        return { hasNextPage: true, nextPageUrl: new URL(href, pageUrl).toString(), currentPage };
-      } catch {
-        // fall through to derivation
-      }
-    }
-    const derived = withPage(pageUrl, (currentPage ?? 1) + 1);
-    warnings.push(
-      `WATCHLIST_NEXT_URL_DERIVED: the page's next control carries no href (client-side pagination), so nextPageUrl was derived from the current page number as ${derived ?? 'nothing'}; confirm the derived page renders different rows before counting it.`,
-    );
-    return { hasNextPage: true, nextPageUrl: derived, currentPage };
-  }
-  return { hasNextPage: false, nextPageUrl: null, currentPage };
-}
+// checkedTotalCount, pageNumberOf, withPage and readPagination moved to
+// pagination.ts on 2026-09-08 so the /sch/ search page (its _ssn= seller form
+// included) reads its total and its next page the way this list does.
 
 function readTimeLeft(card: Element): string | null {
   let el: Element | null = null;
@@ -886,6 +781,8 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
       endsAt: timeLeftText === null ? null : toIso(observedAt, countdownMs(timeLeftText)),
       watchlistStatus: status,
       seller,
+      // My eBay lists have no "fewer words" divider; every row is primary.
+      matchScope: 'primary',
       sellerText,
       sellerOffer: readSellerOffer(blob),
       priceDropText: priceDrop === null ? null : bounded(normalizeText(priceDrop[1]!), 120),

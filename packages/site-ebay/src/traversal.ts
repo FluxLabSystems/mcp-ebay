@@ -81,6 +81,26 @@ export interface ListingCandidate {
    * states it, a hint the item page confirms like every other card field.
    */
   soldAt: string | null;
+  /**
+   * The seller login id the CARD states, from its seller-info element
+   * ("fantasma713 (1,234) 99.5%"); null when the card states none, which on
+   * the search templates captured so far is most cards. Never inferred from
+   * the query: on 2026-09-07 item 227509015721 came back for
+   * _ssn=dkbooksandtreasures and its item page names fantasma713, so a row
+   * of a seller search is "a result of that query", not "that seller's
+   * listing", until a card or the item page says whose it is. A traversal
+   * hint like every other card field; the item page's seller decides.
+   */
+  seller: string | null;
+  /**
+   * Where the row sits on the results page: 'primary' above eBay's
+   * "Results matching fewer words" divider, 'rewrite' below it, where the
+   * rows match fewer of the query's words (and, on a seller search, are not
+   * necessarily the seller's). NEEDS-LIVE-VERIFICATION: the divider is
+   * `.srp-river-answer--REWRITE_START` on the templates this was written
+   * against; a page without one is all 'primary'.
+   */
+  matchScope: 'primary' | 'rewrite';
   order: number;
 }
 
@@ -115,6 +135,66 @@ export const CARD_LOCATION_SELECTOR = '.s-item__location, .s-item__itemLocation,
 const CARD_FORMAT_SELECTOR =
   '.s-item__purchase-options-with-icon, .s-item__dynamic, .s-item__formatBuyItNow, .s-item__bids, .s-item__bidCount, .s-card__purchase-options, .s-card__bids';
 const CARD_NEW_LISTING_SELECTOR = '.s-item__title--tag, .s-card__title--tag, .LIGHT_HIGHLIGHT';
+/**
+ * The card's seller-info element, when the template renders one. The
+ * classic row template's `.s-item__seller-info-text` reads "login_id (1,234)
+ * 99.5%"; the newer card templates are NEEDS-LIVE-VERIFICATION (no live
+ * search card naming a seller has been captured; the 2026-09-07 fire read
+ * 240-card _ssn= pages with no seller on any row).
+ */
+const CARD_SELLER_SELECTOR =
+  '.s-item__seller-info-text, .s-item__seller-info, .s-card__seller-info, .su-card-container__attributes__seller, [class*="seller-info"]';
+/** "login_id (1,234) 99.5%" or a bare login id: the id is the first token. */
+const CARD_SELLER_RE = /^([A-Za-z0-9][A-Za-z0-9._*-]{1,63})(?:\s*\(|\s+\d|\s*$)/;
+/**
+ * eBay's "Results matching fewer words" divider between the rows that match
+ * the whole query and the looser tail. NEEDS-LIVE-VERIFICATION (see
+ * ListingCandidate.matchScope).
+ */
+const REWRITE_DIVIDER_SELECTOR =
+  '.srp-river-answer--REWRITE_START, [class*="REWRITE_START"], .srp-river-answer, .section-notice__main, h2, h3';
+const REWRITE_DIVIDER_TEXT_RE = /^results\s+matching\s+fewer\s+words\b/i;
+
+/**
+ * The seller login id the card itself states, or null. A slug-shaped first
+ * token of the seller-info text; nothing else on the card is read for it,
+ * because the title's last word is not a seller (the offers-page lesson of
+ * 2026-09-07).
+ */
+export function readCardSeller(card: Element): string | null {
+  const text = cardText(card, CARD_SELLER_SELECTOR);
+  if (text === null) return null;
+  const match = CARD_SELLER_RE.exec(text);
+  return match === null ? null : match[1]!;
+}
+
+/**
+ * Every /itm/ anchor that renders BELOW the first "Results matching fewer
+ * words" divider, in one document-order query (the DOM here has no
+ * compareDocumentPosition). Empty when the page has no divider.
+ */
+function anchorsBelowRewriteDivider(document: Document): Set<Element> {
+  const below = new Set<Element>();
+  let nodes: Element[];
+  try {
+    nodes = Array.from(document.querySelectorAll(`${REWRITE_DIVIDER_SELECTOR}, a[href*="/itm/"]`));
+  } catch {
+    return below;
+  }
+  let seenDivider = false;
+  for (const node of nodes) {
+    const isAnchor = node.tagName.toLowerCase() === 'a';
+    if (!isAnchor) {
+      if (!seenDivider) {
+        const cls = node.getAttribute('class') ?? '';
+        if (/REWRITE_START/.test(cls) || REWRITE_DIVIDER_TEXT_RE.test(normalizeText(node.textContent))) seenDivider = true;
+      }
+      continue;
+    }
+    if (seenDivider) below.add(node);
+  }
+  return below;
+}
 
 /**
  * 'watchlist' and 'offers' are the signed-in My eBay surfaces the deals
@@ -446,6 +526,7 @@ export function isNewListingCard(card: Element, rawTitle: string | null): boolea
 export function extractListingCandidates(document: Document, pageUrl: string): ListingCandidate[] {
   const seen = new Set<string>();
   const candidates: ListingCandidate[] = [];
+  const rewriteAnchors = anchorsBelowRewriteDivider(document);
   for (const selector of RESULT_LINK_SELECTOR_GROUPS) {
     let anchors: Element[];
     try {
@@ -496,6 +577,8 @@ export function extractListingCandidates(document: Document, pageUrl: string): L
         itemLocationText: cardText(card, CARD_LOCATION_SELECTOR),
         isNewListing: isNewListingCard(card, rawTitle),
         ...readSoldCaption(card, rawTitle),
+        seller: readCardSeller(card),
+        matchScope: rewriteAnchors.has(anchor) ? 'rewrite' : 'primary',
         order: candidates.length,
       });
     }
