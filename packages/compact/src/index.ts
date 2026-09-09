@@ -152,6 +152,8 @@ export interface CompactKijijiAd {
   description: string | null;
   /** The ad body the caller asked for (descriptionMaxChars); null unless requested and longer than the excerpt. */
   descriptionFull: string | null;
+  /** Every amount the body states, in order (2026-09-09); [] when none — the listed price is never one of these by itself. */
+  bodyPriceFigures: number[];
   imageCount: number | null;
   listingStatus: string | null;
 }
@@ -178,6 +180,9 @@ export function compactKijijiAd(record: unknown): CompactKijijiAd {
     sellerListingCount: readNumber(ad.sellerListingCount),
     description: readString(ad.description),
     descriptionFull: readString(ad.descriptionFull),
+    bodyPriceFigures: Array.isArray(ad.bodyPriceFigures)
+      ? ad.bodyPriceFigures.filter((figure): figure is number => typeof figure === 'number' && Number.isFinite(figure))
+      : [],
     imageCount: readNumber(ad.imageCount),
     listingStatus: readString(ad.listingStatus),
   };
@@ -428,6 +433,12 @@ const PRESERVED_ROOT_FIELDS = [
   'soldFilterRequested',
   'completedFilterRequested',
   'soldRowCount',
+  // The page's own active-filter chips (2026-09-09): true when the chip
+  // rendered, null when the page did not say. The field that separates "a
+  // sold page under an unknown caption template" from "a live set served
+  // under the filter" — the distinction SOLD_FILTER_ROWS_UNMARKED turns on.
+  'soldFilterActive',
+  'completedFilterActive',
   // The eBay search page (2026-09-08): which page the site says it served
   // and where that was read, which page the URL asked for (the two differ
   // on eBay's silent last-page clamp), and the _ssn= seller the query was

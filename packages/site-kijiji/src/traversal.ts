@@ -117,6 +117,8 @@ export interface KijijiSearchPage {
 }
 
 export const PAGINATION_METADATA_ABSENT_WARNING_PREFIX = 'PAGINATION_METADATA_ABSENT';
+/** Cards that state no amount ("Please Contact"): price.value null, never zero, never a reason to drop the row. */
+export const SEARCH_CONTACT_PRICE_ROWS_WARNING_PREFIX = 'SEARCH_CONTACT_PRICE_ROWS';
 export const SORT_NOT_HONOURED_WARNING_PREFIX = 'SORT_NOT_HONOURED';
 export const POSTED_AT_FROM_RELATIVE_LABEL_WARNING_PREFIX = 'POSTED_AT_FROM_RELATIVE_LABEL';
 
@@ -568,6 +570,18 @@ export function extractSearchResults(
     // evidence of freshness.
     warnings.push(
       `${POSTED_AT_FROM_RELATIVE_LABEL_WARNING_PREFIX}: ${derivedFromLabel} of ${results.length} card(s) carry a postedAt derived from the card's relative label ("2 hrs ago") measured back from the fetch clock at ${observedAt.toISOString()} and truncated to the label's unit (postedAtSource "relative_text", postedAtPrecision minute|hour|day|week|month). That figure is the ad's last ACTIVATION as the card rounds it — a bumped or reposted ad reads as new here — and is not the ad's original posting date; only the ad page's postedAt is evidence of freshness, so open the ad before calling it new this fire. Cards with postedAtSource "hydration" or "card_datetime" state their instant.`,
+    );
+  }
+  const contactRows = results.filter((result) => result.price !== null && result.price.kind === 'contact');
+  if (contactRows.length > 0) {
+    // 2026-09-09 deals fire (search-card-price-is-not-the-ad-price-on-multi-
+    // item-and-contact-price-ads): a "Please Contact" card reads price.kind
+    // 'contact' with value null, and the fire's strongest local LEGO buy
+    // (1740461192, "will sell for $350" in the body) was invisible from the
+    // card. Count those rows so a run never filters them out on the card.
+    const ids = contactRows.slice(0, 10).map((result) => result.adId).join(', ');
+    warnings.push(
+      `${SEARCH_CONTACT_PRICE_ROWS_WARNING_PREFIX}: ${contactRows.length} of ${results.length} card(s) state no amount ("Please Contact"; ids: ${ids}${contactRows.length > 10 ? ', …' : ''}) — their price.value is null, not zero, and the ad body may name a figure the card does not (bodyPriceFigures and PRICE_STATED_IN_BODY_ONLY on the ad record say so). Open them before any price-based exclusion; never drop a row on a null card price.`,
     );
   }
   if (sortParam !== null && /^sort=dateDesc$/i.test(sortParam) && newestFirstViolated(results)) {

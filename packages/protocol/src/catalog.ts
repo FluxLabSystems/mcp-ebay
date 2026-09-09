@@ -479,7 +479,7 @@ export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
     operation: 'upsert',
     timeoutMs: 30_000,
     description:
-      'Upsert listing records into a Fluxology dashboard (deals, office, jobs, vacation, or wardrobe). Records merge by stable id server-side; unrelated and historical records are preserved. Send only new or materially changed records.',
+      'Upsert listing records into a Fluxology dashboard (deals, office, jobs, vacation, or wardrobe). Records merge by stable id server-side; unrelated and historical records are preserved. A partial record leaves every top-level field it omits unchanged. Nested objects are REPLACED wholesale, not merged — send the whole object — with one declared exception: on deals, `analysis` merges one level deep (an omitted subfield keeps its stored value, a subfield sent null clears it, arrays inside it such as comps and alternatives still replace) on a dashboard-api build carrying that rule; on an older build `analysis` is replaced wholesale too, so read the stored analysis first and resend every subfield you mean to keep. Send only new or materially changed records.',
     inputSchema: DashboardUpsertInput,
     outputSchema: DashboardUpsertOutput,
   },

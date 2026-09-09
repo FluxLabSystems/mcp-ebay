@@ -10,6 +10,8 @@ import * as z from 'zod/v4';
 export const KIJIJI_DESCRIPTION_EXCERPT_CHARS = 500;
 /** The most a caller may ask for under descriptionFull (descriptionMaxChars). */
 export const KIJIJI_DESCRIPTION_MAX_CHARS = 6000;
+/** The most amounts read out of an ad body under bodyPriceFigures — the body is untrusted text. */
+export const KIJIJI_BODY_PRICE_FIGURES_MAX = 24;
 
 export const KijijiFieldSourceSchema = z.enum(['dom', 'jsonld', 'meta', 'computed']);
 export type KijijiFieldSource = z.infer<typeof KijijiFieldSourceSchema>;
@@ -103,6 +105,16 @@ export const KijijiExtractionRecordSchema = z.strictObject({
       maxChars: z.int().min(KIJIJI_DESCRIPTION_EXCERPT_CHARS).max(KIJIJI_DESCRIPTION_MAX_CHARS),
     })
     .nullable(),
+  /**
+   * Every currency amount the ad body states, in document order, as CAD
+   * figures (2026-09-09, search-card-price-is-not-the-ad-price-on-multi-
+   * item-and-contact-price-ads). Shipping/delivery figures are skipped. The
+   * listed `price` is never rewritten from these; a body figure that differs
+   * from it is named in BODY_PRICES_DIFFER_FROM_LISTED, and a figure under a
+   * "Please Contact" listing in PRICE_STATED_IN_BODY_ONLY. Empty when the
+   * body names none or no body was read.
+   */
+  bodyPriceFigures: z.array(z.number().positive()).max(KIJIJI_BODY_PRICE_FIGURES_MAX),
   attributes: z.array(
     z.strictObject({
       label: z.string(),

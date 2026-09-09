@@ -63,6 +63,7 @@ import {
   extractWatchlistPage,
   isListingPage,
   normalizeEbayImageUrl,
+  readSoldFilterChips,
   EBAY_SITE_PROFILE_ID,
 } from '@browser-bridge/site-ebay';
 import {
@@ -1032,6 +1033,10 @@ async function executeExtract(
     // many rows carry a sold caption; a row without one is not a sold comp,
     // whatever the URL requested.
     const soldFilters = soldFiltersRequested(pageUrl);
+    // 2026-09-09 deals fire: the first captured sold page showed its active
+    // filters as chips ("Sold listings Remove filter") while every row went
+    // unmarked, so the page's own confirmation is read beside the captions.
+    const chips = readSoldFilterChips(document);
     const soldRows = candidates.filter((candidate) => candidate.soldText !== null);
     const undatedSold = soldRows.filter((candidate) => candidate.soldAt === null);
     if (soldRows.length > 0) {
@@ -1050,7 +1055,9 @@ async function executeExtract(
         .filter((part): part is string => part !== null)
         .join(' and ');
       warnings.push(
-        `SOLD_FILTER_ROWS_UNMARKED: the URL asked for ${asked} and none of the ${candidates.length} card(s) carries a sold caption ("Sold <date>"), so no row here is a sold comp: either the site served the live result set under the filter (the 2026-09-05 LH_Sold=1-alone render and the 2026-09-08 04:1xZ LH_Sold=1&LH_Complete=1 render both carried the live-search title), or the caption renders under a class the extractor does not know (NEEDS-LIVE-VERIFICATION: no live sold page has been captured; the classic .s-item__caption--signal "Sold <date>" is what is read, plus the dated phrase anywhere in the card text). Capture ONE row — browser_snapshot (maxNodes 200) when the client accepts it, else a viewport browser_screenshot scrolled to the first row — and file it under sold-search-renders-rows-but-candidate-schema-carries-no-solddate-or-soldprice with this URL.`,
+        chips.soldFilterActive === true || chips.completedFilterActive === true
+          ? `SOLD_FILTER_ROWS_UNMARKED: the URL asked for ${asked}, the page's own filter chip confirms the filter is active (soldFilterActive), and none of the ${candidates.length} card(s) carries a caption the extractor recognises ("Sold <Mon> <d>, <yyyy>" or "Sold <d> <Mon> <yyyy>", in a caption element or the card text) — so these rows are the sold result set rendered under a caption template the extractor does not know, NOT a live set and NOT evidence that nothing sold. Do not conclude "no sold comps exist" from this page. Capture ONE row's markup — browser_markup on the row's title link with ancestors 3 — and file it under sold-search-renders-rows-but-candidate-schema-carries-no-solddate-or-soldprice with this URL.`
+          : `SOLD_FILTER_ROWS_UNMARKED: the URL asked for ${asked}, no filter chip confirming it was found (soldFilterActive null — the page did not say), and none of the ${candidates.length} card(s) carries a sold caption ("Sold <date>", month-first or day-first), so no row here is a sold comp: either the site served the live result set under the filter (the 2026-09-05 LH_Sold=1-alone render and the 2026-09-08 04:1xZ LH_Sold=1&LH_Complete=1 render both carried the live-search title), or both the chip and the caption render in a form the extractor does not know. Capture ONE row's markup — browser_markup on the row's title link with ancestors 3 — and the filter rail (browser_snapshot, maxNodes 60, the top of the page), and file them under sold-search-renders-rows-but-candidate-schema-carries-no-solddate-or-soldprice with this URL.`,
       );
     }
     const record: Record<string, unknown> = {
@@ -1067,6 +1074,10 @@ async function executeExtract(
       soldFilterRequested: soldFilters.sold,
       completedFilterRequested: soldFilters.completed,
       soldRowCount: soldRows.length,
+      // What the page itself confirmed (its active-filter chips), null when
+      // it rendered no chip the reader knows — never false by default.
+      soldFilterActive: chips.soldFilterActive,
+      completedFilterActive: chips.completedFilterActive,
       note: 'Candidate snippets are traversal hints; open each /itm/ URL and extract it for canonical evidence.',
     };
     if (kind === 'search' || kind === 'store') {
