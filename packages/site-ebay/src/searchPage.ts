@@ -66,6 +66,46 @@ export function readSearchResultCount(document: Document): SearchCountRead {
   return { count: null, source: null, lowerBound: false };
 }
 
+/**
+ * Whether the page's own filter rail confirms the sold/completed view. The
+ * first captured live sold page (deals fire 2026-09-09 04:20Z) rendered the
+ * active filters as chips reading "Sold listings Remove filter" and
+ * "Completed listings Remove filter" — the page's statement that the rows
+ * ARE the sold result set, independent of whether any row's caption was
+ * recognised. NEEDS-LIVE-VERIFICATION for the chip markup: only the
+ * rendered text is known (browser_snapshot), so the read is a bounded text
+ * match on short elements, not a selector. `null` when no such chip
+ * renders — the page did not say, which is not "the filter is off".
+ */
+const FILTER_CHIP_RE = /^(sold|completed)\s+listings\s*remove\s+filter$/i;
+const FILTER_CHIP_MAX_CHARS = 80;
+
+export interface SoldFilterChips {
+  soldFilterActive: boolean | null;
+  completedFilterActive: boolean | null;
+}
+
+export function readSoldFilterChips(document: Document): SoldFilterChips {
+  let sold = false;
+  let completed = false;
+  let elements: Element[] = [];
+  try {
+    elements = Array.from(document.querySelectorAll('li, button, a, span, div'));
+  } catch {
+    return { soldFilterActive: null, completedFilterActive: null };
+  }
+  for (const element of elements) {
+    const raw = element.textContent ?? '';
+    if (raw.length > FILTER_CHIP_MAX_CHARS * 2) continue;
+    const match = FILTER_CHIP_RE.exec(normalizeText(raw));
+    if (match === null) continue;
+    if (match[1]!.toLowerCase() === 'sold') sold = true;
+    else completed = true;
+    if (sold && completed) break;
+  }
+  return { soldFilterActive: sold ? true : null, completedFilterActive: completed ? true : null };
+}
+
 /** The `_ssn=` value of a seller search URL, decoded; null on any other search. */
 export function sellerQueryOf(pageUrl: string): string | null {
   try {

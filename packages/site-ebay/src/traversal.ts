@@ -492,21 +492,27 @@ function withoutTitle(text: string, card: Element, rawTitle: string | null): str
 }
 
 /**
- * The sold caption of a sold/completed-search row. NEEDS-LIVE-VERIFICATION:
- * written against the classic template's `.s-item__caption--signal.POSITIVE`
- * "Sold  Sep 3, 2026" and the `.s-item__title--tagblock` "Sold Item" tag; no
- * live sold page has been captured (www.ebay.ca 403s dev boxes, and the
- * 2026-09-08 fire that finally saw the sold view render could not take the
- * snapshot). When no caption element matches, the dated "Sold <month> <day>,
- * <year>" phrase is read from the card's own text with the title removed, so
- * a template change degrades to "no caption read" (and the page-level
- * SOLD_FILTER_ROWS_UNMARKED warning) rather than to a guess. A quantity
- * badge ("12 sold") matches neither pattern.
+ * The sold caption of a sold/completed-search row. Two templates are known:
+ * the classic `.s-item__caption--signal.POSITIVE` "Sold  Sep 3, 2026" (month
+ * first, with the `.s-item__title--tagblock` "Sold Item" tag), and the live
+ * 2026-09-09 template the first captured sold page showed (deals fire 04:20Z,
+ * the re-file under sold-search-renders-rows-but-candidate-schema-carries-
+ * no-solddate-or-soldprice): a bare generic node with no signal class whose
+ * whole text is "Sold 1 Sep 2026" — DAY first, no comma — between the row's
+ * img and its title link. The month-first pattern alone read every such row
+ * as unmarked, so the comps step ended for nothing. When no caption element
+ * matches, the dated phrase is read from the card's own text with the title
+ * removed, in either order, so a template change degrades to "no caption
+ * read" (and the page-level SOLD_FILTER_ROWS_UNMARKED warning) rather than
+ * to a guess. A quantity badge ("12 sold") matches neither pattern.
  */
 const CARD_SOLD_SELECTOR =
   '.s-item__caption--signal, .s-item__caption, .s-card__caption, .s-item__title--tagblock, .s-card__title--tagblock';
-const SOLD_CAPTION_RE =
-  /\bsold\s+(?:on\s+)?((jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4}))\b/i;
+const SOLD_MONTH = '(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?';
+/** Month-first "Sold Sep 3, 2026" — groups 2 (month), 3 (day), 4 (year). */
+const SOLD_CAPTION_MONTH_FIRST_RE = new RegExp(`\\bsold\\s+(?:on\\s+)?(${SOLD_MONTH}\\s+(\\d{1,2}),?\\s+(\\d{4}))\\b`, 'i');
+/** Day-first "Sold 1 Sep 2026" — groups 2 (day), 3 (month), 4 (year). */
+const SOLD_CAPTION_DAY_FIRST_RE = new RegExp(`\\bsold\\s+(?:on\\s+)?((\\d{1,2})\\s+${SOLD_MONTH},?\\s+(\\d{4}))\\b`, 'i');
 const SOLD_TAG_RE = /\bsold\s+item\b/i;
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
@@ -529,9 +535,13 @@ export function readSoldCaption(card: Element, rawTitle: string | null): { soldT
   }
   sources.push(withoutTitle(spacedText(card), card, rawTitle));
   for (const source of sources) {
-    const dated = SOLD_CAPTION_RE.exec(source);
-    if (dated !== null) {
-      return { soldText: normalizeText(dated[0]), soldAt: isoDateFrom(dated[2]!, dated[3]!, dated[4]!) };
+    const monthFirst = SOLD_CAPTION_MONTH_FIRST_RE.exec(source);
+    if (monthFirst !== null) {
+      return { soldText: normalizeText(monthFirst[0]), soldAt: isoDateFrom(monthFirst[2]!, monthFirst[3]!, monthFirst[4]!) };
+    }
+    const dayFirst = SOLD_CAPTION_DAY_FIRST_RE.exec(source);
+    if (dayFirst !== null) {
+      return { soldText: normalizeText(dayFirst[0]), soldAt: isoDateFrom(dayFirst[3]!, dayFirst[2]!, dayFirst[4]!) };
     }
   }
   for (const source of sources) {

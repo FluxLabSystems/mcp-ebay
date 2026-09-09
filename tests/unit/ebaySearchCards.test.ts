@@ -442,6 +442,47 @@ describe('sold/completed-search rows state their sold date (2026-09-08)', () => 
     expect(candidate?.soldText).toBe('Sold Item');
     expect(candidate?.soldAt).toBeNull();
   });
+
+  // 2026-09-09 04:20Z deals fire (site-ebay+extractor_defect+sold-search-
+  // renders-rows-but-candidate-schema-carries-no-solddate-or-soldprice, the
+  // re-file with the capture): the first live sold page snapshot. The caption
+  // is a bare generic node whose whole text is "Sold 1 Sep 2026" — DAY first,
+  // no comma, no signal class — sitting between the row's img and its title
+  // link, followed by a sold / original / best-offer price triple and the
+  // "View similar active items" / "Sell one like this" link pair. Every row
+  // read soldRowCount 0, because the dated phrase was only known month-first.
+  it('reads the live template\'s day-first "Sold 1 Sep 2026" caption from a bare node (2026-09-09 capture)', () => {
+    const [candidate] = rows(
+      `<li><div class="su-card-container">
+         <a href="https://www.ebay.ca/itm/257439687441"></a>
+         <img alt="Cisco C9120AXI-A Catalyst 9120AX Access Point" src="https://i.ebayimg.com/x.jpg">
+         <div>Sold 1 Sep 2026</div>
+         <a href="https://www.ebay.ca/itm/257439687441">Cisco C9120AXI-A Catalyst 9120AX Access Point<span>Opens in a new window or tab</span></a>
+         <span>C $94.05</span><span>C $99.00</span><span>C $89.05</span><span>+C $25.00 shipping</span>
+         <a href="https://www.ebay.ca/sch/i.html?_nkw=C9120AXI-A">View similar active items</a>
+         <a href="https://www.ebay.ca/sl/sell">Sell one like this</a>
+       </div></li>`,
+      'https://www.ebay.ca/sch/i.html?_nkw=C9120AXI-A&LH_Sold=1&LH_Complete=1&_sop=13',
+    );
+    expect(candidate?.soldText).toBe('Sold 1 Sep 2026');
+    expect(candidate?.soldAt).toBe('2026-09-01');
+    // The price triple: the first figure is the sold price as the card
+    // states it (sold / original / best-offer-accepted render in that order).
+    expect(candidate?.snippetPrice).toEqual({ value: 94.05, currency: 'CAD' });
+  });
+
+  it('reads the other day-first spellings the same way and still rejects a quantity badge', () => {
+    const [a, b, c] = rows(
+      `<li><a href="https://www.ebay.ca/itm/257236946534">Item A</a><div>Sold 27 Aug 2026</div><span>C $123.50</span></li>
+       <li><a href="https://www.ebay.ca/itm/407127884316">Item B</a><div>Sold on 18 August 2026</div><span>C $96.63</span></li>
+       <li><a href="https://www.ebay.ca/itm/257601816867">Item C</a><span>18 sold</span><span>C $2,348.38</span></li>`,
+    );
+    expect(a?.soldAt).toBe('2026-08-27');
+    expect(b?.soldText).toBe('Sold on 18 August 2026');
+    expect(b?.soldAt).toBe('2026-08-18');
+    expect(c?.soldText).toBeNull();
+    expect(c?.soldAt).toBeNull();
+  });
 });
 
 // 2026-09-08 deals fire (site-ebay+extractor_defect+ebay-com-search-card-

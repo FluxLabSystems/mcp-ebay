@@ -711,3 +711,70 @@ describe('sold/completed searches say what they asked for and what the rows answ
     expect('soldAt' in compactRows[0]!).toBe(false);
   });
 });
+
+// 2026-09-09 04:20Z deals fire (site-ebay+extractor_defect+sold-search-renders-
+// rows-but-candidate-schema-carries-no-solddate-or-soldprice — the re-file with
+// the capture): the mandated sold form rendered a genuine sold page whose rows
+// each carried a bare "Sold 1 Sep 2026" node and whose filter rail showed the
+// "Sold listings Remove filter" / "Completed listings Remove filter" chips
+// ACTIVE — and the record still said soldRowCount 0 with
+// SOLD_FILTER_ROWS_UNMARKED, so the comps step ended for nothing. The page now
+// says whether its own chips confirm the filter, so an unmarked page can be
+// told from a live set served under the filter.
+describe('the sold page\'s own filter chips confirm the sold view (2026-09-09)', () => {
+  const SOLD_URL = 'https://www.ebay.ca/sch/i.html?_nkw=C9120AXI-A&LH_Sold=1&LH_Complete=1&_sop=13';
+  const CHIPS = `<ul class="srp-refine__chips"><li><span>Completed listings</span><button aria-label="Remove filter">Remove filter</button></li><li><span>Sold listings</span><button aria-label="Remove filter">Remove filter</button></li></ul>`;
+  const row = (id: string, caption: string, price: string) =>
+    `<li><div class="su-card-container"><a href="https://www.ebay.ca/itm/${id}"></a><img alt="Cisco C9120AXI-A" src="https://i.ebayimg.com/${id}.jpg"><div>${caption}</div><a href="https://www.ebay.ca/itm/${id}">Cisco C9120AXI-A<span>Opens in a new window or tab</span></a><span>${price}</span><a href="https://www.ebay.ca/sch/i.html">View similar active items</a><a href="https://www.ebay.ca/sl/sell">Sell one like this</a></div></li>`;
+
+  it('the 2026-09-09 render: day-first captions counted, chips read as soldFilterActive true, SOLD_ROWS fires', async () => {
+    const outcome = await runExtract(
+      SOLD_URL,
+      `<html><head><title>C9120axi-A for sale | eBay</title></head><body>${CHIPS}<ul class="srp-results">
+         ${row('257439687441', 'Sold 1 Sep 2026', 'C $94.05')}
+         ${row('257236946534', 'Sold 27 Aug 2026', 'C $123.50')}
+         ${row('407127884316', 'Sold 18 Aug 2026', 'C $96.63')}
+       </ul></body></html>`,
+      'ebay.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as Record<string, unknown>;
+    expect(record.soldRowCount).toBe(3);
+    expect(record.soldFilterActive).toBe(true);
+    const rows = record.candidates as Array<Record<string, unknown>>;
+    expect(rows.map((r) => r.soldAt)).toEqual(['2026-09-01', '2026-08-27', '2026-08-18']);
+    expect(parsed.warnings.some((warning) => warning.startsWith('SOLD_ROWS'))).toBe(true);
+    expect(parsed.warnings.some((warning) => warning.startsWith('SOLD_FILTER_ROWS_UNMARKED'))).toBe(false);
+    const compacted = compactSearchPage(record, SearchCompactionInput.parse({}));
+    expect(compacted.record.soldFilterActive).toBe(true);
+    expect(compacted.record.soldRowCount).toBe(3);
+  });
+
+  it('an unmarked page whose chips confirm the filter says the caption template is unknown, not that no row sold', async () => {
+    const outcome = await runExtract(
+      SOLD_URL,
+      `<html><head><title>C9120axi-A for sale | eBay</title></head><body>${CHIPS}<ul class="srp-results">
+         ${row('257439687441', 'Ended 1 Sep 2026', 'C $94.05')}
+       </ul></body></html>`,
+      'ebay.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as Record<string, unknown>;
+    expect(record.soldRowCount).toBe(0);
+    expect(record.soldFilterActive).toBe(true);
+    const unmarked = parsed.warnings.find((warning) => warning.startsWith('SOLD_FILTER_ROWS_UNMARKED'));
+    expect(unmarked).toBeDefined();
+    expect(unmarked).toMatch(/chip/i);
+    expect(unmarked).toMatch(/browser_markup/);
+    expect(unmarked).not.toMatch(/served the live result set/);
+  });
+
+  it('a page rendering no such chip leaves soldFilterActive null — the page did not say', async () => {
+    const outcome = await runExtract(SOLD_URL, fixture('ebay', 'search-results.html'), 'ebay.ca.v1');
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as Record<string, unknown>;
+    expect(record.soldFilterActive).toBeNull();
+    const unmarked = parsed.warnings.find((warning) => warning.startsWith('SOLD_FILTER_ROWS_UNMARKED'));
+    expect(unmarked).toMatch(/served the live result set/);
+  });
+});

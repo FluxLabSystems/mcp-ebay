@@ -12,6 +12,7 @@
 import { isKijijiAdImageUrl, KIJIJI_GALLERY_SELECTORS, normalizeKijijiImageUrl } from './gallery.js';
 import { adIdFromUrl, canonicalAdUrl, parseKijijiPrice } from './normalize.js';
 import {
+  KIJIJI_BODY_PRICE_FIGURES_MAX,
   KIJIJI_DESCRIPTION_EXCERPT_CHARS,
   KIJIJI_DESCRIPTION_MAX_CHARS,
   type KijijiExtractionRecord,
@@ -575,6 +576,71 @@ function excerpt(raw: string): string {
   return collapse(raw).slice(0, KIJIJI_DESCRIPTION_EXCERPT_CHARS);
 }
 
+/**
+ * Every currency amount an ad body states, in document order (2026-09-09
+ * deals fire, search-card-price-is-not-the-ad-price-on-multi-item-and-
+ * contact-price-ads): six ads whose listed price was not the price of the
+ * thing for sale — a condition ladder ("Brand new $800 Slightly Used-like
+ * new $600" under a C$250 card), a per-item list, an "$279 OBO" tail, and
+ * two "Please Contact" cards over bodies that named a figure — with nothing
+ * on the record saying so. The figures are reported as the body states
+ * them; the listed price is never rewritten from prose. A figure followed by
+ * a shipping/delivery word is a shipping figure, not a price the ad asks.
+ * Bounded (KIJIJI_BODY_PRICE_FIGURES_MAX) because the body is untrusted text.
+ */
+const BODY_AMOUNT_RE = /(?:C\s?\$|CA\s?\$|\$|\bCAD\s?)\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?!\d)(\s*(?:\/|per\b)?\s*(?:shipping|delivery|postage|ship\b))?/gi;
+
+export function bodyPriceFigures(body: string | null): number[] {
+  if (body === null) return [];
+  const figures: number[] = [];
+  const text = collapse(body).replace(/[\u00a0\u202f]/g, ' ');
+  for (const match of text.matchAll(BODY_AMOUNT_RE)) {
+    if (match[3] !== undefined) continue;
+    const whole = Number.parseInt(match[1]!.replace(/,/g, ''), 10);
+    if (!Number.isFinite(whole) || whole <= 0) continue;
+    const cents = match[2] === undefined ? 0 : Number.parseInt(match[2].padEnd(2, '0'), 10) / 100;
+    figures.push(whole + cents);
+    if (figures.length >= KIJIJI_BODY_PRICE_FIGURES_MAX) break;
+  }
+  return figures;
+}
+
+/**
+ * A place the body says the item is at, as the body says it: "Located in
+ * Laval", "pickup in Ajax", "pick up from Vaughan". Quoted verbatim and
+ * bounded; the structured location is never rewritten from it (2026-09-09
+ * deals fire, ad-location-field-contradicts-location-stated-in-body:
+ * record.location "Toronto, ON, L1T" beside a body reading "Located in
+ * Laval", roughly 540 km apart).
+ */
+// The keyword is matched in either case; the place must be capitalised, so
+// the two halves are spelled out rather than flagged case-insensitive.
+const BODY_PLACE_RE =
+  /\b(?:[Ll]ocated|[Ll]ocation(?:\s+is)?|[Pp]ick[\s-]?[Uu]p(?:\s+is|\s+only)?|[Aa]vailable)\s*(?::\s*|\s+)(?:in|at|from|IN|In|AT|At|FROM|From)\s+([A-Z][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'’.-]+){0,2})/;
+
+function bodyPlaceStatement(body: string | null): { phrase: string; place: string } | null {
+  if (body === null) return null;
+  const match = BODY_PLACE_RE.exec(collapse(body));
+  if (match === null) return null;
+  return { phrase: match[0].slice(0, 60), place: match[1]! };
+}
+
+/**
+ * Canada Post reserves the M prefix for Toronto: a Toronto label carrying
+ * any other forward sortation area contradicts itself ("Toronto, ON, L1T"
+ * is Ajax). Only that one rule is known here; no FSA-to-city table exists
+ * in this package, so no other city is checked.
+ */
+const TORONTO_LABEL_RE = /\btoronto\b/i;
+const FSA_RE = /\b([A-Z])\d[A-Z]\b/;
+
+function fsaOutsideToronto(locationText: string | null): string | null {
+  if (locationText === null || !TORONTO_LABEL_RE.test(locationText)) return null;
+  const fsa = FSA_RE.exec(locationText.toUpperCase());
+  if (fsa === null || fsa[1] === 'M') return null;
+  return fsa[0];
+}
+
 function collapse(raw: string): string {
   return raw.replace(/\s+/g, ' ').trim();
 }
@@ -844,7 +910,9 @@ export function extractKijijiListing(
         plausibleSellerName(el.getAttribute('title')) ??
         plausibleSellerName(el.getAttribute('aria-label')) ??
         plausibleSellerName(el.textContent);
-      if (candidate && candidate.length <= 64) {
+      // The "View all listings (N)" anchor shares the /o-profile/ path with
+      // the name anchor; its label is a control, never a seller's name.
+      if (candidate && candidate.length <= 64 && !VIEW_ALL_LISTINGS_RE.test(candidate)) {
         sellerName = { value: candidate, source: 'dom', confidence: 0.9 };
         break;
       }
@@ -976,6 +1044,37 @@ export function extractKijijiListing(
     }
   }
 
+  // --- the amounts the body states, beside the listed price ---
+  const figures = bodyPriceFigures(descriptionBody);
+  if (figures.length > 0) {
+    const listed = price !== null && price.kind === 'amount' && price.value !== null ? price.value : null;
+    const stated = figures.map((figure) => `C$${figure.toFixed(2).replace(/\.00$/, '')}`).join(', ');
+    if (listed === null) {
+      warnings.push(
+        `PRICE_STATED_IN_BODY_ONLY: the listing states no amount (price.kind ${price?.kind ?? 'null'}, value null — not zero) but the body names ${figures.length} amount(s) in order: ${stated} (bodyPriceFigures). The ad is priced in prose; never drop it on the card's null price — read the body (descriptionFull) and price it from what the body says.`,
+      );
+    } else if (figures.some((figure) => Math.abs(figure - listed) >= 0.005)) {
+      warnings.push(
+        `BODY_PRICES_DIFFER_FROM_LISTED: the listed price is C$${listed.toFixed(2).replace(/\.00$/, '')} but the body names ${figures.length} amount(s) in order: ${stated} (bodyPriceFigures) — a condition ladder, a per-item list, an OBO figure or a rate. The listed price is not dispositive for this ad: read the body (descriptionFull) before pricing it, and never rank it on the card figure alone.`,
+      );
+    }
+  }
+
+  // --- a location the page contradicts ---
+  const locationText = location?.text ?? null;
+  const foreignFsa = fsaOutsideToronto(locationText);
+  if (foreignFsa !== null) {
+    warnings.push(
+      `LOCATION_FSA_OUTSIDE_NAMED_CITY: location reads "${locationText}" — a Toronto label carrying the forward sortation area ${foreignFsa}, which is not a Toronto FSA (Canada Post reserves the letter M for Toronto). The FSA is the more specific statement; cost pickup travel from ${foreignFsa}, not from Toronto, and open the ad's map if the trip decides the verdict.`,
+    );
+  }
+  const bodyPlace = bodyPlaceStatement(descriptionBody);
+  if (bodyPlace !== null && (locationText === null || !locationText.toLowerCase().includes(bodyPlace.place.toLowerCase()))) {
+    warnings.push(
+      `LOCATION_BODY_NAMES_PLACE: the body says "${bodyPlace.phrase}" while location reads "${locationText ?? 'null'}". The structured field is recorded as the page states it; the body's place is quoted here, not applied — compare the two before costing a pickup, and treat the ad as unlocated when they disagree.`,
+    );
+  }
+
   // --- unresolved seller: syndicated ad or selector miss? ---
   // 2026-09-03 office fire (vip-sellername-unresolved-on-mls-syndicated-ads):
   // every unresolved ad in the batch carried an "(id:NNNNN) MLS# …" tail;
@@ -988,6 +1087,16 @@ export function extractKijijiListing(
     if (syndication !== null) {
       warnings.push(
         `SELLER_UNRESOLVED_SYNDICATED: no seller element matched and the body carries a brokerage syndication reference "${syndication[0].trim()}" — an MLS-syndicated ad may render no poster; capture the about-seller block of one such ad so the selector can be pinned or the absence confirmed`,
+      );
+    } else if (sellerId !== null) {
+      // 2026-09-09 deals fire (sellername-null-while-sellerid-resolves):
+      // three ads carried sellerId, sellerListingsUrl and sellerListingCount
+      // beside this warning. The hydration payload the id comes from carries
+      // no name (live posterInfo: posterId, sellerType, websiteUrl,
+      // phoneNumber, verified), so the name is not withheld by a selector
+      // miss alone — it lives on the profile page the record already links.
+      warnings.push(
+        `SELLER_NAME_UNRESOLVED_ID_KNOWN: no seller-name element matched, but the poster id ${sellerId.value} resolved (sellerId${sellerListingsUrl === null ? '' : `; sellerListingsUrl ${sellerListingsUrl.value}`}). The hydration payload the id comes from carries no name, so the name is read from the profile page at sellerListingsUrl (the same drill-down that lists the seller's other ads); until then key the roster match and any discovery note on the poster id, never on a guessed name.`,
       );
     } else {
       warnings.push('sellerName could not be resolved');
@@ -1051,6 +1160,7 @@ export function extractKijijiListing(
     sellerListingCount,
     description,
     descriptionFull,
+    bodyPriceFigures: figures,
     attributes,
     imageCount,
     listingStatus: detectKijijiListingStatus(document),
