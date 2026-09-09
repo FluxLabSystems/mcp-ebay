@@ -72,6 +72,23 @@ describe('office-sources.v1 roster', () => {
     }
   });
 
+  it('lists the Zemlar serving host first and records the dead .com apex as verified live (2026-09-09)', () => {
+    // mcp-ebay+coverage_gap+zemlar-com-apex-on-office-roster-is-not-a-live-site-only-zemlar-ca-is:
+    // zemlar.com renders "Index of /" and 404s its product paths; zemlar.ca
+    // serves the site. Both stay allowed (a redirect from .com must not be
+    // refused), .ca leads so roster order costs no navigation, and the
+    // observation is carried on the entry instead of an open question.
+    const zemlar = OFFICE_SOURCES.find((source) => source.name === 'Zemlar Offices');
+    expect(zemlar).toBeDefined();
+    expect(zemlar?.hosts).toEqual(['zemlar.ca', 'zemlar.com']);
+    expect(zemlar?.needsLiveVerification).toBeUndefined();
+    expect(zemlar?.verifiedLive).toContain('zemlar.ca serves the site');
+    expect(zemlar?.verifiedLive).toContain('zemlar.com is a dead apex');
+    expect(zemlar?.verifiedLive).toContain('zemlar-com-apex-on-office-roster-is-not-a-live-site-only-zemlar-ca-is');
+    expect(hostMatchesAllowlist('www.zemlar.ca', officeSourcesSiteProfile.allowedHosts)).toBe(true);
+    expect(hostMatchesAllowlist('www.zemlar.com', officeSourcesSiteProfile.allowedHosts)).toBe(true);
+  });
+
   it('the Staples entry is the studio subdomain only: the retailer apex stays out', () => {
     const hosts = officeSourcesSiteProfile.allowedHosts;
     expect(hostMatchesAllowlist('studio.staples.ca', hosts)).toBe(true);

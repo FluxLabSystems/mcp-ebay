@@ -38,6 +38,12 @@ export interface OfficeSource {
   source: string;
   /** Anything the next live session must confirm. */
   needsLiveVerification?: string;
+  /**
+   * What a live session already confirmed about the hosts, dated and with
+   * the queue fingerprint that carried the observation — so a routine
+   * knows which host serves content before it spends a navigation.
+   */
+  verifiedLive?: string;
 }
 
 const OPERATOR_RATIFIED_2026_09_05 =
@@ -78,10 +84,16 @@ export const OFFICE_SOURCES: readonly OfficeSource[] = [
   {
     name: 'Zemlar Offices',
     group: 'provider',
-    hosts: ['zemlar.com', 'zemlar.ca'],
+    // zemlar.ca is the serving host and is listed first so a routine that
+    // tries hosts in roster order spends no navigation on the dead apex.
+    // zemlar.com stays allowed ONLY so a redirect from it is not refused
+    // (ORIGIN_DENIED on a redirect target would fail the .ca read); the
+    // walls are unchanged and the allowlist set is the same.
+    hosts: ['zemlar.ca', 'zemlar.com'],
     addedOn: '2026-09-05',
     source: `${OPERATOR_RATIFIED_2026_09_05}; zemlar.ca from ${BACKLOG_ROW}`,
-    needsLiveVerification: 'which of .com / .ca serves the GTA location pages',
+    verifiedLive:
+      '2026-09-09 (office fire 12:0xZ): zemlar.ca serves the site — https://zemlar.ca/office-space/ redirects to https://www.zemlar.ca/ ("Premium Office Space for Rent Toronto GTA | ZEMLAR Offices") and https://www.zemlar.ca/pages/locations/ renders the live locations index; zemlar.com is a dead apex — https://www.zemlar.com/ commits as "Index of /" (an unstyled directory listing) and https://www.zemlar.com/office-space-rental/ as "404 Not Found". Fingerprint mcp-ebay+coverage_gap+zemlar-com-apex-on-office-roster-is-not-a-live-site-only-zemlar-ca-is',
   },
   provider('OnePlan', ['oneplan.ca']),
   provider('CollabHive', ['collabhive.ca']),
