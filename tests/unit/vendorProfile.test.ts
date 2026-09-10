@@ -84,6 +84,25 @@ describe('wardrobe-vendors.v1 roster', () => {
     }
   });
 
+  it('RushOrderTees: the asset-CDN question is answered, and the answer is two third-party hosts that stay out', () => {
+    // 2026-09-10 wardrobe fire (gateway+coverage_gap+rushordertees-asset-cdn-
+    // and-search-backend-are-third-party-hosts): the first live read found the
+    // photography on cdn.sanity.io and the search on Algolia. Neither is a
+    // RushOrderTees domain, so the roster records the answer instead of
+    // re-asking, and the allowlist does not widen.
+    const entry = WARDROBE_VENDORS.find((vendor) => vendor.vendor === 'RushOrderTees');
+    expect(entry?.hosts).toEqual(['rushordertees.com']);
+    expect(entry?.needsLiveVerification).toBeUndefined();
+    expect(entry?.verifiedLive).toMatch(/cdn\.sanity\.io/);
+    expect(entry?.verifiedLive).toMatch(/algolia/i);
+    expect(entry?.verifiedLive).toMatch(/2026-09-10/);
+    const hosts = wardrobeVendorsSiteProfile.allowedHosts;
+    expect(hostMatchesAllowlist('www.rushordertees.com', hosts)).toBe(true);
+    expect(hostMatchesAllowlist('cdn.sanity.io', hosts)).toBe(false);
+    expect(hostMatchesAllowlist('hwj52h4d98-dsn.algolia.net', hosts)).toBe(false);
+    expect(hostMatchesAllowlist('hwj52h4d98-1.algolianet.com', hosts)).toBe(false);
+  });
+
   it('never matches lookalikes, and a denied host loses even when allowlisted-shaped', async () => {
     const hosts = wardrobeVendorsSiteProfile.allowedHosts;
     expect(hostMatchesAllowlist('notvistaprint.ca', hosts)).toBe(false);

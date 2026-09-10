@@ -562,7 +562,83 @@ describe('local policy enforcement in a real DOM (§19, §27.2)', () => {
   it('denies navigation outside the profile allowlist (ORIGIN_DENIED)', async () => {
     await expect(
       navigate(harness.session, tabId, 'https://example.com/', 'load', 10_000),
-    ).rejects.toMatchObject({ code: 'ORIGIN_DENIED' });
+    ).rejects.toMatchObject({ code: 'ORIGIN_DENIED', retryable: false });
+  });
+});
+
+// 2026-09-10 deals fire, gateway+connector_defect+ebay-http-error-interstitial-
+// fails-the-call-as-scheme-denied: browser_open_and_extract on the signed-in
+// watch list came back SCHEME_DENIED, retryable false, because eBay itself
+// sent the tab to http://pages.ebay.com/messages/page_not_responding.html;
+// the identical call thirty seconds later returned the watch list. The hop
+// stays blocked — the walls are unchanged — but a URL the caller never asked
+// for is the site's doing, not the caller's, so the requested URL is retried
+// once and a persisting interstitial is a retryable REDIRECT_BLOCKED that
+// names both URLs. A hop into a protected path (ACTION_BLOCKED, the sign-in
+// case in tests/conformance/browserPin.integration.test.ts) is not an
+// interstitial and keeps its code.
+describe('a site-initiated redirect into a URL local policy blocks (2026-09-10)', () => {
+  // The interstitial is served by the same fixture server under a host this
+  // session's allowlist does not carry (localhost, where the shared harness
+  // allows it), so a 302 the route layer never sees — Playwright routes
+  // only the first request of a server redirect chain — still lands on a
+  // reachable page that the post-landing check refuses, as the live
+  // pages.ebay.com interstitial would.
+  let own: BrowserHarness;
+  let ownTab: string;
+  const interstitial = (): string => `http://localhost:${fixtures.port}/messages/page_not_responding.html`;
+  const interstitialOrigin = (): string => `http://localhost:${fixtures.port}`;
+
+  beforeAll(async () => {
+    own = await launchTestSession(makeFixtureProfile({ allowedHosts: ['127.0.0.1'] }));
+    ownTab = (await own.session.listTabs())[0]!.tabId;
+  }, 120_000);
+
+  afterAll(async () => {
+    await own?.close();
+  });
+
+  for (const mode of ['server', 'client'] as const) {
+    it(`${mode}-side hop that clears: one retry lands the requested URL and the tally names the interstitial`, async () => {
+      const target = `${fixtures.baseUrl}/interstitial/once?mode=${mode}&key=${mode}-${Date.now()}&to=${encodeURIComponent(interstitial())}`;
+      const result = await navigate(own.session, ownTab, target, 'load', 20_000);
+      expect(result.finalUrl).toBe(target);
+      expect(result.navigationStatus).toBe('committed');
+      const entry = result.blockedSubresources.find((candidate) => candidate.origin === interstitialOrigin());
+      expect(entry, 'the refused hop is reported in blockedSubresources').toBeTruthy();
+      expect(entry?.exampleUrl).toBe(interstitial());
+      expect(entry?.code).toBe('ORIGIN_DENIED');
+      expect(entry?.requests).toBe(1);
+    });
+
+    it(`${mode}-side hop that persists: REDIRECT_BLOCKED, retryable, naming both URLs; the tab is parked`, async () => {
+      const target = `${fixtures.baseUrl}/interstitial/always?mode=${mode}&to=${encodeURIComponent(interstitial())}`;
+      let caught: BridgeError | undefined;
+      try {
+        await navigate(own.session, ownTab, target, 'load', 20_000);
+      } catch (err) {
+        caught = err as BridgeError;
+      }
+      expect(caught?.code).toBe('REDIRECT_BLOCKED');
+      expect(caught?.retryable).toBe(true);
+      expect(caught?.details).toMatchObject({
+        url: target,
+        blockedUrl: interstitial(),
+        blockedCode: 'ORIGIN_DENIED',
+        retried: true,
+      });
+      expect(caught?.message).toContain(interstitial());
+      const tabs = await own.session.listTabs();
+      expect(tabs.find((tab) => tab.tabId === ownTab)?.url).toBe('about:blank');
+    });
+  }
+
+  it('the interstitial itself, requested directly, is still refused outright and never retried', async () => {
+    await expect(navigate(own.session, ownTab, interstitial(), 'load', 10_000)).rejects.toMatchObject({
+      code: 'ORIGIN_DENIED',
+      retryable: false,
+    });
+    await navigate(own.session, ownTab, `${fixtures.baseUrl}/pages/interact.html`, 'load', 20_000);
   });
 });
 

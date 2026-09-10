@@ -445,11 +445,74 @@ export interface NavigateResult {
   /**
    * Subresource origins the network policy refused while the page loaded,
    * up to the moment the navigation settled (waitUntil). Requests a script
-   * issues later show up on browser_wait's copy of the same tally.
+   * issues later show up on browser_wait's copy of the same tally. A
+   * main-frame hop the SITE made into a refused URL, when the navigation
+   * recovered by retrying the requested URL (see navigate()), is reported
+   * here too, so the caller can see the interstitial it never landed on.
    */
   blockedSubresources: BlockedSubresource[];
 }
 
+/**
+ * Block codes a hop the SITE made can carry that a retry of the requested
+ * URL may clear — an error interstitial off the allowlist, over http://, or
+ * on a private address. ACTION_BLOCKED is deliberately absent: a redirect
+ * into a sign-in or transaction path says something about the session, and
+ * is never retried or re-labelled.
+ */
+const INTERSTITIAL_BLOCK_CODES: ReadonlySet<NetworkBlockCode> = new Set([
+  'SCHEME_DENIED',
+  'ORIGIN_DENIED',
+  'PRIVATE_NETWORK_DENIED',
+]);
+
+interface SiteRedirectBlock {
+  /** The URL the site sent the tab to, refused by local policy. */
+  url: string;
+  code: NetworkBlockCode;
+}
+
+/** Raised inside landOnce() when the site, not the caller, chose the refused URL. */
+class SiteRedirectBlocked extends Error {
+  readonly block: SiteRedirectBlock;
+
+  constructor(block: SiteRedirectBlock) {
+    super(`site redirect to ${block.url} blocked (${block.code})`);
+    this.name = 'SiteRedirectBlocked';
+    this.block = block;
+  }
+}
+
+function sameUrl(a: string, b: string): boolean {
+  try {
+    return new URL(a).href === new URL(b).href;
+  } catch {
+    return a === b;
+  }
+}
+
+/** A refused main-frame hop is the site's interstitial when the caller asked for a different URL and the code is not a protected-path block. */
+function isSiteInterstitial(block: SiteRedirectBlock, requestedUrl: string): boolean {
+  return INTERSTITIAL_BLOCK_CODES.has(block.code) && !sameUrl(block.url, requestedUrl);
+}
+
+/**
+ * Navigate a tab to `url`, which the caller's policy has to allow outright.
+ *
+ * A URL the caller never asked for is the site's doing, not the caller's
+ * (2026-09-10 deals fire, gateway+connector_defect+ebay-http-error-
+ * interstitial-fails-the-call-as-scheme-denied: eBay sent the signed-in
+ * watch list to http://pages.ebay.com/messages/page_not_responding.html
+ * once, the call failed SCHEME_DENIED with retryable false, and the
+ * identical call thirty seconds later returned the page). So a hop the site
+ * made into a URL local policy refuses — off the allowlist, over http://, on
+ * a private address — stays blocked exactly as before, but the requested
+ * URL is retried ONCE; a retry that lands cleanly reports the refused hop in
+ * blockedSubresources, and a retry that is redirected there again raises
+ * REDIRECT_BLOCKED (retryable) naming both URLs, with the tab parked on
+ * about:blank. A hop into a protected path (ACTION_BLOCKED) and a URL the
+ * caller requested itself are refused outright, as always.
+ */
 export async function navigate(
   session: BrowserSessionRuntime,
   tabId: string,
@@ -459,6 +522,33 @@ export async function navigate(
 ): Promise<NavigateResult> {
   const tab = session.getTab(tabId);
   await session.policy.assertUrlAllowed(url, 'navigation');
+  let recovered: SiteRedirectBlock | null = null;
+  for (;;) {
+    try {
+      return await landOnce(session, tab, url, waitUntil, timeoutMs, recovered);
+    } catch (err) {
+      if (!(err instanceof SiteRedirectBlocked)) throw err;
+      if (recovered !== null) {
+        throw new BridgeError(
+          'REDIRECT_BLOCKED',
+          `Navigation to ${url} was redirected by the site to ${err.block.url}, which local policy blocks (${err.block.code}); one retry of the requested URL was redirected there again.`,
+          { url, blockedUrl: err.block.url, blockedCode: err.block.code, retried: true },
+        );
+      }
+      recovered = err.block;
+    }
+  }
+}
+
+/** One attempt at landing `url`; throws SiteRedirectBlocked when the site sent the tab somewhere policy refuses. */
+async function landOnce(
+  session: BrowserSessionRuntime,
+  tab: TabState,
+  url: string,
+  waitUntil: 'domcontentloaded' | 'load',
+  timeoutMs: number,
+  recovered: SiteRedirectBlock | null,
+): Promise<NavigateResult> {
   tab.lastBlock = null;
   // The main-frame 'framenavigated' hook clears the tally once the new
   // document commits; clearing here too keeps a same-document navigation
@@ -482,6 +572,18 @@ export async function navigate(
     }
     const finalUrl = tab.page.url();
 
+    // A main-frame hop the site started while the document loaded
+    // (location.replace to an error interstitial) may already have been
+    // refused at the route layer, with goto resolving on the document — or
+    // on Chrome's error page, which the landing check below would otherwise
+    // report as the blocked URL. The refused hop is the fact to carry.
+    const hopBlockedDuringLoad = readLastBlock(tab);
+    if (hopBlockedDuringLoad !== null && isSiteInterstitial(hopBlockedDuringLoad, url)) {
+      tab.lastBlock = null;
+      await tab.page.goto('about:blank').catch(() => undefined);
+      throw new SiteRedirectBlocked(hopBlockedDuringLoad);
+    }
+
     // Post-landing revalidation (defect B4). Playwright invokes route
     // handlers only for the FIRST request of a redirect chain, so the
     // interception above never sees the hops — which is exactly how
@@ -494,20 +596,24 @@ export async function navigate(
       const landed = await session.policy.checkUrl(finalUrl, 'redirect');
       if (!landed.allowed) {
         await tab.page.goto('about:blank').catch(() => undefined);
+        const code = landed.errorCode ?? 'ORIGIN_DENIED';
+        if (INTERSTITIAL_BLOCK_CODES.has(code)) throw new SiteRedirectBlocked({ url: finalUrl, code });
         throw new BridgeError(
-          landed.errorCode ?? 'ORIGIN_DENIED',
+          code,
           `Navigation to ${url} redirected to ${finalUrl}, which local policy blocks (${landed.reason ?? landed.errorCode ?? 'denied'}).`,
           { url, finalUrl },
         );
       }
     }
-
     let origin = '';
     try {
       origin = new URL(finalUrl).origin;
     } catch {
       origin = '';
     }
+    // A recovered navigation names the interstitial it never landed on; the
+    // main-frame commit cleared the tally, so the entry is added after it.
+    if (recovered !== null) recordBlockedSubresource(tab, recovered.url, recovered.code);
     // Note (audit F-12): policy denials THROW catalogued errors (FR-12)
     // rather than returning navigationStatus "blocked"; the enum value is
     // reserved for future non-error blocked outcomes and is currently
@@ -521,9 +627,14 @@ export async function navigate(
       blockedSubresources: blockedSubresourcesOf(tab),
     };
   } catch (err) {
+    if (err instanceof SiteRedirectBlocked) throw err;
     const block = readLastBlock(tab);
     if (block) {
       tab.lastBlock = null;
+      if (isSiteInterstitial(block, url)) {
+        await tab.page.goto('about:blank').catch(() => undefined);
+        throw new SiteRedirectBlocked(block);
+      }
       throw new BridgeError(block.code, `Navigation to ${block.url} was blocked by local policy.`, {
         url: block.url,
       });

@@ -32,6 +32,12 @@ export interface WardrobeVendor {
   source: string;
   /** Anything the next live session must confirm (asset CDNs, .com mirrors). */
   needsLiveVerification?: string;
+  /**
+   * What a live read settled, with the fire that settled it — so a closed
+   * question stays closed instead of being re-derived every fire. Moves
+   * here from needsLiveVerification once a fire answers it.
+   */
+  verifiedLive?: string;
 }
 
 const REPORT_2026_09_02 =
@@ -50,10 +56,25 @@ export const WARDROBE_VENDORS: readonly WardrobeVendor[] = [
   },
   {
     vendor: 'RushOrderTees',
+    // First live Bridge read 2026-09-10 (wardrobe Lane A fire,
+    // gateway+coverage_gap+rushordertees-asset-cdn-and-search-backend-are-
+    // third-party-hosts): rushordertees.com itself was never refused — text,
+    // prices and the PDP Pricing Calculator read fine, and the vendor
+    // yielded the board's first RushOrderTees offer. Its asset CDN is
+    // cdn.sanity.io (every product photograph; ORIGIN_DENIED 29 requests on
+    // /t-shirts/ alone) and its on-site product search is Algolia
+    // (hwj52h4d98-dsn.algolia.net and hwj52h4d98-{1,2,3}.algolianet.com,
+    // /1/indexes/product_catalog/…). Neither is a RushOrderTees registrable
+    // domain, so neither joins this roster — the same test that keeps GS-JJ's
+    // aliyuncs.com endpoint and Spreadshirt's cdn.media.amplience.net out —
+    // and both are the operator's call. Until ruled on: product photography
+    // is blocked and on-site keyword search is unusable on this vendor;
+    // prices are unaffected.
     hosts: ['rushordertees.com'],
     addedOn: '2026-09-02',
     source: REPORT_2026_09_02,
-    needsLiveVerification: 'asset CDN host(s)',
+    verifiedLive:
+      'asset CDN is the third-party cdn.sanity.io and the product-search backend the third-party Algolia (hwj52h4d98-dsn.algolia.net, hwj52h4d98-{1,2,3}.algolianet.com); both operator-call, deliberately not added — 2026-09-10 wardrobe fire, first live read',
   },
   {
     vendor: 'Spreadshirt',
