@@ -43,4 +43,11 @@ describe('dashboard catalog is complete for every id', () => {
     // generic assertions above would still pass if it were dropped again.
     expect(DASHBOARD_IDS).toContain('wardrobe');
   });
+
+  it('includes ci', () => {
+    // The improvement routine's board (approvals, submissions, PRs, runs);
+    // no prices. Same reasoning as wardrobe: the generic assertions cannot
+    // notice a roster entry that was dropped.
+    expect(DASHBOARD_IDS).toContain('ci');
+  });
 });

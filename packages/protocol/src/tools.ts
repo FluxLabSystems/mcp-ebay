@@ -977,7 +977,9 @@ export const JobStatusOutput = z.strictObject(BatchExtractProgressShape);
  * device involved). The gateway holds the per-dashboard ingest tokens; the
  * scheduled research runs never see credentials in task text or output.
  */
-export const DASHBOARD_IDS = ['deals', 'office', 'jobs', 'vacation', 'wardrobe'] as const;
+// `ci` is the improvement routine's board (approvals, submissions, PRs, runs)
+// and carries no prices — it is a work queue, not a marketplace feed.
+export const DASHBOARD_IDS = ['deals', 'office', 'jobs', 'vacation', 'wardrobe', 'ci'] as const;
 export type DashboardId = (typeof DASHBOARD_IDS)[number];
 
 export const DashboardFeedInput = z.strictObject({

@@ -123,6 +123,7 @@ export const GatewayEnvSchema = z
     JOBS_INGEST_TOKEN: z.string().min(1).optional(),
     VACATION_INGEST_TOKEN: z.string().min(1).optional(),
     WARDROBE_INGEST_TOKEN: z.string().min(1).optional(),
+    CI_INGEST_TOKEN: z.string().min(1).optional(),
     /**
      * Countdown API (Traject Data's eBay scraping API) key for the
      * gateway-served ebay_api_* tools. When unset the tools are not
@@ -275,7 +276,8 @@ export const GatewayEnvSchema = z
       env.OFFICE_INGEST_TOKEN !== undefined ||
       env.JOBS_INGEST_TOKEN !== undefined ||
       env.VACATION_INGEST_TOKEN !== undefined ||
-      env.WARDROBE_INGEST_TOKEN !== undefined;
+      env.WARDROBE_INGEST_TOKEN !== undefined ||
+      env.CI_INGEST_TOKEN !== undefined;
     if (anyIngestToken && env.DASHBOARD_API_BASE_URL === undefined) {
       ctx.issues.push({
         code: 'custom',
@@ -432,6 +434,7 @@ export function loadGatewayConfig(env: Record<string, string | undefined> = proc
               ...(parsed.JOBS_INGEST_TOKEN === undefined ? {} : { jobs: parsed.JOBS_INGEST_TOKEN }),
               ...(parsed.VACATION_INGEST_TOKEN === undefined ? {} : { vacation: parsed.VACATION_INGEST_TOKEN }),
               ...(parsed.WARDROBE_INGEST_TOKEN === undefined ? {} : { wardrobe: parsed.WARDROBE_INGEST_TOKEN }),
+              ...(parsed.CI_INGEST_TOKEN === undefined ? {} : { ci: parsed.CI_INGEST_TOKEN }),
             },
           },
     countdown:
