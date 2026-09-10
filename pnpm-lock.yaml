@@ -52,16 +52,16 @@ importers:
         version: link:../../packages/source-countdown
       '@hono/node-server':
         specifier: ^2.1.0
-        version: 2.1.0(hono@4.13.2)
+        version: 2.1.0(hono@4.13.5)
       '@modelcontextprotocol/hono':
         specifier: 2.0.0
-        version: 2.0.0(@modelcontextprotocol/server@2.0.0)(hono@4.13.2)
+        version: 2.0.0(@modelcontextprotocol/server@2.0.0)(hono@4.13.5)
       '@modelcontextprotocol/server':
         specifier: 2.0.0
         version: 2.0.0
       hono:
-        specifier: ^4.13.2
-        version: 4.13.2
+        specifier: ^4.13.5
+        version: 4.13.5
       jose:
         specifier: ^6.2.8
         version: 6.2.8
@@ -293,13 +293,13 @@ importers:
         version: link:../apps/windows-agent
       '@hono/node-server':
         specifier: ^2.1.0
-        version: 2.1.0(hono@4.13.2)
+        version: 2.1.0(hono@4.13.5)
       '@modelcontextprotocol/server':
         specifier: 2.0.0
         version: 2.0.0
       hono:
-        specifier: ^4.13.2
-        version: 4.13.2
+        specifier: ^4.13.5
+        version: 4.13.5
       jose:
         specifier: ^6.2.8
         version: 6.2.8
@@ -880,8 +880,8 @@ packages:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
     engines: {node: '>=8'}
 
-  hono@4.13.2:
-    resolution: {integrity: sha512-JydRilDRkYBQMt9qR9U92mXxmbGqsqSn/IKOrh4e7/gEbn+0zSr8igTu0obwJoNGN4sez28DIql7FBHWydoJpA==}
+  hono@4.13.5:
+    resolution: {integrity: sha512-O6+/eCYRkzzzy0rPWwKLiGBR1nFuUPZynnwjxN1MBA62NNqbT0wQEzQyK2gSO5yDIDB336sXQleAhOHrzlYyKw==}
     engines: {node: '>=16.9.0'}
 
   html-escaper@3.0.3:
@@ -1465,9 +1465,9 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
-  '@hono/node-server@2.1.0(hono@4.13.2)':
+  '@hono/node-server@2.1.0(hono@4.13.5)':
     dependencies:
-      hono: 4.13.2
+      hono: 4.13.5
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -1491,10 +1491,10 @@ snapshots:
     dependencies:
       zod: 4.4.3
 
-  '@modelcontextprotocol/hono@2.0.0(@modelcontextprotocol/server@2.0.0)(hono@4.13.2)':
+  '@modelcontextprotocol/hono@2.0.0(@modelcontextprotocol/server@2.0.0)(hono@4.13.5)':
     dependencies:
       '@modelcontextprotocol/server': 2.0.0
-      hono: 4.13.2
+      hono: 4.13.5
 
   '@modelcontextprotocol/server@2.0.0':
     dependencies:
@@ -1953,7 +1953,7 @@ snapshots:
 
   has-flag@4.0.0: {}
 
-  hono@4.13.2: {}
+  hono@4.13.5: {}
 
   html-escaper@3.0.3: {}
 
