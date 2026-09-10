@@ -387,10 +387,10 @@ describe('search-card bidCount is never another element\'s digits (2026-09-08)',
 // a live ask — no sold date, nothing separating a comp from an ask — so the
 // fire fell back to live-ask medians. A row is a sold comp only when the card
 // SAYS it sold; the schema now has a place for that statement.
-// NEEDS-LIVE-VERIFICATION: the caption markup is the classic template's
-// `.s-item__caption--signal.POSITIVE` "Sold  Sep 3, 2026" as this was written
-// against; a live sold page has never been captured (www.ebay.ca 403s dev
-// boxes, and the 2026-09-08 snapshot could not be taken).
+// The classic template's `.s-item__caption--signal.POSITIVE` "Sold  Sep 3,
+// 2026" is what this was written against (www.ebay.ca 403s dev boxes, and the
+// 2026-09-08 snapshot could not be taken); the live template was captured on
+// 2026-09-09 and pinned on 2026-09-10 — the last two tests below.
 describe('sold/completed-search rows state their sold date (2026-09-08)', () => {
   function rows(html: string, url = 'https://www.ebay.ca/sch/i.html?_nkw=lego+baseplate+6092+32x32+ramp&LH_Sold=1&LH_Complete=1&_sop=13'): ListingCandidate[] {
     const { document } = parseHTML(`<ul class="srp-results">${html}</ul>`);
@@ -482,6 +482,66 @@ describe('sold/completed-search rows state their sold date (2026-09-08)', () => 
     expect(b?.soldAt).toBe('2026-08-18');
     expect(c?.soldText).toBeNull();
     expect(c?.soldAt).toBeNull();
+  });
+
+  // 2026-09-10 04:xxZ deals fire (site-ebay+coverage_gap+sold-completed-
+  // search-returns-error-page, the capture the 2026-09-07 ledger line asked
+  // for): the mandated LH_Sold=1&LH_Complete=1&_sop=13 form rendered in the
+  // signed-in profile and the bounded browser_snapshot of the first three
+  // rows was taken. The caption node has role "generic", accessible name
+  // "Sold Item" and text "Sold 8 Sep 2026" (nodes 182, 190, 198: "Sold 8 Sep
+  // 2026", "Sold 8 Sep 2026", "Sold 7 Sep 2026"); the filter rail read
+  // "Completed listings Remove filter Sold listings Remove filter". An
+  // accessible name on a generic node comes from its aria-label, so that
+  // attribute is the fixture's anchor — the attribute name is the one
+  // inference here; the text and the name are the snapshot's own. The build
+  // read every row (soldRowCount 210 of 218, soldAt on all 12 projected),
+  // so this pins the live template rather than fixing anything, and the
+  // day-first reader's NEEDS-LIVE-VERIFICATION marker retires with it.
+  it('reads the 2026-09-10 capture: a generic node named "Sold Item" whose text is "Sold 8 Sep 2026"', () => {
+    const [first, second, third] = rows(
+      `<li><div class="su-card-container">
+         <a href="https://www.ebay.ca/itm/327338666072"></a>
+         <img alt="LEGO 13 Road Baseplates 32x32 lot" src="https://i.ebayimg.com/a.jpg">
+         <div aria-label="Sold Item">Sold 8 Sep 2026</div>
+         <a href="https://www.ebay.ca/itm/327338666072">LEGO 13 Road Baseplates 32x32 lot<span>Opens in a new window or tab</span></a>
+         <span>C $55.98</span><span>+C $19.99 shipping</span>
+       </div></li>
+       <li><div class="su-card-container">
+         <a href="https://www.ebay.ca/itm/327337179588"></a>
+         <div aria-label="Sold Item">Sold 8 Sep 2026</div>
+         <a href="https://www.ebay.ca/itm/327337179588">LEGO 5 Road Baseplates 32x32</a>
+         <span>C $27.98</span>
+       </div></li>
+       <li><div class="su-card-container">
+         <a href="https://www.ebay.ca/itm/167471373158"></a>
+         <div aria-label="Sold Item">Sold 7 Sep 2026</div>
+         <a href="https://www.ebay.ca/itm/167471373158">LEGO Studios Lava Baseplate 32x32</a>
+         <span>C $24.80</span>
+       </div></li>`,
+      'https://www.ebay.ca/sch/i.html?_nkw=lego+road+baseplate+32x32&LH_Sold=1&LH_Complete=1&_sop=13',
+    );
+    expect(first?.soldText).toBe('Sold 8 Sep 2026');
+    expect(first?.soldAt).toBe('2026-09-08');
+    expect(first?.snippetPrice).toEqual({ value: 55.98, currency: 'CAD' });
+    expect(second?.soldText).toBe('Sold 8 Sep 2026');
+    expect(second?.soldAt).toBe('2026-09-08');
+    expect(third?.soldText).toBe('Sold 7 Sep 2026');
+    expect(third?.soldAt).toBe('2026-09-07');
+  });
+
+  it('the "Sold Item" accessible name alone is the undated marker, never a date', () => {
+    const [candidate] = rows(
+      `<li><div class="su-card-container">
+         <a href="https://www.ebay.ca/itm/177849762613"></a>
+         <div aria-label="Sold Item"></div>
+         <a href="https://www.ebay.ca/itm/177849762613">LEGO grey road straight 32x32</a>
+         <span>C $12.97</span>
+       </div></li>`,
+      'https://www.ebay.ca/sch/i.html?_nkw=lego+road+baseplate+32x32&LH_Sold=1&LH_Complete=1&_sop=13',
+    );
+    expect(candidate?.soldText).toBe('Sold Item');
+    expect(candidate?.soldAt).toBeNull();
   });
 });
 
