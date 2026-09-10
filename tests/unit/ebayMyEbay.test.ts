@@ -1020,3 +1020,85 @@ describe('offers page: the title tail is never the seller (2026-09-07 fire)', ()
     expect(warning).toContain('philjn555');
   });
 });
+
+// 2026-09-10 04:xxZ deals fire (site-ebay+extractor_defect+offers-row-with-one-
+// figure-equal-to-the-ask-is-still-typed-as-an-offer): on the build carrying
+// the #45/#49/#53 fixes (OFFERS_AMOUNTS_ORDERED_BY_VALUE on 49 of 52 rows), two
+// status-token rows carried exactly ONE amount and were still typed as
+// received offers with offerPrice set to it and listPrice null — and on both
+// the figure equalled the item page's ask to the cent (257439687441: C $94.05
+// open; 267676402924: C $72.24 expired). The two-amount ordering rule cannot
+// reach a row with one figure. The live row text was not captured (only the
+// field-level read), so the two rows below are synthetic: the first puts the
+// figure where the offer-amount pattern catches it (reproducing offerPrice
+// set / listPrice null exactly), the second where nothing catches it. The
+// rule keys on the figure COUNT, so either wording reads the same way.
+describe('offers page: a status-token row with exactly one amount carries the ask, not an offer (2026-09-10 fire)', () => {
+  function offersDoc(rows: string): Document {
+    const { document } = parseHTML(
+      `<html><head><title>Bids and offers | My eBay</title></head><body>
+       <div class="filter-menu" role="tablist"><button role="tab" aria-selected="true">All (52)</button></div>
+       <ul>${rows}</ul></body></html>`,
+    );
+    return document as unknown as Document;
+  }
+  const receivedOneFigure = `<li class="offer-card"><span class="eyebrow">OFFER RECEIVED</span>
+      <a href="https://www.ebay.ca/itm/257439687441">Cisco Catalyst C9120AXI-A Wireless Access Point 9120AXI Domain A Tested w/Mounts</a>
+      <div>Buy It Now <button>Make offer</button> C $94.05</div></li>`;
+  const expiredOneFigure = `<li class="offer-card"><span class="eyebrow">OFFER EXPIRED</span>
+      <a href="https://www.ebay.ca/itm/267676402924">LEGO Star Wars 75192 Millennium Falcon manual</a>
+      <div><span>C $72.24</span></div><div><button>Make offer</button></div></li>`;
+  const receivedTwoFigures = `<li class="offer-card"><span class="eyebrow">OFFER RECEIVED</span>
+      <a href="https://www.ebay.ca/itm/267759834239">LEGO minifigure lot</a>
+      <div><span>C $10.00</span></div><div>C $12.50 <button>Make offer</button></div></li>`;
+
+  it('a received row whose only figure follows the offer word keeps the figure as listPrice, offerPrice null', () => {
+    const page = extractOffersPage(offersDoc(receivedOneFigure), 'https://www.ebay.ca/mye/myebay/bidsoffers', {
+      observedAt: OBSERVED_AT,
+    });
+    const row = page.candidates[0]!;
+    expect(row.direction).toBe('from_seller');
+    expect(row.offerStatus).toBe('open');
+    expect(row.offerPrice).toBeNull();
+    expect(row.listPrice).toEqual({ value: 94.05, currency: 'CAD' });
+  });
+
+  it('an expired row whose only figure is unlabelled reads the same way', () => {
+    const page = extractOffersPage(offersDoc(expiredOneFigure), 'https://www.ebay.ca/mye/myebay/bidsoffers', {
+      observedAt: OBSERVED_AT,
+    });
+    const row = page.candidates[0]!;
+    expect(row.direction).toBe('from_seller');
+    expect(row.offerStatus).toBe('expired');
+    expect(row.offerPrice).toBeNull();
+    expect(row.listPrice).toEqual({ value: 72.24, currency: 'CAD' });
+  });
+
+  it('names the one-figure rows in OFFERS_SINGLE_AMOUNT_IS_ASK and leaves the two-figure row ordered', () => {
+    const page = extractOffersPage(
+      offersDoc(receivedOneFigure + expiredOneFigure + receivedTwoFigures),
+      'https://www.ebay.ca/mye/myebay/bidsoffers',
+      { observedAt: OBSERVED_AT },
+    );
+    const single = page.warnings.find((warning) => warning.startsWith('OFFERS_SINGLE_AMOUNT_IS_ASK'));
+    expect(single).toBeDefined();
+    expect(single).toMatch(/2 of 3/);
+    expect(single).toMatch(/257439687441/);
+    expect(single).toMatch(/267676402924/);
+    expect(single).not.toMatch(/267759834239/);
+    const ordered = page.warnings.find((warning) => warning.startsWith('OFFERS_AMOUNTS_ORDERED_BY_VALUE'));
+    expect(ordered).toMatch(/1 of 3/);
+    expect(page.candidates[2]!.offerPrice).toEqual({ value: 10, currency: 'CAD' });
+    expect(page.candidates[2]!.listPrice).toEqual({ value: 12.5, currency: 'CAD' });
+  });
+
+  it('a row with no status token and a labelled single amount is untouched (the older labelled template)', () => {
+    const page = extractOffersPage(loadFixture('offers-page.html'), 'https://www.ebay.ca/mye/myebay/bidsoffers', {
+      observedAt: OBSERVED_AT,
+    });
+    const counter = page.candidates.find((row) => row.itemId === '331982822376')!;
+    expect(counter.offerPrice).toEqual({ value: 2.75, currency: 'CAD' });
+    expect(counter.listPrice).toBeNull();
+    expect(page.warnings).toEqual([]);
+  });
+});

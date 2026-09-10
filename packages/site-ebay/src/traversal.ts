@@ -70,9 +70,9 @@ export interface ListingCandidate {
    * LH_Sold=1&LH_Complete=1 search rendered 247 rows with no field
    * separating a sold row from a live ask, and the routine's rule that "a
    * row without a sold date is not a sold row" had nothing to read. A
-   * quantity badge ("12 sold") is never this caption. NEEDS-LIVE-VERIFICATION:
-   * the classic template's `.s-item__caption--signal` is the selector this
-   * was written against; no live sold page has been captured.
+   * quantity badge ("12 sold") is never this caption. Verified live
+   * 2026-09-09/10 (see readSoldCaption): the current template's caption is
+   * a generic node named "Sold Item" whose text is the day-first date.
    */
   soldText: string | null;
   /**
@@ -500,14 +500,22 @@ function withoutTitle(text: string, card: Element, rawTitle: string | null): str
  * no-solddate-or-soldprice): a bare generic node with no signal class whose
  * whole text is "Sold 1 Sep 2026" — DAY first, no comma — between the row's
  * img and its title link. The month-first pattern alone read every such row
- * as unmarked, so the comps step ended for nothing. When no caption element
- * matches, the dated phrase is read from the card's own text with the title
- * removed, in either order, so a template change degrades to "no caption
- * read" (and the page-level SOLD_FILTER_ROWS_UNMARKED warning) rather than
- * to a guess. A quantity badge ("12 sold") matches neither pattern.
+ * as unmarked, so the comps step ended for nothing. The 2026-09-10 capture
+ * (deals fire 04:xxZ, the bounded snapshot of the first three rows of the
+ * mandated LH_Sold=1&LH_Complete=1 form, rendering in the signed-in profile)
+ * pinned that node's accessibility: role "generic", accessible name "Sold
+ * Item", text "Sold 8 Sep 2026" — a generic node is named only by its
+ * aria-label, so `[aria-label="Sold Item"]` is the anchor and the label is
+ * the undated "Sold Item" marker when the node's text carries no date. The
+ * build read 210 of 218 rows that fire, so both readers are verified live.
+ * When no caption element matches, the dated phrase is read from the card's
+ * own text with the title removed, in either order, so a template change
+ * degrades to "no caption read" (and the page-level
+ * SOLD_FILTER_ROWS_UNMARKED warning) rather than to a guess. A quantity
+ * badge ("12 sold") matches neither pattern.
  */
 const CARD_SOLD_SELECTOR =
-  '.s-item__caption--signal, .s-item__caption, .s-card__caption, .s-item__title--tagblock, .s-card__title--tagblock';
+  '.s-item__caption--signal, .s-item__caption, .s-card__caption, .s-item__title--tagblock, .s-card__title--tagblock, [aria-label="Sold Item" i]';
 const SOLD_MONTH = '(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?';
 /** Month-first "Sold Sep 3, 2026" — groups 2 (month), 3 (day), 4 (year). */
 const SOLD_CAPTION_MONTH_FIRST_RE = new RegExp(`\\bsold\\s+(?:on\\s+)?(${SOLD_MONTH}\\s+(\\d{1,2}),?\\s+(\\d{4}))\\b`, 'i');
@@ -529,6 +537,10 @@ export function readSoldCaption(card: Element, rawTitle: string | null): { soldT
     for (const el of Array.from(card.querySelectorAll(CARD_SOLD_SELECTOR))) {
       const text = spacedText(el);
       if (text.length > 0) sources.push(text);
+      // The accessible name is a source of its own, after the text: a dated
+      // text wins, a bare "Sold Item" label is the undated marker.
+      const label = normalizeText(el.getAttribute('aria-label'));
+      if (label.length > 0) sources.push(label);
     }
   } catch {
     // fall through to the card's own text

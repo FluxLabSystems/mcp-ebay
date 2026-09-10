@@ -157,9 +157,16 @@ export interface OfferCandidate {
    * figure on every row was the listing's own ask (267676402924 C $84.99 /
    * C $72.24, 168360507031, 128028063251; 25 of 25 rows the same way) —
    * the page-level OFFERS_AMOUNTS_ORDERED_BY_VALUE names the rows read so.
+   * On a status-token row that carries exactly ONE amount this is null: the
+   * figure is the ask (2026-09-10, two of 52 live rows, both equal to the
+   * item page's price to the cent — 257439687441 C $94.05, 267676402924
+   * C $72.24), and OFFERS_SINGLE_AMOUNT_IS_ASK names the rows read so.
    */
   offerPrice: { value: number; currency: string } | null;
-  /** The listing's asking price when the row shows a second figure; null otherwise. */
+  /**
+   * The listing's asking price when the row shows a second figure, or the
+   * only figure of a status-token row; null otherwise.
+   */
   listPrice: { value: number; currency: string } | null;
   direction: OfferDirection;
   offerStatus: OfferStatus;
@@ -991,6 +998,7 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
   const bidRowIds: string[] = [];
   const sellerUnstatedIds: string[] = [];
   const sellerAmbiguous: Array<{ itemId: string; loginIds: string[] }> = [];
+  const singleAmountIds: string[] = [];
   let orderedByValue = 0;
 
   for (const { anchor, itemId, url } of itemAnchors(document, pageUrl)) {
@@ -1057,7 +1065,20 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
     const isOfferRow = !isBidRow && (prefix !== null || direction !== 'unknown');
     if (isOfferRow) {
       const figures = rowFigures(blob);
-      if (offerPrice === null && figures.length === 2 && figures[0]!.currency === figures[1]!.currency) {
+      if (prefix !== null && figures.length === 1) {
+        // The status-token template renders an offer as a PAIR of figures
+        // (the offer and the ask: 50 of 52 live rows on 2026-09-10). A row
+        // of that template with exactly one figure shows the ask alone —
+        // both such rows equalled the item page's price to the cent — so
+        // the figure is listPrice whatever wording sits beside it, and the
+        // offer stays unpriced (present, like OFFERS_THREAD_UNREAD, never
+        // valued at a 0% discount). The older labelled template ("Seller
+        // sent you an offer: US $165.00") carries no status token and keeps
+        // its labelled amount.
+        offerPrice = null;
+        listPrice = figures[0]!;
+        singleAmountIds.push(itemId);
+      } else if (offerPrice === null && figures.length === 2 && figures[0]!.currency === figures[1]!.currency) {
         const [low, high] = figures[0]!.value <= figures[1]!.value ? [figures[0]!, figures[1]!] : [figures[1]!, figures[0]!];
         offerPrice = low;
         listPrice = high;
@@ -1127,6 +1148,12 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
     if (orderedByValue > 0) {
       warnings.push(
         `OFFERS_AMOUNTS_ORDERED_BY_VALUE: ${orderedByValue} of ${candidates.length} row(s) carry two amounts with no wording that labels the offer, or label the higher one as the offer; an offer is never above the ask, so on them offerPrice is the lower figure and listPrice the higher (proven 2026-09-04 against three item pages, where the higher figure was the listing's own ask).`,
+      );
+    }
+    if (singleAmountIds.length > 0) {
+      const ids = singleAmountIds.slice(0, 10).join(', ');
+      warnings.push(
+        `OFFERS_SINGLE_AMOUNT_IS_ASK: ${singleAmountIds.length} of ${candidates.length} status-token row(s) carry exactly one amount (ids: ${ids}${singleAmountIds.length > 10 ? ', …' : ''}); on this template an offer renders as an offer/ask pair, and the lone figure equalled the item page's ask on every such row read (2026-09-10), so it is listPrice and offerPrice is null — the thread is present but unpriced, never a 0% discount.`,
       );
     }
     if (sellerUnstatedIds.length > 0) {
