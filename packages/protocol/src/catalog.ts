@@ -418,6 +418,7 @@ export const DASHBOARD_WRITE_SCOPES: Readonly<Record<DashboardId, string>> = {
   jobs: 'jobs:write',
   vacation: 'vacation:write',
   wardrobe: 'wardrobe:write',
+  ci: 'ci:write',
 };
 
 export const ALL_DASHBOARD_SCOPES: readonly string[] = [
@@ -449,7 +450,7 @@ export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
     operation: 'feed',
     timeoutMs: 30_000,
     description:
-      'Read the current Fluxology dashboard feed (deals, office, jobs, vacation, or wardrobe) so a run can diff its findings against stored records before writing. mode "ids" returns root metadata plus per-listing identity/freshness fields (including the active retirement flag) only. filter.active reads that flag: a record is active unless retired with active:false.',
+      'Read the current Fluxology dashboard feed (deals, office, jobs, vacation, wardrobe, or ci) so a run can diff its findings against stored records before writing. mode "ids" returns root metadata plus per-listing identity/freshness fields (including the active retirement flag) only. filter.active reads that flag: a record is active unless retired with active:false.',
     inputSchema: DashboardFeedInput,
     outputSchema: DashboardFeedOutput,
   },
@@ -459,7 +460,7 @@ export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
     operation: 'records',
     timeoutMs: 30_000,
     description:
-      'Read a Fluxology dashboard (deals, office, jobs, vacation, or wardrobe) through the compact read path instead of the whole feed: state live|archived|all (archived is derived — inactive and quiet past the retention window, or a terminal operator decision that old; never stored, never deleted), a field projection (id always included; a dotted name such as analysis.fairValueCad walks the nested object; unresolvedFields names any requested field no record on THIS PAGE carries and unresolvedInScope the subset no record of the scope carries at all — UNKNOWN_FIELDS_IGNORED for the latter (misspelled or not stored), FIELDS_ABSENT_ON_PAGE for a stored field this page happens not to carry, which is never evidence that the scope lacks it), since (ISO 8601; undated records are kept because undated is unknown, not unchanged), recordType, sort changed|added|discovered with dir, and limit/cursor paging (nextCursor is null on the last page). The response carries total, matched, returned and archivedCount so "nothing matched" and "the scope is empty" are distinguishable. This is the read a routine makes; dashboard_feed is for a whole-board diff.',
+      'Read a Fluxology dashboard (deals, office, jobs, vacation, wardrobe, or ci) through the compact read path instead of the whole feed: state live|archived|all (archived is derived — inactive and quiet past the retention window, or a terminal operator decision that old; never stored, never deleted), a field projection (id always included; a dotted name such as analysis.fairValueCad walks the nested object; unresolvedFields names any requested field no record on THIS PAGE carries and unresolvedInScope the subset no record of the scope carries at all — UNKNOWN_FIELDS_IGNORED for the latter (misspelled or not stored), FIELDS_ABSENT_ON_PAGE for a stored field this page happens not to carry, which is never evidence that the scope lacks it), since (ISO 8601; undated records are kept because undated is unknown, not unchanged), recordType, sort changed|added|discovered with dir, and limit/cursor paging (nextCursor is null on the last page). The response carries total, matched, returned and archivedCount so "nothing matched" and "the scope is empty" are distinguishable. This is the read a routine makes; dashboard_feed is for a whole-board diff.',
     inputSchema: DashboardRecordsInput,
     outputSchema: DashboardRecordsOutput,
   },
@@ -469,7 +470,7 @@ export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
     operation: 'summary',
     timeoutMs: 30_000,
     description:
-      'Counts only for a Fluxology dashboard (deals, office, jobs, vacation, or wardrobe): total, live and archived record counts, byRecordType, byStatus and the activity range, and no records at all — enough to decide whether anything moved before reading anything. archiveAfterDays overrides the retention window used to derive archived-ness.',
+      'Counts only for a Fluxology dashboard (deals, office, jobs, vacation, wardrobe, or ci): total, live and archived record counts, byRecordType, byStatus and the activity range, and no records at all — enough to decide whether anything moved before reading anything. archiveAfterDays overrides the retention window used to derive archived-ness.',
     inputSchema: DashboardSummaryInput,
     outputSchema: DashboardSummaryOutput,
   },
@@ -479,7 +480,7 @@ export const DASHBOARD_TOOL_CATALOG: readonly DashboardToolCatalogEntry[] = [
     operation: 'upsert',
     timeoutMs: 30_000,
     description:
-      'Upsert listing records into a Fluxology dashboard (deals, office, jobs, vacation, or wardrobe). Records merge by stable id server-side; unrelated and historical records are preserved. A partial record leaves every top-level field it omits unchanged. Nested objects are REPLACED wholesale, not merged — send the whole object — with one declared exception: on deals, `analysis` merges one level deep (an omitted subfield keeps its stored value, a subfield sent null clears it, arrays inside it such as comps and alternatives still replace) on a dashboard-api build carrying that rule; on an older build `analysis` is replaced wholesale too, so read the stored analysis first and resend every subfield you mean to keep. Send only new or materially changed records.',
+      'Upsert listing records into a Fluxology dashboard (deals, office, jobs, vacation, wardrobe, or ci). Records merge by stable id server-side; unrelated and historical records are preserved. A partial record leaves every top-level field it omits unchanged. Nested objects are REPLACED wholesale, not merged — send the whole object — with one declared exception: on deals, `analysis` merges one level deep (an omitted subfield keeps its stored value, a subfield sent null clears it, arrays inside it such as comps and alternatives still replace) on a dashboard-api build carrying that rule; on an older build `analysis` is replaced wholesale too, so read the stored analysis first and resend every subfield you mean to keep. Send only new or materially changed records.',
     inputSchema: DashboardUpsertInput,
     outputSchema: DashboardUpsertOutput,
   },
