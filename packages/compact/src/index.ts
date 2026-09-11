@@ -553,6 +553,17 @@ function readCandidatePrice(row: Unknown): number | null {
   return readNumber(row.priceValue);
 }
 
+/**
+ * A Kijiji card that states no amount ("Please Contact"): price.kind
+ * 'contact' with a null value. Distinct from a card whose price failed to
+ * parse (price null, or an amount kind with no value) — that one is still
+ * dropped by a bound and counted in EXCLUDED_NO_PRICE.
+ */
+function isContactPriceRow(row: Unknown): boolean {
+  const price = asObject(row.price);
+  return price !== null && readString(price.kind) === 'contact' && readNumber(price.value) === null;
+}
+
 function readCandidateFormat(row: Unknown): string | null {
   const direct = readString(row.sellingFormat);
   if (direct !== null) return direct;
@@ -613,6 +624,12 @@ export function compactSearchPage(
 
   const matched: Unknown[] = [];
   let excludedNoPrice = 0;
+  // Kijiji "Please Contact" cards kept under a price bound (office fire
+  // 2026-09-11: a maxPrice bound dropped the five contact-price cards the same
+  // response's SEARCH_CONTACT_PRICE_ROWS warning said never to drop). Their
+  // price.value is null, not zero — the ad body may name the figure — so a
+  // bound cannot judge them; they stay in, named, for the caller to open.
+  const retainedContactPriceIds: string[] = [];
   let excludedUnknownFormat = 0;
   const filterStartedAt = Date.now();
   let filterBudgetExceeded = false;
@@ -638,11 +655,16 @@ export function compactSearchPage(
     if (include?.minPrice !== undefined || include?.maxPrice !== undefined) {
       const price = readCandidatePrice(row);
       if (price === null) {
-        excludedNoPrice += 1;
-        continue;
+        if (isContactPriceRow(row)) {
+          retainedContactPriceIds.push(readString(row.adId) ?? readString(row.itemId) ?? `#${index}`);
+        } else {
+          excludedNoPrice += 1;
+          continue;
+        }
+      } else {
+        if (include.minPrice !== undefined && price < include.minPrice) continue;
+        if (include.maxPrice !== undefined && price > include.maxPrice) continue;
       }
-      if (include.minPrice !== undefined && price < include.minPrice) continue;
-      if (include.maxPrice !== undefined && price > include.maxPrice) continue;
     }
     if (include?.formats !== undefined) {
       const format = readCandidateFormat(row);
@@ -661,6 +683,12 @@ export function compactSearchPage(
   if (excludedNoPrice > 0) {
     warnings.push(
       `EXCLUDED_NO_PRICE: ${excludedNoPrice} candidate(s) were dropped by a price bound because their price could not be read from the result card.`,
+    );
+  }
+  if (retainedContactPriceIds.length > 0) {
+    const shown = retainedContactPriceIds.slice(0, 10).join(', ');
+    warnings.push(
+      `RETAINED_CONTACT_PRICE_ROWS: ${retainedContactPriceIds.length} candidate(s) state no amount ("Please Contact"; ids: ${shown}${retainedContactPriceIds.length > 10 ? ', …' : ''}) and were KEPT under the price bound — their price.value is null, not zero, and the ad body may name a figure the card does not. Open them before any price-based exclusion; they are not counted as within the bound.`,
     );
   }
   if (excludedUnknownFormat > 0) {
