@@ -70,6 +70,8 @@ export async function startFixtureServer(): Promise<FixtureServer> {
   const pngLarge = makePng(640, 400, [30, 200, 90]);
 
   const listingHtml = readFileSync(join(FIXTURES_DIR, 'ebay', 'active-listing.html'), 'utf8');
+  /** Hits per `key` on /interstitial/once, so the first request redirects and the rest serve the page. */
+  const interstitialHits = new Map<string, number>();
 
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
@@ -126,6 +128,36 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     }
     if (path === '/redirect/hop') {
       res.writeHead(302, { location: url.searchParams.get('to') ?? '/' });
+      res.end();
+      return;
+    }
+    // A transient interstitial the SITE sends the tab to (2026-09-10 deals
+    // fire: eBay redirected the signed-in watch list to
+    // http://pages.ebay.com/messages/page_not_responding.html once, and
+    // served the page on the identical call thirty seconds later). `to` is
+    // the interstitial URL; `mode` is server (a 302) or client
+    // (location.replace while the document loads). /interstitial/once
+    // redirects the FIRST request per `key` and serves the page after
+    // that; /interstitial/always redirects every request.
+    if (path === '/interstitial/once' || path === '/interstitial/always') {
+      const to = url.searchParams.get('to') ?? '/';
+      const key = url.searchParams.get('key') ?? path;
+      const seen = interstitialHits.get(key) ?? 0;
+      interstitialHits.set(key, seen + 1);
+      if (path === '/interstitial/once' && seen > 0) {
+        sendHtml('<!doctype html><title>watch list</title><h1>watchlist</h1><p>327 items</p>');
+        return;
+      }
+      if (url.searchParams.get('mode') === 'client') {
+        // The slow image keeps `load` from firing before the replace
+        // navigation is processed, so the hop happens inside the caller's
+        // goto — the shape the live fire saw.
+        sendHtml(
+          `<!doctype html><title>interstitial</title><script>location.replace(${JSON.stringify(to)});</script><p>redirecting</p><img src="/slow" alt="">`,
+        );
+        return;
+      }
+      res.writeHead(302, { location: to });
       res.end();
       return;
     }

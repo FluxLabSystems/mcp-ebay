@@ -29,6 +29,21 @@ export const ERROR_CATALOG = {
     message: 'Resolved target/redirect is loopback, link-local, RFC1918/private, or otherwise prohibited.',
   },
   SCHEME_DENIED: { retryable: false, message: 'URL scheme is not permitted.' },
+  /**
+   * The site redirected a permitted navigation to a URL local policy
+   * refuses (off the allowlist, http://, a private address), and one retry
+   * of the requested URL was redirected there again. The hop was never
+   * loaded; details carry url (requested), blockedUrl, blockedCode and
+   * retried. Retryable because the caller asked for an allowed page and
+   * the interstitial is the site's — 2026-09-10 deals fire: eBay's
+   * http://pages.ebay.com/messages/page_not_responding.html surfaced as a
+   * non-retryable SCHEME_DENIED on a call that succeeded thirty seconds
+   * later. A redirect into a protected path stays ACTION_BLOCKED.
+   */
+  REDIRECT_BLOCKED: {
+    retryable: true,
+    message: 'The site redirected the requested URL to one local policy blocks, twice; the requested page was not reached.',
+  },
   ACTION_BLOCKED: { retryable: false, message: 'Local protected-action policy denied the requested interaction.' },
   SECRET_FIELD_BLOCKED: {
     retryable: false,
