@@ -55,6 +55,7 @@ import {
 } from '@browser-bridge/protocol';
 import {
   classifyEbayPage,
+  isMyEbaySummaryPage,
   EBAY_GALLERY_SELECTORS,
   extractListing,
   extractListingCandidates,
@@ -975,7 +976,18 @@ async function executeExtract(
   if (kind === 'search' || kind === 'store' || kind === 'other') {
     const candidates = extractListingCandidates(document, pageUrl);
     const warnings = [...intentWarnings];
-    if (kind === 'other') {
+    if (kind === 'other' && isMyEbaySummaryPage(pageUrl)) {
+      // 2026-09-12 10:0xZ deals walk: the watch-list's own per-category
+      // filter URL (/myb/Watchlist?…&filter=category:<id>) committed and
+      // landed here, and the rows the scan returned were the summary page's
+      // mixed modules, not the 166-row category the chip stated. The
+      // landing is deterministic from the final URL, so it is named — the
+      // routine can tell "the filter form redirected" from "unknown page"
+      // without a second read.
+      warnings.push(
+        `MYEBAY_SUMMARY_PAGE: ${pageUrl} is the My eBay summary page, the landing a redirected My eBay request ends on — a watch-list URL carrying filter=category:<id> (the category chip URLs a watch-list record emits) that arrives here was redirected by the site, and the /itm/ links below are the summary page's own modules (watching, recently viewed, buy again), never a filtered view of the list. Read the unfiltered /mye/myebay/watchlist (the overflow render) for the list itself; do not read this page's rows as a category.`,
+      );
+    } else if (kind === 'other') {
       warnings.push(
         `UNCLASSIFIED_PAGE: ${pageUrl} is not an item (/itm/), search (/sch/), store (/str/, /usr/), watch-list (/mye/myebay/watchlist, /myb/WatchList) or offers (/mye/myebay/bidsoffers, /myb/BidsOffers) URL; returned a best-effort /itm/-link scan. An empty candidate list here may mean the page has no listings, not that extraction failed.`,
       );
