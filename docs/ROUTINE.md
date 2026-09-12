@@ -171,6 +171,29 @@ refused for five minutes, so report it and take the Bridge path.
   what the shortlist justifies. `sellingFormat: "unknown"` is a real
   answer — a card that states no format is genuinely ambiguous, and reading
   silence as fixed price would price a live bid as purchasable.
+- **A Kijiji card with no price element still gets a price when its text
+  states exactly one** (2026-09-11: the `/o-profile/<id>/listings/<n>`
+  seller pages hydrated 40 cards with a price element on none). The
+  candidate's `priceSource` says which: `card_element`, or `card_text` for
+  the one amount / `Please Contact` / `Swap` / `Free` label read from the
+  card's text with the title removed; the page says how many with
+  `CARD_PRICE_FROM_CARD_TEXT`. A card with two amounts stays null. When
+  *every* card on a page is priceless, `CARD_PRICE_UNRENDERED` says so —
+  report "prices are not on this surface" for that seller, never forty
+  nulls, and screen by ad page only what the roster entry justifies.
+- **A Kijiji ad body longer than `descriptionMaxChars` is paged, not
+  widened.** `descriptionOffset` starts the `descriptionFull` window; the
+  field states `offset` and `totalChars`, and `DESCRIPTION_TRUNCATED` names
+  the next offset to ask for. A 15,000-character dealer catalogue is three
+  calls of text a price can be parsed from, not a screenshot. The per-call
+  cap (6000) is unchanged. Adding the field changed the advertised tool
+  schema: a gateway redeploy plus a connector reconnect applies.
+- **An open offer row with no expiry is named, not silently null.**
+  `OFFERS_EXPIRY_UNSTATED` (2026-09-11: 55 of 55 rows) means the row
+  renders no expiry wording at all — the expiry lives in the offer thread,
+  so the O-track's "expiring within 24 hours" line is *unanswerable from
+  this surface*, never zero. `OFFERS_EXPIRY_UNPARSED` quotes expiry-like
+  wording the reader did not parse: a pattern to file, with the wording.
 
 ## When the budget ends anyway
 

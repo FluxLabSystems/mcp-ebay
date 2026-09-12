@@ -152,6 +152,9 @@ export interface CompactKijijiAd {
   description: string | null;
   /** The ad body the caller asked for (descriptionMaxChars); null unless requested and longer than the excerpt. */
   descriptionFull: string | null;
+  /** Where descriptionFull starts in the collapsed body and the body's whole length (2026-09-11 paging); null without descriptionFull. */
+  descriptionFullOffset: number | null;
+  descriptionTotalChars: number | null;
   /** Every amount the body states, in order (2026-09-09); [] when none — the listed price is never one of these by itself. */
   bodyPriceFigures: number[];
   imageCount: number | null;
@@ -180,6 +183,8 @@ export function compactKijijiAd(record: unknown): CompactKijijiAd {
     sellerListingCount: readNumber(ad.sellerListingCount),
     description: readString(ad.description),
     descriptionFull: readString(ad.descriptionFull),
+    descriptionFullOffset: readNumber(asObject(ad.descriptionFull)?.offset),
+    descriptionTotalChars: readNumber(asObject(ad.descriptionFull)?.totalChars),
     bodyPriceFigures: Array.isArray(ad.bodyPriceFigures)
       ? ad.bodyPriceFigures.filter((figure): figure is number => typeof figure === 'number' && Number.isFinite(figure))
       : [],
@@ -368,6 +373,9 @@ const DEFAULT_KIJIJI_CANDIDATE_FIELDS = [
   'url',
   'title',
   'price',
+  // Where the card's price came from (2026-09-11): 'card_text' says no
+  // price element matched and the figure was read from the card's text.
+  'priceSource',
   'locationText',
   'postedText',
 ] as const;

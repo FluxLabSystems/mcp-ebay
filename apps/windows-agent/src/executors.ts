@@ -538,7 +538,16 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
           typeof destinationPostalCode === 'string' && destinationPostalCode.length > 0
             ? destinationPostalCode
             : host.expectedPostalCode;
-        return executeExtract(host, session, tabId, expectedPostal, input.siteProfile, input.search, input.descriptionMaxChars);
+        return executeExtract(
+          host,
+          session,
+          tabId,
+          expectedPostal,
+          input.siteProfile,
+          input.search,
+          input.descriptionMaxChars,
+          input.descriptionOffset,
+        );
       }
       case 'open_and_extract': {
         // Same F-09 treatment as extract: the destination rides the
@@ -568,6 +577,7 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
           input.siteProfile,
           input.search ?? DEFAULT_SEARCH_COMPACTION,
           input.descriptionMaxChars,
+          input.descriptionOffset,
         );
         return {
           result: {
@@ -607,6 +617,8 @@ async function executeExtract(
   searchOptions?: SearchCompaction,
   /** Present only when the caller asked for the Kijiji ad body (descriptionFull). */
   descriptionMaxChars?: number,
+  /** Where that body window starts (descriptionOffset); 0 when absent. */
+  descriptionOffset?: number,
 ): Promise<ExecutionOutcome> {
   const tab = session.getTab(tabId);
   const pageUrl = tab.page.url();
@@ -816,6 +828,7 @@ async function executeExtract(
       pageRevision: tab.revision,
       observedAt: source.capturedAt,
       ...(descriptionMaxChars === undefined ? {} : { descriptionMaxChars }),
+      ...(descriptionOffset === undefined ? {} : { descriptionOffset }),
     });
     return {
       result: {
@@ -1281,10 +1294,20 @@ async function traverseOne(
   compact: boolean,
   budgetMs: number,
   descriptionMaxChars?: number,
+  descriptionOffset?: number,
 ): Promise<BatchExtractItem> {
   try {
     const nav = await navigate(session, tabId, url, waitUntil, budgetMs);
-    const outcome = await executeExtract(host, session, tabId, expectedPostalCode, siteProfile, undefined, descriptionMaxChars);
+    const outcome = await executeExtract(
+      host,
+      session,
+      tabId,
+      expectedPostalCode,
+      siteProfile,
+      undefined,
+      descriptionMaxChars,
+      descriptionOffset,
+    );
     const result = outcome.result;
     const warnings = Array.isArray(result.warnings) ? (result.warnings as string[]) : [];
     const profile = typeof result.siteProfile === 'string' ? result.siteProfile : siteProfile;
@@ -1334,6 +1357,7 @@ interface BatchPlan {
   expectedPostalCode: string;
   compact: boolean;
   descriptionMaxChars?: number;
+  descriptionOffset?: number;
 }
 
 /**
@@ -1364,6 +1388,7 @@ async function runBatch(
       plan.compact,
       Math.min(BATCH_ITEM_BUDGET_MS, remaining),
       plan.descriptionMaxChars,
+      plan.descriptionOffset,
     );
     onItem(item);
   }
@@ -1436,6 +1461,7 @@ async function executeExtractMany(
     expectedPostalCode,
     compact: input.compact,
     ...(input.descriptionMaxChars === undefined ? {} : { descriptionMaxChars: input.descriptionMaxChars }),
+    ...(input.descriptionOffset === undefined ? {} : { descriptionOffset: input.descriptionOffset }),
   };
 
   // §18 promotion rule: 'auto' answers inline only for a batch that fits

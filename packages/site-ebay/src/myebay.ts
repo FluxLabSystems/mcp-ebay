@@ -984,6 +984,15 @@ const EXPIRES_RE = new RegExp(
   String.raw`((?:expires?|expiring|valid)\s+(?:in|for)\s+${DURATION_SOURCE}|(?:expires?|expiring|valid)\s+(?:on|until)\s+[A-Za-z]{3,9}\.?\s+\d{1,2}(?:,?\s*\d{4})?(?:\s+(?:at\s+)?\d{1,2}:\d{2}\s*(?:[ap]\.?m\.?)?)?|${DURATION_SOURCE}left)`,
   'i',
 );
+/**
+ * Anything expiry-LIKE on an open row that EXPIRES_RE did not read — the
+ * wording plus a short tail, quoted so the pattern can be pinned. Tested
+ * only on rows EXPIRES_RE left null, and only on open rows, whose status
+ * token ("OFFER RECEIVED") carries no expiry word of its own; an expired
+ * row's "OFFER EXPIRED" is its status, never an expiry statement.
+ */
+const EXPIRY_HINT_RE =
+  /\b(?:expir\w*|valid\s+(?:through|thru|until|till|to|for)|time\s+left|\d+\s*(?:d|h|m|days?|hours?|hrs?|min(?:ute)?s?)\s+left|ends?\s+(?:in|on)|deadline|until\s+[A-Z][a-z]{2})\b[^.|]{0,40}/i;
 
 /**
  * Read the bids/offers page. Every row is keyed on its /itm/ link; the
@@ -998,6 +1007,16 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
   const bidRowIds: string[] = [];
   const sellerUnstatedIds: string[] = [];
   const sellerAmbiguous: Array<{ itemId: string; loginIds: string[] }> = [];
+  // 2026-09-11 18:0xZ deals fire (offers-row-carries-no-expiry-so-the-
+  // mandated-expiring-within-24h-audit-cannot-be-computed): 55 of 55 rows
+  // read expiresText null while direction, status and both amounts read
+  // cleanly, and OFFERS_FIELDS_NULL could not say whether the row renders
+  // no expiry or the reader missed it. The two are told apart per open row:
+  // nothing expiry-like in the row at all, or expiry-like wording the
+  // reader did not parse (quoted).
+  const expiryUnstatedIds: string[] = [];
+  const expiryUnparsed: Array<{ itemId: string; wording: string }> = [];
+  let openRows = 0;
   const singleAmountIds: string[] = [];
   let orderedByValue = 0;
 
@@ -1095,6 +1114,14 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
     }
     const expires = EXPIRES_RE.exec(blob);
     const expiresText = expires === null ? null : bounded(normalizeText(expires[1]!), 60);
+    if (offerStatus === 'open') {
+      openRows += 1;
+      if (expiresText === null) {
+        const hint = EXPIRY_HINT_RE.exec(blob);
+        if (hint === null) expiryUnstatedIds.push(itemId);
+        else expiryUnparsed.push({ itemId, wording: bounded(normalizeText(hint[0]), 80) });
+      }
+    }
     const { seller, sellerText, ambiguous } = sellerFrom(card);
     if (ambiguous !== null) sellerAmbiguous.push({ itemId, loginIds: ambiguous });
     else if (seller === null && sellerText === null) sellerUnstatedIds.push(itemId);
@@ -1189,6 +1216,21 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
     if (unknownDirection > 0) {
       warnings.push(
         `OFFERS_DIRECTION_UNKNOWN: ${unknownDirection} of ${candidates.length} row(s) carry no seller-sent/you-sent wording; read each row's snippet before treating it as a received offer.`,
+      );
+    }
+    if (expiryUnparsed.length > 0) {
+      const detail = expiryUnparsed
+        .slice(0, 10)
+        .map((row) => `${row.itemId}: "${row.wording}"`)
+        .join('; ');
+      warnings.push(
+        `OFFERS_EXPIRY_UNPARSED: ${expiryUnparsed.length} of ${openRows} open offer row(s) carry expiry-like wording the expiry reader did not parse (${detail}${expiryUnparsed.length > 10 ? '; …' : ''}) — a parse miss, not an absent field: expiresText and expiresAt stay null on them rather than guessed. Quote this warning, wording included, in the improvement queue under site-ebay extractor_defect so the pattern can be added.`,
+      );
+    }
+    if (expiryUnstatedIds.length > 0) {
+      const ids = expiryUnstatedIds.slice(0, 10).join(', ');
+      warnings.push(
+        `OFFERS_EXPIRY_UNSTATED: ${expiryUnstatedIds.length} of ${openRows} open offer row(s) render no expiry wording at all (ids: ${ids}${expiryUnstatedIds.length > 10 ? ', …' : ''}) — on this template an offer's expiry is stated only inside the offer thread, not in the row, so expiresText and expiresAt are null on them and an "expiring within 24 hours" count cannot be computed from this surface. Report that line as unanswerable from the offers page, never as zero; an expiry is read only from the thread (opened by hand), never inferred. If the row does render one, a bounded browser_snapshot of ONE such OFFER RECEIVED row is the capture that pins its element.`,
       );
     }
     const nullNote = nullCountsWarning(
