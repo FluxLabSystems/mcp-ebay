@@ -96,6 +96,13 @@ export const KijijiExtractionRecordSchema = z.strictObject({
    * KIJIJI_DESCRIPTION_MAX_CHARS). The 500-character excerpt keeps its
    * bound; this is a second, caller-bounded read of the same untrusted text,
    * never a default. Null otherwise.
+   *
+   * Paged (2026-09-11, ad-body-longer-than-the-6000-char-descriptionmaxchars-
+   * cap-hides-a-dealer-price-list): a body longer than the cap is read in
+   * windows — `offset` is where this window starts in the collapsed body
+   * (the caller's `descriptionOffset`, 0 by default), `totalChars` the
+   * collapsed body's whole length, so the next call asks for
+   * `offset + value.length`. The per-call bound is unchanged.
    */
   descriptionFull: z
     .strictObject({
@@ -103,6 +110,8 @@ export const KijijiExtractionRecordSchema = z.strictObject({
       source: KijijiFieldSourceSchema,
       confidence: z.number().min(0).max(1),
       maxChars: z.int().min(KIJIJI_DESCRIPTION_EXCERPT_CHARS).max(KIJIJI_DESCRIPTION_MAX_CHARS),
+      offset: z.int().min(0),
+      totalChars: z.int().min(0),
     })
     .nullable(),
   /**

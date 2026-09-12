@@ -1102,3 +1102,88 @@ describe('offers page: a status-token row with exactly one amount carries the as
     expect(page.warnings).toEqual([]);
   });
 });
+
+// 2026-09-11 18:0xZ deals fire (offers-row-carries-no-expiry-so-the-
+// mandated-expiring-within-24h-audit-cannot-be-computed): 55 of 55 rows read
+// expiresText null and expiresAt null while direction, status and both
+// amounts read cleanly, so the O-track's "offers expiring within 24 hours"
+// figure was not unknown but uncomputable — and OFFERS_FIELDS_NULL could not
+// say whether the row renders no expiry or the regex missed it. Two distinct
+// warnings settle that: no open row carries any expiry-like wording at all
+// (the template renders none in the row), or some open row does and the
+// regex did not read it (a parse miss, quoted so it can be pinned).
+describe('offers page: an open row with no expiry is named, and a parse miss is told apart from an absent field (2026-09-11 fire)', () => {
+  function offersDoc(rows: string): Document {
+    const { document } = parseHTML(
+      `<html><head><title>Bids and offers | My eBay</title></head><body>
+       <div class="filter-menu" role="tablist"><button role="tab" aria-selected="true">All (55)</button></div>
+       <ul>${rows}</ul></body></html>`,
+    );
+    return document as unknown as Document;
+  }
+  const openNoExpiry = `<li class="offer-card"><span class="eyebrow">OFFER RECEIVED</span>
+      <a href="https://www.ebay.ca/itm/158245746409">Mellanox ConnectX-3 MCX311A-XCAT 10GbE SFP+ NIC</a>
+      <div><span>C $23.49</span></div><div>C $29.99 <button>Make offer</button></div></li>`;
+  const openNoExpiry2 = `<li class="offer-card"><span class="eyebrow">OFFER RECEIVED</span>
+      <a href="https://www.ebay.ca/itm/327284105504">Cisco Catalyst C9120AXI-A Access Point</a>
+      <div><span>C $79.19</span></div><div>C $94.05 <button>Make offer</button></div></li>`;
+  const expiredNoExpiry = `<li class="offer-card"><span class="eyebrow">OFFER EXPIRED</span>
+      <a href="https://www.ebay.ca/itm/267676402924">LEGO Star Wars 75192 Millennium Falcon manual</a>
+      <div><span>C $72.24</span></div><div>C $84.99 <button>Make offer</button></div></li>`;
+  const openWithExpiry = `<li class="offer-card"><span class="eyebrow">OFFER RECEIVED</span>
+      <a href="https://www.ebay.ca/itm/227281082956">Dell S6000-ON 32x 40GbE QSFP+ switch</a>
+      <div><span>C $204.00</span></div><div>C $249.00 <button>Make offer</button></div><div>Expires in 1d 3h</div></li>`;
+  const openUnparsedExpiry = `<li class="offer-card"><span class="eyebrow">OFFER RECEIVED</span>
+      <a href="https://www.ebay.ca/itm/236863070231">HP Aruba 2930F 48G PoE+ switch</a>
+      <div><span>C $110.00</span></div><div>C $150.00 <button>Make offer</button></div><div>Offer valid through Sep 14</div></li>`;
+
+  it('names every open row with no expiry wording in OFFERS_EXPIRY_UNSTATED, ids included, and the count of open rows', () => {
+    const page = extractOffersPage(offersDoc(openNoExpiry + openNoExpiry2 + expiredNoExpiry), 'https://www.ebay.ca/mye/myebay/bidsoffers', {
+      observedAt: OBSERVED_AT,
+    });
+    expect(page.candidates.map((row) => row.expiresText)).toEqual([null, null, null]);
+    const unstated = page.warnings.find((warning) => warning.startsWith('OFFERS_EXPIRY_UNSTATED'));
+    expect(unstated).toBeDefined();
+    expect(unstated).toMatch(/2 of 2 open/);
+    expect(unstated).toMatch(/158245746409/);
+    expect(unstated).toMatch(/327284105504/);
+    expect(unstated).not.toMatch(/267676402924/);
+    expect(unstated).toMatch(/cannot be computed/i);
+    expect(page.warnings.some((warning) => warning.startsWith('OFFERS_EXPIRY_UNPARSED'))).toBe(false);
+  });
+
+  it('an open row whose expiry the regex read is never counted as unstated, and no warning fires when every open row states one', () => {
+    const page = extractOffersPage(offersDoc(openWithExpiry + expiredNoExpiry), 'https://www.ebay.ca/mye/myebay/bidsoffers', {
+      observedAt: OBSERVED_AT,
+    });
+    expect(page.candidates[0]!.expiresText).toBe('Expires in 1d 3h');
+    expect(page.candidates[0]!.expiresAt).toBe('2026-09-05T01:00:00.000Z');
+    expect(page.warnings.some((warning) => warning.startsWith('OFFERS_EXPIRY_UNSTATED'))).toBe(false);
+    expect(page.warnings.some((warning) => warning.startsWith('OFFERS_EXPIRY_UNPARSED'))).toBe(false);
+  });
+
+  it('an open row carrying expiry-like wording the regex did not read is a parse miss, quoted under OFFERS_EXPIRY_UNPARSED, never "unstated"', () => {
+    const page = extractOffersPage(offersDoc(openUnparsedExpiry + openNoExpiry), 'https://www.ebay.ca/mye/myebay/bidsoffers', {
+      observedAt: OBSERVED_AT,
+    });
+    expect(page.candidates[0]!.expiresText).toBeNull();
+    const unparsed = page.warnings.find((warning) => warning.startsWith('OFFERS_EXPIRY_UNPARSED'));
+    expect(unparsed).toBeDefined();
+    expect(unparsed).toMatch(/236863070231/);
+    expect(unparsed).toMatch(/valid through Sep 14/);
+    // The other open row still renders nothing expiry-like, and is named as such.
+    const unstated = page.warnings.find((warning) => warning.startsWith('OFFERS_EXPIRY_UNSTATED'));
+    expect(unstated).toBeDefined();
+    expect(unstated).toMatch(/1 of 2 open/);
+    expect(unstated).toMatch(/158245746409/);
+    expect(unstated).not.toMatch(/236863070231/);
+  });
+
+  it('a page of control-only and bid rows has no open offer and raises neither warning', () => {
+    const control = `<li class="offer-card"><a href="https://www.ebay.ca/itm/800300142565">Cisco C9130AXE-A Access Point</a>
+      <div class="offer-card__info">Buy It Now C $65.00</div><button>Make Best offer</button></li>`;
+    const page = extractOffersPage(offersDoc(control), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    expect(page.candidates[0]!.offerStatus).toBe('none');
+    expect(page.warnings.some((warning) => /^OFFERS_EXPIRY_/.test(warning))).toBe(false);
+  });
+});
