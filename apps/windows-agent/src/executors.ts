@@ -79,6 +79,7 @@ import {
   kijijiSearchUrlWarnings,
   normalizeKijijiImageUrl,
 } from '@browser-bridge/site-kijiji';
+import { isJobsSourceHost, JOBS_SOURCES_SITE_PROFILE_ID } from '@browser-bridge/site-jobs';
 import { isOfficeSourceHost, OFFICE_SOURCES_SITE_PROFILE_ID } from '@browser-bridge/site-office';
 import { isWardrobeVendorHost, WARDROBE_VENDORS_SITE_PROFILE_ID } from '@browser-bridge/site-vendors';
 import {
@@ -162,7 +163,7 @@ function kijijiGalleryHints(): GalleryHints {
   };
 }
 
-type ExtractionSite = 'ebay' | 'kijiji' | 'zazzle' | 'vendor' | 'office' | 'generic';
+type ExtractionSite = 'ebay' | 'kijiji' | 'zazzle' | 'vendor' | 'office' | 'jobs' | 'generic';
 
 /**
  * Extraction dispatches by the page actually loaded, not by the session's
@@ -190,6 +191,8 @@ function siteForUrl(pageUrl: string): ExtractionSite {
     if (isWardrobeVendorHost(host)) return 'vendor';
     // Policy-only office roster (providers + listing surfaces): same posture.
     if (isOfficeSourceHost(host)) return 'office';
+    // Policy-only jobs roster (boards, aggregators, channels, ATS hosts): same posture.
+    if (isJobsSourceHost(host)) return 'jobs';
     return 'generic';
   } catch {
     return 'generic';
@@ -639,7 +642,9 @@ async function executeExtract(
             ? WARDROBE_VENDORS_SITE_PROFILE_ID
             : site === 'office'
               ? OFFICE_SOURCES_SITE_PROFILE_ID
-              : EBAY_SITE_PROFILE_ID;
+              : site === 'jobs'
+                ? JOBS_SOURCES_SITE_PROFILE_ID
+                : EBAY_SITE_PROFILE_ID;
     if (declaredSiteProfile !== activeProfile) {
       intentWarnings.push(
         `DECLARED_SITE_PROFILE_MISMATCH: extraction ran ${activeProfile} for ${pageUrl}; the call declared ${declaredSiteProfile}.`,
@@ -668,7 +673,9 @@ async function executeExtract(
               ? WARDROBE_VENDORS_SITE_PROFILE_ID
               : site === 'office'
                 ? OFFICE_SOURCES_SITE_PROFILE_ID
-                : declaredSiteProfile;
+                : site === 'jobs'
+                  ? JOBS_SOURCES_SITE_PROFILE_ID
+                  : declaredSiteProfile;
     return {
       result: {
         siteProfile: activeProfile,
@@ -693,12 +700,15 @@ async function executeExtract(
   // all-null eBay record — plausible-looking junk. Say so instead, and
   // hand back the little that is host-independent: the page's own title
   // and URL.
-  if (site === 'vendor' || site === 'office') {
-    const policyOnlyProfile = site === 'vendor' ? WARDROBE_VENDORS_SITE_PROFILE_ID : OFFICE_SOURCES_SITE_PROFILE_ID;
+  if (site === 'vendor' || site === 'office' || site === 'jobs') {
+    const policyOnlyProfile =
+      site === 'vendor' ? WARDROBE_VENDORS_SITE_PROFILE_ID : site === 'office' ? OFFICE_SOURCES_SITE_PROFILE_ID : JOBS_SOURCES_SITE_PROFILE_ID;
     const readingHint =
       site === 'vendor'
         ? 'Read the page with browser_snapshot (structure, prices, personalization controls) or browser_screenshot'
-        : 'Read the page with browser_snapshot (location, office sizes, the all-in monthly figure and what it includes, square footage, TMI and lease terms) or browser_screenshot';
+        : site === 'office'
+          ? 'Read the page with browser_snapshot (location, office sizes, the all-in monthly figure and what it includes, square footage, TMI and lease terms) or browser_screenshot'
+          : 'Read the page with browser_snapshot (title, employer, location, pay and its basis, employment type and schedule, the requirements block with required kept apart from preferred, the posting id and posted date; on a channel page the intake state and its date) or browser_screenshot — never click an apply, save, alert or upload control';
     return {
       result: {
         siteProfile: policyOnlyProfile,

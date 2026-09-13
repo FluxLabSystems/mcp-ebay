@@ -71,6 +71,7 @@ describe('AGENT_SITE_PROFILES config', () => {
       'zazzle.com.v1',
       'wardrobe-vendors.v1',
       'office-sources.v1',
+      'jobs-sources.v1',
     ]);
   });
 

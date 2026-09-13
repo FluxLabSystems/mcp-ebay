@@ -105,6 +105,9 @@ importers:
       '@browser-bridge/site-ebay':
         specifier: workspace:*
         version: link:../../packages/site-ebay
+      '@browser-bridge/site-jobs':
+        specifier: workspace:*
+        version: link:../../packages/site-jobs
       '@browser-bridge/site-kijiji':
         specifier: workspace:*
         version: link:../../packages/site-kijiji
@@ -203,6 +206,12 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
+  packages/site-jobs:
+    dependencies:
+      '@browser-bridge/policy':
+        specifier: workspace:*
+        version: link:../policy
+
   packages/site-kijiji:
     dependencies:
       '@browser-bridge/policy':
@@ -273,6 +282,9 @@ importers:
       '@browser-bridge/site-ebay':
         specifier: workspace:*
         version: link:../packages/site-ebay
+      '@browser-bridge/site-jobs':
+        specifier: workspace:*
+        version: link:../packages/site-jobs
       '@browser-bridge/site-kijiji':
         specifier: workspace:*
         version: link:../packages/site-kijiji
