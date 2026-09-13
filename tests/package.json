@@ -24,7 +24,7 @@
     "@browser-bridge/windows-agent": "workspace:*",
     "@hono/node-server": "^2.1.0",
     "@modelcontextprotocol/server": "2.0.0",
-    "hono": "^4.13.2",
+    "hono": "^4.13.5",
     "jose": "^6.2.8",
     "linkedom": "^0.18.13",
     "pino": "^10.3.1",
