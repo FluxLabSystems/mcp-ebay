@@ -299,6 +299,46 @@ describe('browser_extract dispatches by page kind instead of refusing', () => {
     expect(parsed.warnings.some((warning) => warning.startsWith('NO_LISTING_CANDIDATES'))).toBe(true);
   });
 
+  // 2026-09-12 10:0xZ deals walk (site-ebay+extractor_defect+watchlist-
+  // category-filter-url-redirects-to-myebay-summary): the per-category chip
+  // URL the watch-list record itself emitted (/myb/Watchlist?custom_list_id=
+  // WATCH_LIST&filter=category:183446.EBAY-US) committed and landed on
+  // /mye/myebay/summary — pageKind 'other', UNCLASSIFIED_PAGE, and 73
+  // /itm/ links from the summary page's own mixed modules where the chip
+  // had stated 166 Building Toys rows. The generic warning told the walk it
+  // had an unknown page; it had the one page a redirected watch-list
+  // request lands on, whose rows are never a filtered view of the list.
+  it('the My eBay summary page is named as the redirect landing it is, and its rows are not a watch-list view', async () => {
+    const outcome = await runExtract(
+      'https://www.ebay.ca/mye/myebay/summary',
+      '<html><head><title>Summary | My eBay | eBay</title></head><body><section><h2>Watching</h2><a href="https://www.ebay.ca/itm/275909957298">LEGO lot</a><a href="https://www.ebay.ca/itm/286591817537">NetBotz 550</a></section><section><h2>Recently viewed</h2><a href="https://www.ebay.ca/itm/231219298068">Arista 7050QX</a></section></body></html>',
+      'ebay.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    const record = parsed.record as { pageKind: string; candidateCount: number };
+    expect(record.pageKind).toBe('other');
+    // The best-effort scan still runs — the links are real /itm/ links —
+    // but the warning says whose page they came from.
+    expect(record.candidateCount).toBe(3);
+    const summary = parsed.warnings.find((warning) => warning.startsWith('MYEBAY_SUMMARY_PAGE'));
+    expect(summary).toBeDefined();
+    expect(summary).toContain('/mye/myebay/summary');
+    expect(summary).toContain('filter=category');
+    expect(summary).toContain('/mye/myebay/watchlist');
+    // One diagnosis, not two: the generic "unknown page" warning would send
+    // the walk looking for a template that does not exist.
+    expect(parsed.warnings.some((warning) => warning.startsWith('UNCLASSIFIED_PAGE'))).toBe(false);
+  });
+
+  it('the summary landing is recognised on the classic /myb/ path and case-insensitively', async () => {
+    for (const pageUrl of ['https://www.ebay.ca/myb/Summary', 'https://www.ebay.com/mye/myebay/v2/Summary?foo=1']) {
+      const outcome = await runExtract(pageUrl, '<html><head><title>Summary | My eBay</title></head><body></body></html>', 'ebay.ca.v1');
+      const parsed = ExtractOutput.parse(outcome.result);
+      expect(parsed.warnings.some((warning) => warning.startsWith('MYEBAY_SUMMARY_PAGE'))).toBe(true);
+      expect(parsed.warnings.some((warning) => warning.startsWith('UNCLASSIFIED_PAGE'))).toBe(false);
+    }
+  });
+
   // 2026-09-03 wardrobe Lane B fire (site-zazzle+extractor_defect+zazzle-
   // listing-grids-render-product-free-pdps-unaffected): /c/hats committed
   // with the real category title, and the shell sentence with NO product
