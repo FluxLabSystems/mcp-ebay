@@ -1274,3 +1274,82 @@ describe('offers page: an open row with no expiry is named, and a parse miss is 
     expect(page.warnings.some((warning) => /^OFFERS_EXPIRY_/.test(warning))).toBe(false);
   });
 });
+
+// 2026-09-13 10:0xZ deals fire (site-ebay extractor_defect
+// offers-page-states-no-total-so-rows-read-cannot-be-audited): a signed-in
+// /mye/myebay/bidsoffers read returned 56 rows with totalResults null,
+// statedCount null and NO warning naming why — so the O-track audit could not
+// say whether the read was complete or short. The watch list already names
+// that case (WATCHLIST_TOTAL_UNSTATED); the offers page has to as well.
+describe('offers page: a page that states no total at all is named, never a silent null (2026-09-13 fire)', () => {
+  function offersDoc(tabs: string, rows: string): Document {
+    const { document } = parseHTML(
+      `<html><head><title>Bids and offers | My eBay</title></head><body>
+       ${tabs}
+       <ul>${rows}</ul></body></html>`,
+    );
+    return document as unknown as Document;
+  }
+  const row = (id: string, title: string) =>
+    `<li class="offer-card"><span class="eyebrow">OFFER RECEIVED</span>
+      <a href="https://www.ebay.ca/itm/${id}">${title}</a>
+      <div><span>C $23.49</span></div><div>C $29.99 <button>Make offer</button></div></li>`;
+  const rows = row('257661593113', 'Mellanox ConnectX-3 MCX311A-XCAT 10GbE SFP+ NIC') + row('128028075317', 'Cisco Catalyst C9120AXI-A Access Point') + row('168651580596', 'HP Aruba 2930F 48G PoE+ switch');
+
+  it('raises OFFERS_TOTAL_UNSTATED with the row count when the tab strip renders no count and nothing else states one', () => {
+    const page = extractOffersPage(
+      offersDoc('<div class="filter-menu" role="tablist"><button role="tab" aria-selected="true">All</button><button role="tab">Offers</button></div>', rows),
+      'https://www.ebay.ca/mye/myebay/bidsoffers',
+      { observedAt: OBSERVED_AT },
+    );
+    expect(page.candidates).toHaveLength(3);
+    expect(page.totalCount).toBeNull();
+    expect(page.totalCountSource).toBeNull();
+    expect(page.statedCount).toBeNull();
+    expect(page.hasNextPage).toBe(false);
+    const unstated = page.warnings.find((warning) => warning.startsWith('OFFERS_TOTAL_UNSTATED'));
+    expect(unstated).toBeDefined();
+    expect(unstated).toMatch(/3 row/);
+    expect(unstated).toMatch(/no stated total/i);
+    expect(unstated).toMatch(/never as complete/i);
+    // Unstated is not rejected and not pagination-unknown: nothing was found.
+    expect(page.warnings.some((warning) => warning.startsWith('OFFERS_TOTAL_REJECTED'))).toBe(false);
+    expect(page.warnings.some((warning) => warning.startsWith('OFFERS_PAGINATION_UNKNOWN'))).toBe(false);
+  });
+
+  it('raises it with no tab strip at all, and never when a tab states a count', () => {
+    const bare = extractOffersPage(offersDoc('', rows), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    expect(bare.totalCount).toBeNull();
+    expect(bare.warnings.some((warning) => warning.startsWith('OFFERS_TOTAL_UNSTATED'))).toBe(true);
+
+    const stated = extractOffersPage(
+      offersDoc('<div class="filter-menu" role="tablist"><button role="tab" aria-selected="true">All (3)</button></div>', rows),
+      'https://www.ebay.ca/mye/myebay/bidsoffers',
+      { observedAt: OBSERVED_AT },
+    );
+    expect(stated.totalCount).toBe(3);
+    expect(stated.warnings.some((warning) => warning.startsWith('OFFERS_TOTAL_UNSTATED'))).toBe(false);
+  });
+
+  it('a stated count below the rows is still OFFERS_TOTAL_REJECTED, not unstated, and the authored fixture still states its count', () => {
+    const below = extractOffersPage(
+      offersDoc('<div class="filter-menu" role="tablist"><button role="tab" aria-selected="true">All (2)</button></div>', rows),
+      'https://www.ebay.ca/mye/myebay/bidsoffers',
+      { observedAt: OBSERVED_AT },
+    );
+    expect(below.totalCount).toBeNull();
+    expect(below.statedCount).toBe(2);
+    expect(below.warnings.some((warning) => warning.startsWith('OFFERS_TOTAL_REJECTED'))).toBe(true);
+    expect(below.warnings.some((warning) => warning.startsWith('OFFERS_TOTAL_UNSTATED'))).toBe(false);
+
+    const fixture = extractOffersPage(loadFixture('offers-page.html'), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    expect(fixture.totalCount).not.toBeNull();
+    expect(fixture.warnings.some((warning) => warning.startsWith('OFFERS_TOTAL_UNSTATED'))).toBe(false);
+  });
+
+  it('an empty page is OFFERS_NO_ROWS or SIGN_IN_REQUIRED, never total-unstated', () => {
+    const empty = extractOffersPage(offersDoc('', ''), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    expect(empty.candidates).toHaveLength(0);
+    expect(empty.warnings.some((warning) => warning.startsWith('OFFERS_TOTAL_UNSTATED'))).toBe(false);
+  });
+});
