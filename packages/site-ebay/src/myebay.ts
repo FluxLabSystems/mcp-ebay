@@ -1216,8 +1216,9 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
 
   const pageTitle = documentTitle(document);
   const signedIn = detectSignedIn(document, candidates.length);
+  const readTotal = readTotalCount(document);
   const { count: totalCount, source: totalCountSource, statedCount, statedCountSource } = checkedTotalCount(
-    readTotalCount(document),
+    readTotal,
     candidates.length,
     'OFFERS_TOTAL_REJECTED',
     warnings,
@@ -1311,6 +1312,18 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
     if (totalCount !== null && totalCount > candidates.length && !pagination.hasNextPage) {
       warnings.push(
         `OFFERS_PAGINATION_UNKNOWN: the page states ${totalCount} rows ("${totalCountSource ?? ''}") but rendered ${candidates.length} and no next-page control was recognised. The remaining rows may sit behind a page-size control at the foot of the list or a filter tab; report the read as ${candidates.length} of ${totalCount}, never as complete.`,
+      );
+    }
+    // Unstated is "nothing was found" — no "All (N)" / "Offers (N)" tab, no
+    // heading, no "N items" text — distinct from a found label being rejected
+    // above (OFFERS_TOTAL_REJECTED) and from a stated total the read fell
+    // short of (OFFERS_PAGINATION_UNKNOWN). The 2026-09-13 10:0xZ fire read 56
+    // rows with every count field null and no warning, so the O-track audit
+    // had no way to say whether the read was complete; the watch list names
+    // this case (WATCHLIST_TOTAL_UNSTATED) and the offers page has to too.
+    if (readTotal.count === null) {
+      warnings.push(
+        `OFFERS_TOTAL_UNSTATED: the page rendered ${candidates.length} row(s) but states no list total anywhere the reader looks (no "All (N)" / "Offers (N)" tab, no "N items" heading or text), so totalResults and statedCount are null. Report the read as ${candidates.length} row(s) against no stated total — never as complete and never as a shortfall figure${pagination.hasNextPage ? '' : ' (hasNextPage false says only that no next-page control was recognised, not that the list ends here)'}. A bounded browser_snapshot of the tab strip on a signed-in offers page is the capture that tells a template change from a selector miss; file it under site-ebay extractor_defect with this warning quoted.`,
       );
     }
   }
