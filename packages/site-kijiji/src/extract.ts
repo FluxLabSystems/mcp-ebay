@@ -29,6 +29,12 @@ export interface KijijiExtractContext {
    * carries only the 500-character excerpt.
    */
   descriptionMaxChars?: number;
+  /**
+   * Where the `descriptionFull` window starts in the whitespace-collapsed
+   * body (0 by default). Meaningful only with `descriptionMaxChars`: a body
+   * longer than the cap is paged, never widened past it.
+   */
+  descriptionOffset?: number;
 }
 
 export interface KijijiExtractOutcome {
@@ -652,6 +658,13 @@ function requestedDescriptionChars(context: KijijiExtractContext): number | null
   return Math.min(KIJIJI_DESCRIPTION_MAX_CHARS, Math.max(KIJIJI_DESCRIPTION_EXCERPT_CHARS, Math.floor(asked)));
 }
 
+/** The caller's descriptionOffset as a non-negative integer; 0 when not asked. */
+function requestedDescriptionOffset(context: KijijiExtractContext): number {
+  const asked = context.descriptionOffset;
+  if (typeof asked !== 'number' || !Number.isFinite(asked)) return 0;
+  return Math.max(0, Math.floor(asked));
+}
+
 export function extractKijijiListing(
   document: Document,
   pageUrl: string,
@@ -1010,37 +1023,55 @@ export function extractKijijiListing(
   // (1743100906: 500 of 5,174 characters — the set list). The excerpt keeps
   // its bound; a caller who says the body matters asks for it, bounded, and
   // gets it under its own field. The warning names that opt-in first.
+  // 2026-09-11 18:2xZ deals fire (ad-body-longer-than-the-6000-char-
+  // descriptionmaxchars-cap-hides-a-dealer-price-list): a cabinet dealer's
+  // whole catalogue in one 15,154-character body, the floor cabinets priced
+  // past where even the cap could reach. The per-call bound stays (the body
+  // is untrusted text); the body is PAGED: descriptionOffset starts the
+  // window, the field states offset and total, the warning names the next
+  // offset — so a catalogue ad is three calls of machine-readable text, not
+  // a screenshot.
   let descriptionFull: KijijiExtractionRecord['descriptionFull'] = null;
   const requestedChars = requestedDescriptionChars(context);
+  const requestedOffset = requestedDescriptionOffset(context);
   if (descriptionBody !== null) {
     const collapsed = collapse(descriptionBody);
     const collapsedLength = collapsed.length;
+    let offsetBeyondEnd = false;
     if (collapsedLength > KIJIJI_DESCRIPTION_EXCERPT_CHARS && requestedChars !== null && description !== null) {
-      descriptionFull = {
-        value: collapsed.slice(0, requestedChars),
-        source: description.source,
-        confidence: description.confidence,
-        maxChars: requestedChars,
-      };
+      if (requestedOffset >= collapsedLength) {
+        offsetBeyondEnd = true;
+        warnings.push(
+          `DESCRIPTION_OFFSET_BEYOND_END: descriptionOffset ${requestedOffset} is at or past the end of the ad body, which is ${collapsedLength} characters (whitespace-collapsed), so descriptionFull is null — the body was read in full by the windows before this one; the last window starts at an offset below ${collapsedLength}.`,
+        );
+      } else {
+        descriptionFull = {
+          value: collapsed.slice(requestedOffset, requestedOffset + requestedChars),
+          source: description.source,
+          confidence: description.confidence,
+          maxChars: requestedChars,
+          offset: requestedOffset,
+          totalChars: collapsedLength,
+        };
+      }
     }
-    const returnedChars = descriptionFull === null ? KIJIJI_DESCRIPTION_EXCERPT_CHARS : descriptionFull.maxChars;
-    if (collapsedLength > returnedChars) {
+    const returnedEnd =
+      descriptionFull === null ? KIJIJI_DESCRIPTION_EXCERPT_CHARS : descriptionFull.offset + descriptionFull.value.length;
+    if (collapsedLength > returnedEnd && !offsetBeyondEnd) {
       const realEstate =
         MLS_CATEGORY_PATH_RE.test(canonicalUrl?.value ?? pageUrl) || MLS_SYNDICATION_RE.test(descriptionBody);
       const remedy = realEstate
         ? 'the terms the cut may hide (square footage, TMI, lease structure) are read from the MLS record the ad syndicates (realtor.ca, on the office-sources.v1 roster) or from a browser_screenshot of the description after clicking Show More'
         : 'whatever the cut hides is read from a browser_screenshot of the description after clicking Show More';
-      const optIn =
-        descriptionFull === null
-          ? `The excerpt is the whole ad text the Bridge returns unless asked for more: when the body decides the ad's value (a set list, a figure count), re-extract with descriptionMaxChars (up to ${KIJIJI_DESCRIPTION_MAX_CHARS}) to get it under descriptionFull; otherwise`
-          : `descriptionFull carries the first ${returnedChars} characters as asked (descriptionMaxChars, at most ${KIJIJI_DESCRIPTION_MAX_CHARS}); for the rest`;
-      const bound =
-        descriptionFull === null
-          ? `the description excerpt is capped at ${KIJIJI_DESCRIPTION_EXCERPT_CHARS} characters`
-          : `descriptionFull is cut at the ${returnedChars} characters requested`;
-      warnings.push(
-        `DESCRIPTION_TRUNCATED: ${bound} and the ad body is ${collapsedLength} characters (whitespace-collapsed) — the text ends mid-ad, so do not read it as the whole ad. ${optIn}: browser_snapshot carries interactive elements and short money-bearing text, never description prose, so ${remedy}; when that is not available the field stays unresolved`,
-      );
+      if (descriptionFull === null) {
+        warnings.push(
+          `DESCRIPTION_TRUNCATED: the description excerpt is capped at ${KIJIJI_DESCRIPTION_EXCERPT_CHARS} characters and the ad body is ${collapsedLength} characters (whitespace-collapsed) — the text ends mid-ad, so do not read it as the whole ad. The excerpt is the whole ad text the Bridge returns unless asked for more: when the body decides the ad's value (a set list, a figure count, a dealer's price list), re-extract with descriptionMaxChars (up to ${KIJIJI_DESCRIPTION_MAX_CHARS}) to get it under descriptionFull, and page a body longer than that with descriptionOffset (the field states offset and totalChars); otherwise: browser_snapshot carries interactive elements and short money-bearing text, never description prose, so ${remedy}; when that is not available the field stays unresolved`,
+        );
+      } else {
+        warnings.push(
+          `DESCRIPTION_TRUNCATED: descriptionFull carries characters ${descriptionFull.offset}–${returnedEnd} of the ad body, which is ${collapsedLength} characters (whitespace-collapsed) — this window ends mid-ad, so do not read it as the whole ad. The next window starts at descriptionOffset ${returnedEnd}: re-extract with descriptionOffset ${returnedEnd} and the same descriptionMaxChars (at most ${KIJIJI_DESCRIPTION_MAX_CHARS} per call) until totalChars is reached; the windows concatenate into the whole collapsed body. Page it rather than screenshotting it — a price list is only usable as text; when paging is not available, ${remedy}`,
+        );
+      }
     }
   }
 

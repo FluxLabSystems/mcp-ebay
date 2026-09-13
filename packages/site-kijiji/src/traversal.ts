@@ -34,6 +34,14 @@ export interface KijijiSearchResult {
   priceText: string | null;
   /** Snippet price: traversal hint only, never canonical evidence. */
   price: ParsedKijijiPrice | null;
+  /**
+   * Where price came from: a price element on the card ('card_element'),
+   * or — when no price element matched — the one amount or price label in
+   * the card's own text with the title removed ('card_text'; 2026-09-11,
+   * seller-profile cards match no price selector at all). Null when price
+   * is null.
+   */
+  priceSource: 'card_element' | 'card_text' | null;
   locationText: string | null;
   /** Raw rendered posted time from the card ("2 hrs ago"), when present. */
   postedText: string | null;
@@ -117,6 +125,10 @@ export interface KijijiSearchPage {
 }
 
 export const PAGINATION_METADATA_ABSENT_WARNING_PREFIX = 'PAGINATION_METADATA_ABSENT';
+/** Cards whose price was read from the card's text because no price element matched (priceSource 'card_text'). */
+export const CARD_PRICE_FROM_CARD_TEXT_WARNING_PREFIX = 'CARD_PRICE_FROM_CARD_TEXT';
+/** Every card on the page is priceless: no price element and no amount or price label in any card's text. */
+export const CARD_PRICE_UNRENDERED_WARNING_PREFIX = 'CARD_PRICE_UNRENDERED';
 /** Cards that state no amount ("Please Contact"): price.value null, never zero, never a reason to drop the row. */
 export const SEARCH_CONTACT_PRICE_ROWS_WARNING_PREFIX = 'SEARCH_CONTACT_PRICE_ROWS';
 export const SORT_NOT_HONOURED_WARNING_PREFIX = 'SORT_NOT_HONOURED';
@@ -287,6 +299,55 @@ function cardText(card: Element, selector: string): string | null {
   }
 }
 
+/** An amount as a card renders it ("$1,250.00", "$ 225"). */
+const CARD_AMOUNT_RE = /\$\s?[\d,]+(?:\.\d{1,2})?/g;
+/** Kijiji's non-amount price labels, as the price element would render them; "free" only as a price, never "free shipping". */
+const CARD_PRICE_LABEL_RE = /\bplease\s+contact\b|\bswap\s*\/\s*trade\b|\bfree\b(?!\s*(?:shipping|delivery|pick|to\b))/i;
+
+/**
+ * The card's text with a space at every element boundary, so two adjacent
+ * elements ("$225Scarborough") keep the word boundary the regexes rely on.
+ */
+function spacedCardText(card: Element): string {
+  const parts: string[] = [];
+  const walk = (node: Node): void => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === 3) parts.push(child.textContent ?? '');
+      else if (child.nodeType === 1) {
+        parts.push(' ');
+        walk(child);
+        parts.push(' ');
+      }
+    }
+  };
+  walk(card);
+  return parts.join('').replace(/[\u00a0\u202f]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * The card's price when no price element matched (2026-09-11 deals fire,
+ * seller-profile-cards-render-no-price-so-a-large-roster-seller-costs-one-
+ * page-open-per-price: /o-profile/<id>/listings/<n> hydrated 40 cards with
+ * titles and links on all of them and a price element on none). The same
+ * remedy the eBay /str/ store cards got: the ONE amount in the card's own
+ * text with the title removed first (a title is free to say "paid $400
+ * new"), or Kijiji's own non-amount price label. Two amounts is a guess
+ * between figures, so it stays null; the value is a traversal hint the ad
+ * page still decides.
+ */
+function priceFromCardText(card: Element, title: string | null): ParsedKijijiPrice | null {
+  let text = spacedCardText(card);
+  if (title !== null && title.length > 0) {
+    const at = text.indexOf(title);
+    if (at >= 0) text = `${text.slice(0, at)} ${text.slice(at + title.length)}`;
+  }
+  const amounts = text.match(CARD_AMOUNT_RE) ?? [];
+  if (amounts.length === 1) return parseKijijiPrice(amounts[0]!);
+  if (amounts.length > 1) return null;
+  const label = CARD_PRICE_LABEL_RE.exec(text);
+  return label === null ? null : parseKijijiPrice(label[0]);
+}
+
 /**
  * The card's posted time. Kijiji hydrates it client-side into the same
  * listing-details block as the location, with no name of its own, so when no
@@ -428,6 +489,7 @@ export function extractSearchResults(
   const observedAt = context.observedAt ?? new Date();
   const seen = new Set<string>();
   const results: KijijiSearchResult[] = [];
+  let pricedFromCardText = 0;
   for (const anchor of Array.from(document.querySelectorAll('a[href]'))) {
     const href = anchor.getAttribute('href');
     if (!href) continue;
@@ -447,7 +509,19 @@ export function extractSearchResults(
     const card = anchor.closest(CARD_CONTAINER_SELECTOR) ?? anchor;
     const anchorText = anchor.textContent?.replace(/\s+/g, ' ').trim();
     const title = cardText(card, CARD_TITLE_SELECTOR) ?? (anchorText && anchorText.length > 0 ? anchorText : null);
-    const priceText = cardText(card, CARD_PRICE_SELECTOR);
+    const priceElementText = cardText(card, CARD_PRICE_SELECTOR);
+    let priceText = priceElementText;
+    let price = priceText === null ? null : parseKijijiPrice(priceText);
+    let priceSource: KijijiSearchResult['priceSource'] = price === null ? null : 'card_element';
+    if (price === null && priceElementText === null) {
+      const fromText = priceFromCardText(card, title);
+      if (fromText !== null) {
+        price = fromText;
+        priceText = fromText.rawText;
+        priceSource = 'card_text';
+        pricedFromCardText += 1;
+      }
+    }
     const locationText = cardText(card, CARD_LOCATION_SELECTOR);
     const postedText = cardPostedText(card, locationText, observedAt);
 
@@ -481,7 +555,8 @@ export function extractSearchResults(
       url: absolute.toString(),
       title,
       priceText,
-      price: priceText === null ? null : parseKijijiPrice(priceText),
+      price,
+      priceSource,
       locationText,
       postedText,
       postedAt,
@@ -570,6 +645,16 @@ export function extractSearchResults(
     // evidence of freshness.
     warnings.push(
       `${POSTED_AT_FROM_RELATIVE_LABEL_WARNING_PREFIX}: ${derivedFromLabel} of ${results.length} card(s) carry a postedAt derived from the card's relative label ("2 hrs ago") measured back from the fetch clock at ${observedAt.toISOString()} and truncated to the label's unit (postedAtSource "relative_text", postedAtPrecision minute|hour|day|week|month). That figure is the ad's last ACTIVATION as the card rounds it — a bumped or reposted ad reads as new here — and is not the ad's original posting date; only the ad page's postedAt is evidence of freshness, so open the ad before calling it new this fire. Cards with postedAtSource "hydration" or "card_datetime" state their instant.`,
+    );
+  }
+  if (pricedFromCardText > 0) {
+    warnings.push(
+      `${CARD_PRICE_FROM_CARD_TEXT_WARNING_PREFIX}: ${pricedFromCardText} of ${results.length} card(s) matched no price element, so their price was read from the card's own text — the one amount, or a Please Contact / Swap / Free label, with the title removed first (priceSource "card_text"; observed 2026-09-11 on /o-profile/<posterId>/listings/<n>, where no card carries a price element). A card with more than one amount stays null rather than guessed. Still a traversal hint: the ad page decides the price.`,
+    );
+  }
+  if (results.length > 0 && results.every((result) => result.price === null)) {
+    warnings.push(
+      `${CARD_PRICE_UNRENDERED_WARNING_PREFIX}: price is null on all ${results.length} card(s) — no price element matched and no card's text carried an amount or a Please Contact / Swap / Free label, so this page kind renders no price on its cards (the 2026-09-11 read of /o-profile/63691662/listings/1 and /2 came back 40 of 40 priceless). Prices for these ads exist only on their ad pages, so an inventory cannot be screened by price on this surface: say "prices are not on this surface" in the drill-down rather than reporting nulls, and spend one bounded browser_snapshot (maxNodes 120) on the page so the card markup can be filed.`,
     );
   }
   const contactRows = results.filter((result) => result.price !== null && result.price.kind === 'contact');
