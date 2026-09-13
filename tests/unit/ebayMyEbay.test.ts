@@ -1102,3 +1102,90 @@ describe('offers page: a status-token row with exactly one amount carries the as
     expect(page.warnings).toEqual([]);
   });
 });
+
+// 2026-09-13 04:1xZ deals fire (site-ebay+extractor_defect+watchlist-reminder-
+// banner-row-replaces-the-title-and-nulls-every-card-field): 6 of the 341 rows
+// of the ?page=99 overflow render came back with title exactly "WATCHED ITEM
+// REMINDER" and every card figure null (snippetPrice, sellerText, shipping,
+// priceDropText, sellerOffer; sellingFormat unknown) on a correct itemId —
+// eBay renders a reminder/notification banner in the card slot of an item it
+// is nudging the watcher about, and the banner's heading was read as the
+// listing's title. Three of the six (236580533389, 236869236747, 137295398934)
+// were live and ordinary on the offers page the same fire, and 236869236747
+// item-page validated ("Lot of 5 Green LEGO Baseplates", C$17.99, active). A
+// walk that keys membership on a usable title, or drops rows whose price is
+// null, would read all six as removed. NO banner markup is captured: the
+// layouts below are the ones consistent with the field-level output (a
+// heading in the title slot, no price/seller/format nodes), and the detection
+// is the heading's text, not a container selector.
+describe('watch list: a reminder-banner row is present-but-unreadable, never a listing titled "WATCHED ITEM REMINDER" (2026-09-13 fire)', () => {
+  function watchlistDoc(cards: string): Document {
+    const { document } = parseHTML(
+      `<html><head><title>Watch list | My eBay</title></head><body>
+       <div class="filter-menu" role="tablist"><button role="tab" aria-selected="true">All (341)</button></div>
+       <ul>${cards}</ul></body></html>`,
+    );
+    return document as unknown as Document;
+  }
+  const ordinary = `<li class="m-item"><a class="m-item__title" href="https://www.ebay.ca/itm/224380282246">Cisco AIR-AP1852I-A-K9</a>
+      <div class="m-item__price">C $45.00</div> <div>2d 3h left</div></li>`;
+  const bannerInTitleSlot = `<li class="m-item"><a class="m-item__image" href="https://www.ebay.ca/itm/236869236747"><img src="x.jpg"></a>
+      <h3 class="m-item__title">WATCHED ITEM REMINDER</h3><p>Don't miss out on this item.</p></li>`;
+  const bannerAsAnchor = `<li class="m-item"><a class="m-item__title" href="https://www.ebay.ca/itm/158186042470">Watched item reminder!</a></li>`;
+  const page = extractWatchlistPage(watchlistDoc(ordinary + bannerInTitleSlot + bannerAsAnchor), 'https://www.ebay.ca/mye/myebay/watchlist?page=99', {
+    observedAt: OBSERVED_AT,
+  });
+  const byId = (id: string) => page.candidates.find((row) => row.itemId === id)!;
+
+  it('keeps the item id and marks the row, with the banner heading never presented as the title', () => {
+    const banner = byId('236869236747');
+    expect(banner).toBeDefined();
+    expect(banner.cardRender).toBe('reminder_banner');
+    expect(banner.title).toBeNull();
+    expect(banner.snippetPrice).toBeNull();
+    expect(banner.snippetPriceSource).toBeNull();
+    expect(banner.sellingFormat).toBe('unknown');
+    expect(banner.watchlistStatus).toBe('unknown');
+    expect(banner.sellerText).toBeNull();
+    expect(banner.sellerOffer).toBeNull();
+    expect(banner.priceDropText).toBeNull();
+    expect(banner.shippingSnippetText).toBeNull();
+  });
+
+  it('reads the heading case-insensitively whether it sits in the title slot or in the item link itself', () => {
+    const banner = byId('158186042470');
+    expect(banner.cardRender).toBe('reminder_banner');
+    expect(banner.title).toBeNull();
+  });
+
+  it('an ordinary card is a listing render and keeps its title', () => {
+    const row = byId('224380282246');
+    expect(row.cardRender).toBe('listing');
+    expect(row.title).toBe('Cisco AIR-AP1852I-A-K9');
+    expect(row.watchlistStatus).toBe('active');
+  });
+
+  it('names the rows at page level so a membership diff counts them as present, never as removed or changed', () => {
+    const reminder = page.warnings.find((warning) => warning.startsWith('WATCHLIST_REMINDER_ROWS'));
+    expect(reminder).toBeDefined();
+    expect(reminder).toMatch(/2 of 3/);
+    expect(reminder).toMatch(/236869236747/);
+    expect(reminder).toMatch(/158186042470/);
+    expect(reminder).toMatch(/present-but-unreadable/);
+    expect(reminder).toMatch(/never as removed/i);
+    expect(reminder).toMatch(/item page/);
+  });
+
+  it('leaves the reminder rows out of the unstated-status and unstated-format counts, which describe ordinary cards', () => {
+    expect(page.warnings.some((warning) => warning.startsWith('WATCHLIST_STATUS_UNSTATED'))).toBe(false);
+    const format = page.warnings.find((warning) => warning.startsWith('WATCHLIST_FORMAT_UNSTATED'));
+    expect(format).toBeDefined();
+    expect(format).toMatch(/1 of 3/);
+  });
+
+  it('a page with no banner row carries no reminder warning and every row is a listing render', () => {
+    const plain = extractWatchlistPage(watchlistDoc(ordinary), 'https://www.ebay.ca/mye/myebay/watchlist', { observedAt: OBSERVED_AT });
+    expect(plain.warnings.some((warning) => warning.startsWith('WATCHLIST_REMINDER_ROWS'))).toBe(false);
+    expect(plain.candidates.every((row) => row.cardRender === 'listing')).toBe(true);
+  });
+});

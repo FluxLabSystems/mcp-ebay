@@ -209,4 +209,20 @@ describe('page-level seller and location provenance (2026-09-08)', () => {
     const warnings = warningsFor('<span class="s-item__seller-info-text">brickvault_ca (1,234) 99.5%</span><span class="s-item__location">from Toronto, ON, Canada</span>');
     expect(warnings.some((w) => /^CARD_(SELLER|LOCATION)_/.test(w))).toBe(false);
   });
+
+  // 2026-09-13 fire (search-card-location-text-fallback-truncates-canadian-
+  // locations-to-from-m): a page whose rows carried a location-shaped phrase
+  // the fallback rejected as bleed says so, and is never described as a
+  // template that renders no location.
+  it('counts the rows whose location phrase was rejected as bleed, and does not call the template location-less', () => {
+    const warnings = warningsFor('<span class="su-styled-text">from M6H 2W9</span>');
+    const rejected = warnings.find((w) => w.startsWith('CARD_LOCATION_TEXT_REJECTED'));
+    expect(rejected).toBeDefined();
+    expect(rejected).toMatch(/2 of 2/);
+    expect(rejected).toMatch(/336123456789: "from M"/);
+    expect(rejected).toMatch(/null/);
+    expect(rejected).toMatch(/item page/);
+    expect(warnings.some((w) => w.startsWith('CARD_LOCATION_UNRENDERED'))).toBe(false);
+    expect(warnings.some((w) => w.startsWith('CARD_LOCATION_SELECTOR_MISSED'))).toBe(false);
+  });
 });

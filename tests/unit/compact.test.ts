@@ -731,6 +731,30 @@ describe('My eBay candidate pages compact with their own default projection', ()
     // Fields outside the projection are gone; a caller names them to get them back.
     expect(rows[0]!.conditionText).toBeUndefined();
     expect(rows[0]!.isNewListing).toBeUndefined();
+    // An older agent's rows carry no cardRender; the key is absent, never invented.
+    expect(rows[0]!).not.toHaveProperty('cardRender');
+  });
+
+  // 2026-09-13 fire (watchlist-reminder-banner-row-replaces-the-title-and-
+  // nulls-every-card-field): the row marker rides the default projection only
+  // on the rows that say something — 'listing' is the page's default and is
+  // elided like matchScope 'primary', so 340 ordinary rows carry no copy of it.
+  it('keeps cardRender on a reminder-banner row by default and elides the listing default', () => {
+    const base = watchlistRecord();
+    const record = {
+      ...base,
+      candidates: [
+        { ...base.candidates[0]!, cardRender: 'listing' },
+        { ...base.candidates[1]!, itemId: '236869236747', url: 'https://www.ebay.ca/itm/236869236747', title: null, snippetPrice: null, cardRender: 'reminder_banner' },
+      ],
+    };
+    const { record: out } = compactSearchPage(record, DEFAULTS);
+    const rows = out.candidates as Array<Record<string, unknown>>;
+    expect(rows[0]!).not.toHaveProperty('cardRender');
+    expect(rows[1]!.cardRender).toBe('reminder_banner');
+    expect(rows[1]!.title).toBeNull();
+    const named = compactSearchPage(record, SearchCompactionInput.parse({ limit: 3, fields: ['itemId', 'cardRender'] }));
+    expect((named.record.candidates as Array<Record<string, unknown>>)[0]!.cardRender).toBe('listing');
   });
 
   it('applies include filters to watch-list rows exactly as to search rows', () => {
