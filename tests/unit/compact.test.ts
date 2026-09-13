@@ -429,6 +429,67 @@ describe('search compaction', () => {
     expect(result.warnings.some((warning) => warning.startsWith('EXCLUDED_NO_PRICE'))).toBe(true);
   });
 
+  // Office fire 2026-09-11 12:1xZ (site-kijiji+extractor_defect+search-price-
+  // bound-drops-the-contact-price-rows-the-same-response-says-never-to-drop):
+  // a maxPrice bound on the Mississauga office category page dropped the five
+  // "Please Contact" cards (ids 1743262184, 1743260741, 1743237626,
+  // 1743232325, 1743227370) as EXCLUDED_NO_PRICE while the same response's
+  // SEARCH_CONTACT_PRICE_ROWS warning said never to drop a row on a null card
+  // price. A contact-price card's value is null, not zero — the body may name
+  // the figure — so it survives the bound and the response says so.
+  it('keeps Kijiji "Please Contact" rows under a price bound and names them', () => {
+    const record = {
+      siteProfile: 'kijiji.ca.v1',
+      pageKind: 'search',
+      pageUrl: 'https://www.kijiji.ca/b-commercial-office-space/mississauga-peel-region/c40l1700276',
+      candidateCount: 4,
+      candidates: [
+        {
+          adId: '1743200001',
+          url: 'https://www.kijiji.ca/v-commercial-office-space/mississauga-peel-region/office/1743200001',
+          title: 'Private office, all inclusive',
+          price: { kind: 'amount', value: 850, currency: 'CAD', rawText: '$850.00' },
+        },
+        {
+          adId: '1743200002',
+          url: 'https://www.kijiji.ca/v-commercial-office-space/mississauga-peel-region/office/1743200002',
+          title: 'Executive suite',
+          price: { kind: 'amount', value: 2400, currency: 'CAD', rawText: '$2,400.00' },
+        },
+        {
+          adId: '1743262184',
+          url: 'https://www.kijiji.ca/v-commercial-office-space/mississauga-peel-region/office/1743262184',
+          title: 'Office space available',
+          price: { kind: 'contact', value: null, currency: 'CAD', rawText: 'Please Contact' },
+        },
+        {
+          adId: '1743200004',
+          url: 'https://www.kijiji.ca/v-commercial-office-space/mississauga-peel-region/office/1743200004',
+          title: 'No price rendered on this card',
+          price: null,
+        },
+      ],
+    };
+    const result = compactSearchPage(
+      record,
+      SearchCompactionInput.parse({ include: { maxPrice: 1000 }, fields: ['adId', 'price'] }),
+    );
+    const page = result.record as { matchedCount: number; candidates: { adId: string }[] };
+    // The over-bound amount is dropped; the contact-price row is kept.
+    expect(page.candidates.map((candidate) => candidate.adId)).toEqual(['1743200001', '1743262184']);
+    expect(page.matchedCount).toBe(2);
+    // The kept row is named, so a caller reads which candidates still need
+    // their body opened before any price-based exclusion.
+    const retained = result.warnings.find((warning) => warning.startsWith('RETAINED_CONTACT_PRICE_ROWS'));
+    expect(retained).toBeDefined();
+    expect(retained).toContain('1743262184');
+    // A card whose price genuinely could not be read is still counted as
+    // dropped — the two cases no longer share one code.
+    const excluded = result.warnings.find((warning) => warning.startsWith('EXCLUDED_NO_PRICE'));
+    expect(excluded).toBeDefined();
+    expect(excluded).toContain('1 candidate(s)');
+  });
+
   it('keeps unreadable formats when the caller asks for "unknown"', () => {
     const record = {
       ...searchRecord(0),

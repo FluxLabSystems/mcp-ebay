@@ -138,7 +138,11 @@ refused for five minutes, so report it and take the Bridge path.
   maxPrice, formats}`. The ~200 rows that do not matter never enter
   context. Rows dropped for *lacking* the filtered field are counted in
   `warnings` (`EXCLUDED_NO_PRICE`, `EXCLUDED_UNKNOWN_FORMAT`) — read those
-  counts before concluding a marketplace had nothing. `titleRegex` is
+  counts before concluding a marketplace had nothing. A Kijiji "Please
+  Contact" card (`price.kind 'contact'`, value null, not zero) is NOT
+  dropped by a price bound: it stays in the result and is named in
+  `RETAINED_CONTACT_PRICE_ROWS`, because the ad body may state the figure the
+  card does not — open it before any price-based exclusion. `titleRegex` is
   already matched case-insensitively; write plain patterns without inline
   flags — JS regex has no `(?i)`, so it is rejected as an invalid group.
 - **`search.fields`** resolves both profiles' spellings: asking for
