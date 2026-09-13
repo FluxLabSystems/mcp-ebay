@@ -61,6 +61,17 @@ export interface ListingCandidate {
   itemLocationText: string | null;
   /** How `itemLocationText` was read: a location element, the "from <place>" / "Located in <place>" phrase in the card text, or not at all. */
   itemLocationSource: 'element' | 'text' | 'api' | null;
+  /**
+   * A location-shaped phrase the card-text fallback found and REJECTED as
+   * bleed — a one-character place ("from M": the first letter of a postal
+   * code, 2026-09-13, on six cards whose item pages state Ajax, Etobicoke
+   * and North York), a phrase that sat inside the card's own title ("From
+   * Set" off "…From Set 4502"), or a phrase that did not survive the cut
+   * at a neighbouring cell's token. Kept verbatim so a page can count the
+   * rows it happened on (CARD_LOCATION_TEXT_REJECTED); itemLocationText is
+   * null on such a row, never the partial string. Null on every other row.
+   */
+  itemLocationRejectedText: string | null;
   /** The badge cleanTitle strips out of the title, kept as a flag. */
   isNewListing: boolean;
   /**
@@ -219,27 +230,94 @@ export function readCardSellerWithSource(
  * seller run above.
  */
 const CARD_LOCATION_TEXT_RE =
-  /\b((?:[Ll]ocated in|[Ss]hips from|[Ff]rom)\s+[A-Z][A-Za-z.'-]*(?:,?\s+(?:[A-Z][A-Za-z.'-]*|ON|QC|BC|AB|MB|SK|NS|NB|PE|NL|YT|NT|NU))*)/;
+  /\b((?:[Ll]ocated in|[Ss]hips from|[Ff]rom)\s+([A-Z][A-Za-z.'-]*(?:,?\s+(?:[A-Z][A-Za-z.'-]*|ON|QC|BC|AB|MB|SK|NS|NB|PE|NL|YT|NT|NU))*))/;
 
-/** `itemLocationText` and where it came from: a known element, the card's text, or nowhere. */
+/**
+ * The first word of the cell that follows a card's location cell, as the
+ * spaced text runs them together: "from United States Free returns", "from
+ * United Kingdom Last one" (2026-09-13, ten cards). A place name is cut at
+ * the first of these; a month abbreviation is cut only when it carries the
+ * date cell's hyphen or is followed by a digit ("Located in United States
+ * Sep-12"), so "Cape May, NJ" keeps its May. "New" is deliberately not
+ * here — "from New York, NY" — the "New Listing" badge lives in the title,
+ * which is stripped before the phrase is read.
+ */
+const CARD_LOCATION_STOP_WORD_RE =
+  /^(?:Free|Last|Only|Almost|Pre-Owned|Opens|Brand|Buy|Best|Or|Was|Now|Save|Sold|Ends?|Ending|Today|Tonight|Time|Bids?|Sponsored|Top|Watch|Estimated|Est)[.,:;-]?$/;
+const MONTH_ABBREVIATION_RE = /^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[.,-]?$/;
+
+/**
+ * The place a card's "from <place>" / "Located in <place>" phrase names,
+ * cut at the neighbouring cell's first word, or null when what remains is
+ * not a place: a one-character residue, or a run the postal-code digits
+ * interrupted mid-word.
+ */
+function boundedPlace(place: string, after: string): string | null {
+  const tokens = place.split(/\s+/);
+  const kept: string[] = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    if (CARD_LOCATION_STOP_WORD_RE.test(token)) break;
+    if (MONTH_ABBREVIATION_RE.test(token)) {
+      const isLast = index === tokens.length - 1;
+      if (token.endsWith('-') || (isLast && /^\s*\d/.test(after))) break;
+    }
+    kept.push(token);
+  }
+  if (kept.length === 0) return null;
+  const cutAtEnd = kept.length === tokens.length;
+  // "from M6H 2W9": the letter run stopped at a digit with no space before
+  // it, so the token is the head of a postal code, not a place.
+  if (cutAtEnd && /^\d/.test(after)) return null;
+  const text = normalizeText(kept.join(' ')).replace(/[,.-]+$/, '');
+  if (text.replace(/[^A-Za-z]/g, '').length < 2) return null;
+  return text;
+}
+
+/**
+ * `itemLocationText` and where it came from: a known element, the card's
+ * text, or nowhere — plus the phrase the text fallback rejected, when it
+ * found one it would not stand behind (2026-09-13: "from M", "From Set").
+ */
 export function readCardLocationWithSource(
   card: Element,
   rawTitle: string | null,
-): { text: string | null; source: 'element' | 'text' | null } {
+): { text: string | null; source: 'element' | 'text' | null; rejected: string | null } {
   const elementText = cardText(card, CARD_LOCATION_SELECTOR);
-  if (elementText !== null) return { text: elementText, source: 'element' };
+  if (elementText !== null) return { text: elementText, source: 'element', rejected: null };
   // The seller run is stripped first: "from United States Lego_Lover99 (87)
   // 100%" must not read the login id's capitalised head as part of the place.
   const blob = textWithoutTitle(card, rawTitle).replace(CARD_SHIPPING_PHRASE_RE, ' ').replace(CARD_SELLER_TEXT_RE, ' ');
   const match = CARD_LOCATION_TEXT_RE.exec(blob);
-  if (match !== null) return { text: normalizeText(match[1]!), source: 'text' };
-  return { text: null, source: null };
+  if (match === null) return { text: null, source: null, rejected: null };
+  const phrase = normalizeText(match[1]!);
+  // match[2] is a suffix of match[1], so the label is sliced off the raw text.
+  const label = normalizeText(match[1]!.slice(0, match[1]!.length - match[2]!.length));
+  const after = blob.slice(match.index + match[0].length);
+  // A phrase that sits inside the title is the title's, whatever the
+  // spaced text did to the title's own badge spans.
+  if (rawTitle !== null && normalizeText(rawTitle).toLowerCase().includes(phrase.toLowerCase())) {
+    return { text: null, source: null, rejected: phrase };
+  }
+  const place = boundedPlace(match[2]!, after);
+  if (place === null) return { text: null, source: null, rejected: phrase };
+  return { text: `${label} ${place}`, source: 'text', rejected: null };
 }
 
-/** The card's spaced text with the title removed, so a title never supplies a seller or a place. */
+/**
+ * The card's spaced text with the title removed, so a title never supplies
+ * a seller or a place. Both the element's raw text and its cleaned form are
+ * removed: a badge span inside the title element ("New Listing") makes the
+ * raw textContent run the badge into the title while the spaced text keeps
+ * a space between them, so the raw form alone can fail to match.
+ */
 function textWithoutTitle(card: Element, rawTitle: string | null): string {
   let text = spacedText(card);
-  if (rawTitle !== null && rawTitle.length > 0) text = text.split(rawTitle).join(' ');
+  if (rawTitle !== null && rawTitle.length > 0) {
+    text = text.split(rawTitle).join(' ');
+    const cleaned = cleanTitle(rawTitle);
+    if (cleaned.length > 0) text = text.split(cleaned).join(' ');
+  }
   return text;
 }
 
@@ -680,6 +758,7 @@ export function extractListingCandidates(document: Document, pageUrl: string): L
         shippingSnippetServiceNamed: shippingSnippet.serviceNamed,
         itemLocationText: locationRead.text,
         itemLocationSource: locationRead.source,
+        itemLocationRejectedText: locationRead.rejected,
         isNewListing: isNewListingCard(card, rawTitle),
         ...readSoldCaption(card, rawTitle),
         seller: sellerRead.seller,

@@ -60,7 +60,20 @@ export interface SellerOfferSnippet {
   price: { value: number; currency: string } | null;
 }
 
+/**
+ * What the card slot rendered. 'reminder_banner' is eBay's reminder /
+ * notification banner ("WATCHED ITEM REMINDER") in place of the listing card
+ * — an item eBay is nudging the watcher about (ending, price drop, low
+ * stock). Observed 2026-09-13 on 6 of 341 rows of the ?page=99 overflow
+ * render: the banner heading read as the title and every card figure was
+ * null while the item id was correct, and three of the six were live and
+ * ordinary on the offers page minutes later. Such a row is present-but-
+ * unreadable: the item is on the list, the card just did not render it.
+ */
+export type WatchlistCardRender = 'listing' | 'reminder_banner';
+
 export interface WatchlistCandidate extends ListingCandidate {
+  cardRender: WatchlistCardRender;
   /** The countdown exactly as rendered ("2d 4h left"); null when the card shows none. */
   timeLeftText: string | null;
   /** observedAt plus the countdown, ISO; a derivation, no finer than the text was. */
@@ -304,6 +317,12 @@ const PRICE_DROP_RE = new RegExp(
   String.raw`((?:price\s+drop(?:ped)?|price\s+reduced)(?:\s*:?\s*(?:was|from)\s*${MONEY_SOURCE})?|(?:now\s+)?\d+%\s+off)`,
   'i',
 );
+/**
+ * The heading eBay's reminder banner renders in the card's title slot. The
+ * text is the tell (no banner container has been captured); a listing is
+ * never titled exactly this.
+ */
+const REMINDER_BANNER_TITLE_RE = /^watched\s+item\s+reminder[!.:]?$/i;
 const MONEY_RE = new RegExp(MONEY_SOURCE);
 const COUNT_IN_LABEL_RE = /\((\d[\d,]*)\)/;
 const COUNT_ITEMS_RE = /\b(\d[\d,]*)\s+(?:items?|listings?|results?)\b/i;
@@ -729,12 +748,52 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
   const observedAt = (context.observedAt ?? new Date()).toISOString();
   const candidates: WatchlistCandidate[] = [];
   const converted: Array<{ itemId: string; price: string; from: string }> = [];
+  const reminderRows: WatchlistCandidate[] = [];
 
   for (const { anchor, itemId, url } of itemAnchors(document, pageUrl)) {
     const card = myEbayCardRoot(anchor);
     const anchorText = normalizeText(anchor.textContent);
     const rawTitle = cardText(card, MYEBAY_TITLE_SELECTOR) ?? (anchorText.length > 0 ? anchorText : null);
     const title = rawTitle === null ? null : cleanTitle(rawTitle);
+    if (title !== null && REMINDER_BANNER_TITLE_RE.test(title)) {
+      // The slot rendered the banner, not the listing: the id is the one
+      // thing on it that is the item's. Nothing the banner says is a card
+      // figure, so the row carries none — and never the heading as a title.
+      const { seller } = sellerFrom(card);
+      const row: WatchlistCandidate = {
+        itemId,
+        url,
+        cardRender: 'reminder_banner',
+        title: null,
+        snippetPrice: null,
+        snippetPriceSource: null,
+        sellingFormat: 'unknown',
+        bidCount: null,
+        shippingSnippetText: null,
+        shippingSnippetAmount: null,
+        shippingSnippetServiceNamed: null,
+        itemLocationText: null,
+        itemLocationSource: null,
+        itemLocationRejectedText: null,
+        isNewListing: false,
+        soldText: null,
+        soldAt: null,
+        order: candidates.length,
+        timeLeftText: null,
+        endsAt: null,
+        watchlistStatus: 'unknown',
+        seller,
+        sellerSource: seller === null ? null : 'element',
+        matchScope: 'primary',
+        sellerText: null,
+        sellerOffer: null,
+        priceDropText: null,
+        conditionText: null,
+      };
+      candidates.push(row);
+      reminderRows.push(row);
+      continue;
+    }
     const blob = normalizeText(card.textContent);
     const priceText = cardText(card, MYEBAY_PRICE_SELECTOR);
     const elementPrice = money(priceText);
@@ -770,6 +829,7 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
     candidates.push({
       itemId,
       url,
+      cardRender: 'listing',
       title: title !== null && title.length > 0 ? title : null,
       snippetPrice,
       snippetPriceSource: elementPrice !== null ? 'element' : snippetPrice !== null ? 'text' : null,
@@ -780,6 +840,7 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
       shippingSnippetServiceNamed: shippingSnippet.serviceNamed,
       itemLocationText: null,
       itemLocationSource: null,
+      itemLocationRejectedText: null,
       isNewListing: isNewListingCard(card, rawTitle),
       // The same caption read as a search row's; the watch list's own
       // status vocabulary (watchlistStatus) is read separately and decides.
@@ -832,15 +893,23 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
       );
     }
   } else {
+    if (reminderRows.length > 0) {
+      const ids = reminderRows.map((row) => row.itemId).join(', ');
+      warnings.push(
+        `WATCHLIST_REMINDER_ROWS: ${reminderRows.length} of ${candidates.length} row(s) rendered eBay's reminder/notification banner ("WATCHED ITEM REMINDER") in the card slot instead of the listing card (ids: ${ids}), so title and every card figure are null on them and cardRender is 'reminder_banner' — the item is still on the list (the id is real; three such rows were live and ordinary on the offers page on 2026-09-13), the card just did not render it. Count these rows as present-but-unreadable in a membership diff, never as removed and never as a price, status or format change; the item page reads them. They are left out of the WATCHLIST_STATUS_UNSTATED and WATCHLIST_FORMAT_UNSTATED counts below, which describe ordinary cards.`,
+      );
+    }
     // Say how much of the page's state and format is unstated, so a walk
-    // diffs status and format from item pages, never from these cards.
-    const unstatedStatus = candidates.filter((row) => row.watchlistStatus === 'unknown').length;
+    // diffs status and format from item pages, never from these cards. A
+    // reminder row states nothing by construction and is counted above.
+    const ordinaryRows = candidates.filter((row) => row.cardRender !== 'reminder_banner');
+    const unstatedStatus = ordinaryRows.filter((row) => row.watchlistStatus === 'unknown').length;
     if (unstatedStatus > 0) {
       warnings.push(
         `WATCHLIST_STATUS_UNSTATED: ${unstatedStatus} of ${candidates.length} row(s) carry neither an ended/sold badge nor a live countdown, so watchlistStatus is unknown on them — a price is not a status; the item page decides whether each is live, and a diff must never read these rows as active or as a status change.`,
       );
     }
-    const unstatedFormat = candidates.filter((row) => row.sellingFormat === 'unknown').length;
+    const unstatedFormat = ordinaryRows.filter((row) => row.sellingFormat === 'unknown').length;
     if (unstatedFormat > 0) {
       warnings.push(
         `WATCHLIST_FORMAT_UNSTATED: ${unstatedFormat} of ${candidates.length} row(s) state neither bids nor Buy It Now, so sellingFormat is unknown and bidCount null on them (this template shows no format element; live auctions with bids render exactly like fixed-price rows here) — read format and bids from the item page.`,
@@ -856,7 +925,7 @@ export function extractWatchlistPage(document: Document, pageUrl: string, contex
       );
     }
     const nullNote = nullCountsWarning(
-      candidates as unknown as Record<string, unknown>[],
+      ordinaryRows as unknown as Record<string, unknown>[],
       ['title', 'snippetPrice', 'timeLeftText', 'seller', 'sellerText', 'shippingSnippetText'],
       'WATCHLIST_FIELDS_NULL',
     );

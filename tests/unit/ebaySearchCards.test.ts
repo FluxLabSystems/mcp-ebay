@@ -651,3 +651,77 @@ describe('card seller and location fall back to the card text and say so (2026-0
     expect(candidate.itemLocationSource).toBe('element');
   });
 });
+
+// 2026-09-13 04:5xZ deals fire (site-ebay+extractor_defect+search-card-
+// location-text-fallback-truncates-canadian-locations-to-from-m): the text
+// fallback above recovered values that were PRESENT and WRONG rather than
+// absent. Six cards read "from M" where the item page states a full Ontario
+// city (147568778926 Ajax, 316812393897 Etobicoke, 257664126503 North York);
+// four read "from United States Free" / "from Israel Free", two "from United
+// Kingdom Last" (the neighbouring cell's first word), 68 of 68 rows of one
+// ebay.com page "Located in United States Sep-" (a date cell), and
+// 227517285056 read "From Set" out of its own title ("…From Set 4502").
+// Location decides whether a listing is costed domestic or cross-border, so
+// a one-letter residue is worse than null. No card is captured: a postal code
+// after "from" ("from M6H 2W9" — the search's own M6H 2W9 pass) is one shape
+// that yields exactly "from M", and the rule rejects any one-character place
+// whatever produced it.
+describe('card location text fallback is bounded to the place, and a bleed is null, never a partial string (2026-09-13 fire)', () => {
+  const BROAD = 'https://www.ebay.ca/sch/i.html?_nkw=lego+raised+baseplate&_sop=10&_ipg=60';
+  const card = (titleHtml: string, attributes: string, url = BROAD) =>
+    extractListingCandidates(
+      parseHTML(
+        `<div class="srp-river-results"><div class="su-card-container">
+           <a class="su-link" href="https://www.ebay.ca/itm/147568778926"><img src="x.jpg"></a>
+           <span class="s-card__title">${titleHtml}</span>
+           <span class="s-card__price">C $59.99</span>
+           <div class="su-card-container__attributes">${attributes}</div>
+         </div></div>`,
+      ).document as unknown as Document,
+      url,
+    )[0]!;
+
+  it('a one-character place ("from M" off a postal code) is rejected, not emitted', () => {
+    const row = card('LEGO Raised Baseplate 32x32', '<span class="su-styled-text">from M6H 2W9</span>');
+    expect(row.itemLocationText).toBeNull();
+    expect(row.itemLocationSource).toBeNull();
+    expect(row.itemLocationRejectedText).toBe('from M');
+  });
+
+  it('stops before a neighbouring cell\'s token: "Free", "Last"', () => {
+    const free = card('LEGO Raised Baseplate 32x32', '<span class="su-styled-text">from United States</span><span class="su-styled-text">Free returns</span>');
+    expect(free.itemLocationText).toBe('from United States');
+    expect(free.itemLocationSource).toBe('text');
+    const last = card('LEGO Raised Baseplate 32x32', '<span class="su-styled-text">from United Kingdom</span><span class="su-styled-text">Last one</span>');
+    expect(last.itemLocationText).toBe('from United Kingdom');
+  });
+
+  it('stops before a date cell ("Sep-12") on an ebay.com page', () => {
+    const row = card(
+      'LTO-8 SAS tape drive',
+      '<span class="su-styled-text">Located in United States</span><span class="su-styled-text">Sep-12 09:41</span>',
+      'https://www.ebay.com/sch/i.html?_nkw=LTO-8+SAS+tape+drive&_sop=15',
+    );
+    expect(row.itemLocationText).toBe('Located in United States');
+    expect(row.itemLocationRejectedText).toBeNull();
+  });
+
+  it('never reads the title, even when a badge span makes the title element\'s text differ from the card\'s spaced text', () => {
+    const row = card('<span class="LIGHT_HIGHLIGHT">New Listing</span>LEGO Minifigure Lot From Set 4502', '<span class="su-styled-text">+C $12.00 shipping</span>');
+    expect(row.title).toBe('LEGO Minifigure Lot From Set 4502');
+    expect(row.itemLocationText).toBeNull();
+    expect(row.itemLocationSource).toBeNull();
+  });
+
+  it('keeps a complete place string, a month word inside a place name included', () => {
+    const on = card('LEGO Raised Baseplate 32x32', '<span class="su-styled-text">from Mississauga, ON, Canada</span><span class="su-styled-text">Free returns</span>');
+    expect(on.itemLocationText).toBe('from Mississauga, ON, Canada');
+    expect(on.itemLocationRejectedText).toBeNull();
+    const nj = card('LEGO Raised Baseplate 32x32', '<span class="su-styled-text">from Cape May, NJ, United States</span>');
+    expect(nj.itemLocationText).toBe('from Cape May, NJ, United States');
+    const country = card('LEGO Raised Baseplate 32x32', '<span class="su-styled-text">Located in Canada</span>');
+    expect(country.itemLocationText).toBe('Located in Canada');
+    const ny = card('LEGO Raised Baseplate 32x32', '<span class="su-styled-text">from New York, NY, United States</span><span class="su-styled-text">Free returns</span>');
+    expect(ny.itemLocationText).toBe('from New York, NY, United States');
+  });
+});

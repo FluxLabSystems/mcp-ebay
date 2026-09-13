@@ -335,6 +335,10 @@ const DEFAULT_EBAY_WATCHLIST_FIELDS = [
   'itemId',
   'url',
   'title',
+  // 'reminder_banner' on a row whose card slot rendered eBay's reminder
+  // banner instead of the listing (title and every figure null, id real —
+  // 2026-09-13); the 'listing' default is elided, see DEFAULT_VALUED_MARKERS.
+  'cardRender',
   'snippetPrice',
   'sellingFormat',
   'bidCount',
@@ -785,7 +789,7 @@ export function compactSearchPage(
  * (C3 below still holds for named fields), and an older agent whose rows
  * carry neither key is told apart by the absent root `sellerQuery`.
  */
-const DEFAULT_VALUED_MARKERS: Readonly<Record<string, unknown>> = { matchScope: 'primary', seller: null };
+const DEFAULT_VALUED_MARKERS: Readonly<Record<string, unknown>> = { matchScope: 'primary', seller: null, cardRender: 'listing' };
 
 function projectCandidate(
   row: Unknown,

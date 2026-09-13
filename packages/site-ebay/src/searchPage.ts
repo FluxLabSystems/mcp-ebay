@@ -305,11 +305,26 @@ function pushCardProvenanceWarnings(candidates: readonly ListingCandidate[], kin
   }
 
   const locationFromText = candidates.filter((row) => row.itemLocationSource === 'text');
+  const locationRejected = candidates.filter((row) => row.itemLocationRejectedText !== null);
   if (locationFromText.length > 0) {
     warnings.push(
       `CARD_LOCATION_SELECTOR_MISSED: ${locationFromText.length} of ${rendered} card(s) on this ${kindLabel} read their location from the card text ("from <place>", "Located in <place>"), not from a location element the extractor knows (ids: ${idsOf(locationFromText)}) — a selector to pin from the same card capture as CARD_SELLER_SELECTOR_MISSED; the values stand as traversal hints and the item page's location decides.`,
     );
-  } else if (candidates.every((row) => row.itemLocationText === null)) {
+  }
+  if (locationRejected.length > 0) {
+    // 2026-09-13: six cards read "from M" (a postal code's first letter)
+    // where the item page states an Ontario city, and one read "From Set"
+    // out of its own title. A rejected phrase is null on the row, and the
+    // page says how many rows that was, so it is never described below as a
+    // template that renders no location.
+    const samples = locationRejected
+      .slice(0, 5)
+      .map((row) => `${row.itemId}: "${row.itemLocationRejectedText}"`)
+      .join(', ');
+    warnings.push(
+      `CARD_LOCATION_TEXT_REJECTED: ${locationRejected.length} of ${rendered} card(s) on this ${kindLabel} carried a location-shaped phrase the text fallback rejected as bleed — a one-character place such as "from M" (a postal code's first letter), or the card's own title words (${samples}${locationRejected.length > 5 ? ', …' : ''}); itemLocationText is null on them, never the partial string, and the item page states the item location.`,
+    );
+  } else if (locationFromText.length === 0 && candidates.every((row) => row.itemLocationText === null)) {
     warnings.push(
       `CARD_LOCATION_UNRENDERED: itemLocationText is null on all ${rendered} card(s) of this ${kindLabel} and no card's text carries a location phrase, so this template renders no location on the card — not a selector miss; the item page states the item location.`,
     );

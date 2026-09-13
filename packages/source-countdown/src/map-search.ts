@@ -192,6 +192,7 @@ export function mapSearchRows(input: MapSearchRowsInput): Mapped<ApiListingCandi
       shippingSnippetServiceNamed: null,
       itemLocationText,
       itemLocationSource: itemLocationText === null ? null : 'api',
+      itemLocationRejectedText: null,
       isNewListing: null,
       // API rows render no sold caption; `endedType` is the vendor's word on
       // an ended row, and the item page decides.
