@@ -682,7 +682,14 @@ describe('description body on request (2026-09-08)', () => {
     const { record, warnings } = extractKijijiListing(vip(body), URL, { descriptionMaxChars: 6000 });
     const collapsed = body.replace(/\s+/g, ' ').trim();
     expect(record.description?.value.length).toBe(500);
-    expect(record.descriptionFull).toEqual({ value: collapsed, source: 'dom', confidence: 0.9, maxChars: 6000 });
+    expect(record.descriptionFull).toEqual({
+      value: collapsed,
+      source: 'dom',
+      confidence: 0.9,
+      maxChars: 6000,
+      offset: 0,
+      totalChars: collapsed.length,
+    });
     expect(warnings.some((warning) => warning.startsWith('DESCRIPTION_TRUNCATED'))).toBe(false);
   });
 
@@ -699,5 +706,83 @@ describe('description body on request (2026-09-08)', () => {
     const { record } = extractKijijiListing(vip('Short ad body, complete set.'), URL, { descriptionMaxChars: 6000 });
     expect(record.descriptionFull).toBeNull();
     expect(record.description?.value).toBe('Short ad body, complete set.');
+  });
+});
+
+// 2026-09-11 18:2xZ deals fire (site-kijiji+coverage_gap+ad-body-longer-than-
+// the-6000-char-descriptionmaxchars-cap-hides-a-dealer-price-list): ad
+// 1743318963 is a cabinet dealer's whole catalogue in one body — 15,154
+// characters collapsed — and even the 6,000-character ceiling cannot reach
+// the floor cabinets priced in its last two thirds. The per-call bound
+// stays where it is (the body is untrusted text); the body is PAGED instead:
+// descriptionOffset starts the window, descriptionFull states the offset
+// and the body's total length, and the truncation warning names the next
+// offset to ask for.
+describe('description body paging with descriptionOffset (2026-09-11)', () => {
+  const vip = (body: string): Document =>
+    parseHTML(
+      `<html><head><title>Server cabinets | Kijiji</title><link rel="canonical" href="https://www.kijiji.ca/v-buy-sell-other/city-of-toronto/server-cabinets/1743318963"></head>
+       <body><h1>Server cabinets, audio video racks</h1><div data-testid="vip-price">$699.99</div>
+       <div data-testid="vip-description-wrapper">${body}</div></body></html>`,
+    ).document as unknown as Document;
+  const URL = 'https://www.kijiji.ca/v-buy-sell-other/city-of-toronto/server-cabinets/1743318963';
+  const line = '42U 1000mm deep floor cabinet with mesh doors, casters and PDU $1,899.99. 27U 800mm deep floor cabinet $1,299.99. ';
+  const body = line.repeat(140); // ~15,100 characters collapsed, like ad 1743318963
+  const collapsed = body.replace(/\s+/g, ' ').trim();
+
+  it('with no offset the window starts at 0 and states the body total and the next offset', () => {
+    const { record, warnings } = extractKijijiListing(vip(body), URL, { descriptionMaxChars: 6000 });
+    expect(record.descriptionFull).toEqual({
+      value: collapsed.slice(0, 6000),
+      source: 'dom',
+      confidence: 0.9,
+      maxChars: 6000,
+      offset: 0,
+      totalChars: collapsed.length,
+    });
+    const cut = warnings.find((warning) => warning.startsWith('DESCRIPTION_TRUNCATED'));
+    expect(cut).toBeDefined();
+    expect(cut).toMatch(/descriptionOffset 6000/);
+    expect(cut).toMatch(new RegExp(`${collapsed.length} characters`));
+  });
+
+  it('descriptionOffset returns the next window of the same collapsed text, and the last window does not warn', () => {
+    const second = extractKijijiListing(vip(body), URL, { descriptionMaxChars: 6000, descriptionOffset: 6000 });
+    expect(second.record.descriptionFull).toMatchObject({
+      value: collapsed.slice(6000, 12000),
+      maxChars: 6000,
+      offset: 6000,
+      totalChars: collapsed.length,
+    });
+    expect(second.warnings.find((warning) => warning.startsWith('DESCRIPTION_TRUNCATED'))).toMatch(/descriptionOffset 12000/);
+    const third = extractKijijiListing(vip(body), URL, { descriptionMaxChars: 6000, descriptionOffset: 12000 });
+    expect(third.record.descriptionFull?.value).toBe(collapsed.slice(12000));
+    expect(third.record.descriptionFull?.offset).toBe(12000);
+    expect(third.warnings.some((warning) => warning.startsWith('DESCRIPTION_TRUNCATED'))).toBe(false);
+    // The three windows are the whole body, once.
+    expect(
+      [extractKijijiListing(vip(body), URL, { descriptionMaxChars: 6000 }), second, third]
+        .map((outcome) => outcome.record.descriptionFull?.value ?? '')
+        .join(''),
+    ).toBe(collapsed);
+    // The 500-character excerpt is unchanged by paging.
+    expect(second.record.description?.value).toBe(collapsed.slice(0, 500));
+  });
+
+  it('an offset at or past the end returns no window and says so, never an empty descriptionFull', () => {
+    const { record, warnings } = extractKijijiListing(vip(body), URL, {
+      descriptionMaxChars: 6000,
+      descriptionOffset: collapsed.length + 10,
+    });
+    expect(record.descriptionFull).toBeNull();
+    const beyond = warnings.find((warning) => warning.startsWith('DESCRIPTION_OFFSET_BEYOND_END'));
+    expect(beyond).toBeDefined();
+    expect(beyond).toMatch(new RegExp(`${collapsed.length} characters`));
+  });
+
+  it('an offset without descriptionMaxChars changes nothing', () => {
+    const { record } = extractKijijiListing(vip(body), URL, { descriptionOffset: 6000 });
+    expect(record.descriptionFull).toBeNull();
+    expect(record.description?.value.length).toBe(500);
   });
 });

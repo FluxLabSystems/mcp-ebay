@@ -367,6 +367,25 @@ export type EbayPageKind = 'listing' | 'search' | 'store' | 'watchlist' | 'offer
  */
 const MYEBAY_OFFERS_RE = /^\/(?:mye\/myebay(?:\/v\d+)?|myb)\/(?:bids?(?:and|&|-)?offers?|offers?(?:received|sent)?|bidsoffers)(?:\/|$)/i;
 const MYEBAY_WATCHLIST_RE = /^\/(?:mye\/myebay(?:\/v\d+)?|myb)\/watch-?list(?:\/|$)/i;
+/**
+ * The My eBay summary page — the landing a redirected My eBay request ends
+ * on. 2026-09-12 10:0xZ deals walk: the per-category watch-list filter URL
+ * the page itself links (/myb/Watchlist?custom_list_id=WATCH_LIST&filter=
+ * category:183446.EBAY-US) committed and landed here, and the generic
+ * 'other' warning sent the walk looking for an unknown template. The page
+ * is not classified as its own kind (its modules are a mix — watching,
+ * recently viewed, buy again — and never a view of the list), but a
+ * request that lands on it is told so by name.
+ */
+const MYEBAY_SUMMARY_RE = /^\/(?:mye\/myebay(?:\/v\d+)?|myb)\/summary(?:\/|$)/i;
+
+export function isMyEbaySummaryPage(pageUrl: string): boolean {
+  try {
+    return MYEBAY_SUMMARY_RE.test(new URL(pageUrl).pathname);
+  } catch {
+    return false;
+  }
+}
 
 export function classifyEbayPage(pageUrl: string): EbayPageKind {
   try {

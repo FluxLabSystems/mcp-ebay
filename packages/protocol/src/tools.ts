@@ -766,6 +766,18 @@ export const ExtractInput = z.strictObject({
    * applies.
    */
   descriptionMaxChars: z.int().min(500).max(6000).optional(),
+  /**
+   * kijiji.ca.v1 ad (VIP) pages only, with `descriptionMaxChars`: where
+   * the `descriptionFull` window starts in the whitespace-collapsed body
+   * (default 0). A body longer than the cap is PAGED, never widened past
+   * it: `descriptionFull` states `offset` and `totalChars`, and
+   * DESCRIPTION_TRUNCATED names the next offset to ask for (2026-09-11: a
+   * dealer's 15,154-character catalogue ad priced its floor cabinets past
+   * the cap). Ignored without `descriptionMaxChars` and on every other
+   * page kind and profile. NOTE: adding this field changed the advertised
+   * tool schema — a gateway redeploy plus a connector reconnect applies.
+   */
+  descriptionOffset: z.int().min(0).optional(),
 });
 export const ExtractOutput = z.strictObject({
   siteProfile: z.string(),
@@ -819,6 +831,18 @@ export const OpenAndExtractInput = z.strictObject({
    * applies.
    */
   descriptionMaxChars: z.int().min(500).max(6000).optional(),
+  /**
+   * kijiji.ca.v1 ad (VIP) pages only, with `descriptionMaxChars`: where
+   * the `descriptionFull` window starts in the whitespace-collapsed body
+   * (default 0). A body longer than the cap is PAGED, never widened past
+   * it: `descriptionFull` states `offset` and `totalChars`, and
+   * DESCRIPTION_TRUNCATED names the next offset to ask for (2026-09-11: a
+   * dealer's 15,154-character catalogue ad priced its floor cabinets past
+   * the cap). Ignored without `descriptionMaxChars` and on every other
+   * page kind and profile. NOTE: adding this field changed the advertised
+   * tool schema — a gateway redeploy plus a connector reconnect applies.
+   */
+  descriptionOffset: z.int().min(0).optional(),
 });
 export const OpenAndExtractOutput = z.strictObject({
   siteProfile: z.string(),
@@ -952,6 +976,18 @@ export const ExtractManyInput = z.strictObject({
    * applies.
    */
   descriptionMaxChars: z.int().min(500).max(6000).optional(),
+  /**
+   * kijiji.ca.v1 ad (VIP) pages only, with `descriptionMaxChars`: where
+   * the `descriptionFull` window starts in the whitespace-collapsed body
+   * (default 0). A body longer than the cap is PAGED, never widened past
+   * it: `descriptionFull` states `offset` and `totalChars`, and
+   * DESCRIPTION_TRUNCATED names the next offset to ask for (2026-09-11: a
+   * dealer's 15,154-character catalogue ad priced its floor cabinets past
+   * the cap). Ignored without `descriptionMaxChars` and on every other
+   * page kind and profile. NOTE: adding this field changed the advertised
+   * tool schema — a gateway redeploy plus a connector reconnect applies.
+   */
+  descriptionOffset: z.int().min(0).optional(),
 });
 export const ExtractManyOutput = z.strictObject(BatchExtractProgressShape);
 

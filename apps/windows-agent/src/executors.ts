@@ -55,6 +55,7 @@ import {
 } from '@browser-bridge/protocol';
 import {
   classifyEbayPage,
+  isMyEbaySummaryPage,
   EBAY_GALLERY_SELECTORS,
   extractListing,
   extractListingCandidates,
@@ -538,7 +539,16 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
           typeof destinationPostalCode === 'string' && destinationPostalCode.length > 0
             ? destinationPostalCode
             : host.expectedPostalCode;
-        return executeExtract(host, session, tabId, expectedPostal, input.siteProfile, input.search, input.descriptionMaxChars);
+        return executeExtract(
+          host,
+          session,
+          tabId,
+          expectedPostal,
+          input.siteProfile,
+          input.search,
+          input.descriptionMaxChars,
+          input.descriptionOffset,
+        );
       }
       case 'open_and_extract': {
         // Same F-09 treatment as extract: the destination rides the
@@ -568,6 +578,7 @@ export async function executeCommand(host: ExecutorHost, envelope: CommandEnvelo
           input.siteProfile,
           input.search ?? DEFAULT_SEARCH_COMPACTION,
           input.descriptionMaxChars,
+          input.descriptionOffset,
         );
         return {
           result: {
@@ -607,6 +618,8 @@ async function executeExtract(
   searchOptions?: SearchCompaction,
   /** Present only when the caller asked for the Kijiji ad body (descriptionFull). */
   descriptionMaxChars?: number,
+  /** Where that body window starts (descriptionOffset); 0 when absent. */
+  descriptionOffset?: number,
 ): Promise<ExecutionOutcome> {
   const tab = session.getTab(tabId);
   const pageUrl = tab.page.url();
@@ -816,6 +829,7 @@ async function executeExtract(
       pageRevision: tab.revision,
       observedAt: source.capturedAt,
       ...(descriptionMaxChars === undefined ? {} : { descriptionMaxChars }),
+      ...(descriptionOffset === undefined ? {} : { descriptionOffset }),
     });
     return {
       result: {
@@ -975,7 +989,18 @@ async function executeExtract(
   if (kind === 'search' || kind === 'store' || kind === 'other') {
     const candidates = extractListingCandidates(document, pageUrl);
     const warnings = [...intentWarnings];
-    if (kind === 'other') {
+    if (kind === 'other' && isMyEbaySummaryPage(pageUrl)) {
+      // 2026-09-12 10:0xZ deals walk: the watch-list's own per-category
+      // filter URL (/myb/Watchlist?…&filter=category:<id>) committed and
+      // landed here, and the rows the scan returned were the summary page's
+      // mixed modules, not the 166-row category the chip stated. The
+      // landing is deterministic from the final URL, so it is named — the
+      // routine can tell "the filter form redirected" from "unknown page"
+      // without a second read.
+      warnings.push(
+        `MYEBAY_SUMMARY_PAGE: ${pageUrl} is the My eBay summary page, the landing a redirected My eBay request ends on — a watch-list URL carrying filter=category:<id> (the category chip URLs a watch-list record emits) that arrives here was redirected by the site, and the /itm/ links below are the summary page's own modules (watching, recently viewed, buy again), never a filtered view of the list. Read the unfiltered /mye/myebay/watchlist (the overflow render) for the list itself; do not read this page's rows as a category.`,
+      );
+    } else if (kind === 'other') {
       warnings.push(
         `UNCLASSIFIED_PAGE: ${pageUrl} is not an item (/itm/), search (/sch/), store (/str/, /usr/), watch-list (/mye/myebay/watchlist, /myb/WatchList) or offers (/mye/myebay/bidsoffers, /myb/BidsOffers) URL; returned a best-effort /itm/-link scan. An empty candidate list here may mean the page has no listings, not that extraction failed.`,
       );
@@ -1281,10 +1306,20 @@ async function traverseOne(
   compact: boolean,
   budgetMs: number,
   descriptionMaxChars?: number,
+  descriptionOffset?: number,
 ): Promise<BatchExtractItem> {
   try {
     const nav = await navigate(session, tabId, url, waitUntil, budgetMs);
-    const outcome = await executeExtract(host, session, tabId, expectedPostalCode, siteProfile, undefined, descriptionMaxChars);
+    const outcome = await executeExtract(
+      host,
+      session,
+      tabId,
+      expectedPostalCode,
+      siteProfile,
+      undefined,
+      descriptionMaxChars,
+      descriptionOffset,
+    );
     const result = outcome.result;
     const warnings = Array.isArray(result.warnings) ? (result.warnings as string[]) : [];
     const profile = typeof result.siteProfile === 'string' ? result.siteProfile : siteProfile;
@@ -1334,6 +1369,7 @@ interface BatchPlan {
   expectedPostalCode: string;
   compact: boolean;
   descriptionMaxChars?: number;
+  descriptionOffset?: number;
 }
 
 /**
@@ -1364,6 +1400,7 @@ async function runBatch(
       plan.compact,
       Math.min(BATCH_ITEM_BUDGET_MS, remaining),
       plan.descriptionMaxChars,
+      plan.descriptionOffset,
     );
     onItem(item);
   }
@@ -1436,6 +1473,7 @@ async function executeExtractMany(
     expectedPostalCode,
     compact: input.compact,
     ...(input.descriptionMaxChars === undefined ? {} : { descriptionMaxChars: input.descriptionMaxChars }),
+    ...(input.descriptionOffset === undefined ? {} : { descriptionOffset: input.descriptionOffset }),
   };
 
   // §18 promotion rule: 'auto' answers inline only for a batch that fits
