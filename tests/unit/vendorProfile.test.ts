@@ -19,6 +19,7 @@ import { kijijiSiteProfile } from '@browser-bridge/site-kijiji';
 import { zazzleSiteProfile } from '@browser-bridge/site-zazzle';
 import {
   isWardrobeVendorHost,
+  OPERATOR_HOST_EXCEPTIONS,
   WARDROBE_VENDORS,
   WARDROBE_VENDORS_SITE_PROFILE_ID,
   wardrobeVendorsSiteProfile,
@@ -84,23 +85,63 @@ describe('wardrobe-vendors.v1 roster', () => {
     }
   });
 
-  it('RushOrderTees: the asset-CDN question is answered, and the answer is two third-party hosts that stay out', () => {
+  it('RushOrderTees: the asset-CDN question is answered on the roster entry, and the roster itself did not widen', () => {
     // 2026-09-10 wardrobe fire (gateway+coverage_gap+rushordertees-asset-cdn-
     // and-search-backend-are-third-party-hosts): the first live read found the
     // photography on cdn.sanity.io and the search on Algolia. Neither is a
-    // RushOrderTees domain, so the roster records the answer instead of
-    // re-asking, and the allowlist does not widen.
+    // RushOrderTees domain, so the roster ENTRY records the answer instead of
+    // re-asking and its hosts stay the vendor's own; the two third-party
+    // hosts reach the allowlist only as operator exceptions (below).
     const entry = WARDROBE_VENDORS.find((vendor) => vendor.vendor === 'RushOrderTees');
     expect(entry?.hosts).toEqual(['rushordertees.com']);
     expect(entry?.needsLiveVerification).toBeUndefined();
     expect(entry?.verifiedLive).toMatch(/cdn\.sanity\.io/);
     expect(entry?.verifiedLive).toMatch(/algolia/i);
     expect(entry?.verifiedLive).toMatch(/2026-09-10/);
+    expect(entry?.verifiedLive).toMatch(/2026-09-14/);
+    expect(hostMatchesAllowlist('www.rushordertees.com', wardrobeVendorsSiteProfile.allowedHosts)).toBe(true);
+  });
+
+  it('operator exceptions (2026-09-14): exact third-party hosts the operator ratified on the CI board, nothing beside or beneath them', () => {
+    // ci-approval-rushordertees-third-party-asset-and-search-hosts and
+    // ci-approval-spreadshirt-api-img-ly-design-sdk-host, both approved
+    // 2026-09-14 through the authenticated feedback path. An exception is an
+    // exact hostname — the profile derives no wildcard for it — with the
+    // approval id as its source, so every widening of the allowlist beyond
+    // the vendor roster is auditable back to an operator decision.
     const hosts = wardrobeVendorsSiteProfile.allowedHosts;
-    expect(hostMatchesAllowlist('www.rushordertees.com', hosts)).toBe(true);
-    expect(hostMatchesAllowlist('cdn.sanity.io', hosts)).toBe(false);
-    expect(hostMatchesAllowlist('hwj52h4d98-dsn.algolia.net', hosts)).toBe(false);
-    expect(hostMatchesAllowlist('hwj52h4d98-1.algolianet.com', hosts)).toBe(false);
+    const expected = [
+      'cdn.sanity.io',
+      'hwj52h4d98-dsn.algolia.net',
+      'hwj52h4d98-1.algolianet.com',
+      'hwj52h4d98-2.algolianet.com',
+      'hwj52h4d98-3.algolianet.com',
+      'api.img.ly',
+    ];
+    expect(OPERATOR_HOST_EXCEPTIONS.map((e) => e.host)).toEqual(expected);
+    for (const exception of OPERATOR_HOST_EXCEPTIONS) {
+      expect(exception.host).toMatch(/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/);
+      expect(exception.approvedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(exception.source).toMatch(/^ci-approval-[a-z0-9-]+ \(approved 2026-09-14T/);
+      expect(['RushOrderTees', 'Spreadshirt']).toContain(exception.vendor);
+      expect(hostMatchesAllowlist(exception.host, hosts), exception.host).toBe(true);
+      // Exact only: no wildcard beneath, and never the registrable parent.
+      expect(hostMatchesAllowlist(`www.${exception.host}`, hosts), `www.${exception.host}`).toBe(false);
+      expect(hostMatchesAllowlist(exception.host.split('.').slice(-2).join('.'), hosts)).toBe(false);
+    }
+    // Siblings the ruling did not name stay out: another Algolia app id, and
+    // the two hosts the Spreadshirt approval listed as still pending.
+    expect(hostMatchesAllowlist('abcdefghij-dsn.algolia.net', hosts)).toBe(false);
+    expect(hostMatchesAllowlist('hwj52h4d98-4.algolianet.com', hosts)).toBe(false);
+    expect(hostMatchesAllowlist('cdn.media.amplience.net', hosts)).toBe(false);
+    expect(hostMatchesAllowlist('adtm.spreadshirts.net', hosts)).toBe(false);
+    expect(hostMatchesAllowlist('gs-jj-us-static.oss-accelerate.aliyuncs.com', hosts)).toBe(false);
+    // An exception host is not a vendor page: extract dispatch still treats it as foreign.
+    expect(isWardrobeVendorHost('cdn.sanity.io')).toBe(false);
+    // The exceptions survive the composite the agent actually runs.
+    const composite = mergeSiteProfiles([ebaySiteProfile, kijijiSiteProfile, zazzleSiteProfile, wardrobeVendorsSiteProfile]);
+    expect(hostMatchesAllowlist('api.img.ly', composite.allowedHosts)).toBe(true);
+    expect(hostMatchesAllowlist('img.ly', composite.allowedHosts)).toBe(false);
   });
 
   it('never matches lookalikes, and a denied host loses even when allowlisted-shaped', async () => {
