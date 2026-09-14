@@ -703,6 +703,101 @@ describe('offers page: the status token and the bid label with no whitespace aft
   });
 });
 
+// 2026-09-13 18:05Z deals fire (site-ebay+extractor_defect+offers-expiry-
+// reader-misses-the-live-relative-plus-absolute-wording-on-every-open-row):
+// the first live read after mcp-ebay#69 raised OFFERS_EXPIRY_UNPARSED on 9 of
+// 9 open rows and quoted the wording, exactly as the warning asks. The live
+// row renders a relative countdown, a day label and a clock as adjacent
+// elements, so textContent reads them with no whitespace at all — "expires
+// in22m 10sToday,14:28" — and the truncated offer amount ("C $29") runs
+// straight on after the clock. Nine quoted rows, three shapes: a countdown
+// under an hour with seconds, a countdown over a day with "Tomorrow", and a
+// multi-day countdown with a weekday name.
+describe('offers page: the live relative-plus-absolute expiry wording with no separators (2026-09-13 18:05Z fire)', () => {
+  function offersDoc(rows: string): Document {
+    const { document } = parseHTML(
+      `<html><head><title>Bids and offers | My eBay</title></head><body>` +
+        `<div class="filter-menu" role="tablist"><button role="tab" aria-selected="true">All (56)</button></div>` +
+        `<ul>${rows}</ul></body></html>`,
+    );
+    return document as unknown as Document;
+  }
+  function row(itemId: string, title: string, expiry: string, offer: string, ask: string, truncated: string): string {
+    return (
+      `<li class="offer-card"><span class="eyebrow">OFFER RECEIVED</span>` +
+      `<a href="https://www.ebay.ca/itm/${itemId}">${title}</a>` +
+      `<div><span>${offer}</span></div><div><span>${ask}</span><button>Make offer</button></div>` +
+      `<div><span>expires in</span><span>${expiry.split('|')[0]}</span><span>${expiry.split('|')[1]}</span>,<span>${expiry.split('|')[2]}</span></div>` +
+      `<div><span>${truncated}</span></div></li>`
+    );
+  }
+  const minutes = row('128028059655', 'LEGO Technic 42115 Lamborghini Sián', '22m 10s|Today|14:28', 'C $29.00', 'C $34.99', 'C $29');
+  const tomorrow = row('327284105504', 'Arista DCS-7050QX-32S 32-port 40GbE', '1d 5h|Tomorrow|19:51', 'C $79.00', 'C $95.00', 'C $79');
+  const weekday = row('407180645445', 'IBM LTO-8 HH SAS tape drive', '3d 6h|Wednesday|20:19', 'C $31.00', 'C $40.00', 'C $31');
+
+  it('reads the countdown, the day label and the clock as one expiry when they run together with no whitespace', () => {
+    const page = extractOffersPage(offersDoc(minutes + tomorrow + weekday), 'https://www.ebay.ca/mye/myebay/bidsoffers', {
+      observedAt: OBSERVED_AT,
+    });
+    expect(page.candidates.map((r) => r.snippet)).toEqual([
+      expect.stringContaining('expires in22m 10sToday,14:28C $29'),
+      expect.stringContaining('expires in1d 5hTomorrow,19:51C $79'),
+      expect.stringContaining('expires in3d 6hWednesday,20:19C $31'),
+    ]);
+    expect(page.candidates.map((r) => r.expiresText)).toEqual([
+      'expires in 22m 10s Today, 14:28',
+      'expires in 1d 5h Tomorrow, 19:51',
+      'expires in 3d 6h Wednesday, 20:19',
+    ]);
+  });
+
+  it('derives expiresAt from the countdown and observedAt, never from the clock, whose timezone the row does not state', () => {
+    const page = extractOffersPage(offersDoc(minutes + tomorrow + weekday), 'https://www.ebay.ca/mye/myebay/bidsoffers', {
+      observedAt: OBSERVED_AT,
+    });
+    // OBSERVED_AT is 2026-09-03T22:00:00Z: 22m 10s, 1d 5h and 3d 6h later.
+    expect(page.candidates.map((r) => r.expiresAt)).toEqual([
+      '2026-09-03T22:22:10.000Z',
+      '2026-09-05T03:00:00.000Z',
+      '2026-09-07T04:00:00.000Z',
+    ]);
+  });
+
+  it('raises neither OFFERS_EXPIRY_UNPARSED nor OFFERS_EXPIRY_UNSTATED on rows it read, and still reads the amounts', () => {
+    const page = extractOffersPage(offersDoc(minutes + tomorrow + weekday), 'https://www.ebay.ca/mye/myebay/bidsoffers', {
+      observedAt: OBSERVED_AT,
+    });
+    const codes = page.warnings.map((warning) => warning.split(':')[0]);
+    expect(codes).not.toContain('OFFERS_EXPIRY_UNPARSED');
+    expect(codes).not.toContain('OFFERS_EXPIRY_UNSTATED');
+    expect(page.candidates.map((r) => r.offerStatus)).toEqual(['open', 'open', 'open']);
+    expect(page.candidates[0]!.offerPrice).toEqual({ value: 29, currency: 'CAD' });
+    expect(page.candidates[0]!.listPrice).toEqual({ value: 34.99, currency: 'CAD' });
+  });
+
+  it('still reads the spaced form and a dated form exactly as before, and a unit that runs into a word is not a countdown', () => {
+    const spaced =
+      `<li class="offer-card"><span class="eyebrow">OFFER RECEIVED</span><a href="https://www.ebay.ca/itm/158245746409">Cisco C9130AXI-A</a>` +
+      `<div><span>C $23.00</span></div><div><span>C $30.00</span></div><div>Expires in 1d 22h</div></li>`;
+    const dated =
+      `<li class="offer-card"><span class="eyebrow">OFFER RECEIVED</span><a href="https://www.ebay.ca/itm/167300287674">QSFP+ DAC 3m</a>` +
+      `<div><span>C $138.00</span></div><div><span>C $150.00</span></div><div>expires on Sep 5, 2026 at 3:00 pm</div></li>`;
+    const months =
+      `<li class="offer-card"><span class="eyebrow">OFFER RECEIVED</span><a href="https://www.ebay.ca/itm/298564431083">Rack cabinet 42U</a>` +
+      `<div><span>C $41.00</span></div><div><span>C $55.00</span></div><div>expires in 2 months</div></li>`;
+    const page = extractOffersPage(offersDoc(spaced + dated + months), 'https://www.ebay.ca/mye/myebay/bidsoffers', { observedAt: OBSERVED_AT });
+    expect(page.candidates[0]!.expiresText).toBe('Expires in 1d 22h');
+    expect(page.candidates[0]!.expiresAt).toBe('2026-09-05T20:00:00.000Z');
+    expect(page.candidates[1]!.expiresText).toBe('expires on Sep 5, 2026 at 3:00 pm');
+    expect(page.candidates[1]!.expiresAt).toBeNull();
+    expect(page.candidates[2]!.expiresText).toBeNull();
+    expect(page.candidates[2]!.expiresAt).toBeNull();
+    const unparsed = page.warnings.find((warning) => warning.startsWith('OFFERS_EXPIRY_UNPARSED'));
+    expect(unparsed).toMatch(/1 of 3 open offer row/);
+    expect(unparsed).toMatch(/298564431083/);
+  });
+});
+
 // 2026-09-05 15:30Z deals fire (site-ebay+extractor_defect+watchlist-template-
 // unpinned): the first browser_snapshot of the live /mye/myebay/watchlist.
 // The fixture watchlist-page-2026-09-05.html is authored from that snapshot's
