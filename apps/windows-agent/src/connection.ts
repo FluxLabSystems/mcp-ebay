@@ -55,6 +55,8 @@ export class AgentConnection {
   private ws: WebSocket | null = null;
   private connectionId: string | null = null;
   private artifactToken: string | null = null;
+  /** The gateway's stated expiry of `artifactToken` (§11.5); reported on an upload failure. */
+  private artifactTokenExpiresAt: string | null = null;
   private stopped = false;
   private backoffIndex = 0;
   private failureSince: number | null = null;
@@ -97,6 +99,7 @@ export class AgentConnection {
     this.ws = ws;
     this.connectionId = null;
     this.artifactToken = null;
+    this.artifactTokenExpiresAt = null;
 
     ws.on('open', () => {
       this.lastGatewayActivity = Date.now();
@@ -120,6 +123,7 @@ export class AgentConnection {
     this.heartbeatTimer = null;
     this.connectionId = null;
     this.artifactToken = null;
+    this.artifactTokenExpiresAt = null;
     this.ws = null;
     if (this.stopped) return;
     if (this.failureSince === null) this.failureSince = Date.now();
@@ -183,6 +187,7 @@ export class AgentConnection {
       case 'device.ready': {
         this.connectionId = message.connectionId;
         this.artifactToken = message.artifactToken;
+        this.artifactTokenExpiresAt = message.expiresAt;
         this.backoffIndex = 0;
         this.failureSince = null;
         this.logger.info({ connectionId: message.connectionId }, 'Device channel ready');
@@ -194,6 +199,16 @@ export class AgentConnection {
       }
       case 'heartbeat':
         return; // activity timestamp already updated
+      case 'device.token': {
+        // §11.5/§16: the gateway re-issues the upload credential before the
+        // one from device.ready expires (2026-09-14: a full-page screenshot
+        // on a session older than the 15-minute TTL uploaded with an expired
+        // token and was refused 401). Adopt it for the next upload.
+        this.artifactToken = message.artifactToken;
+        this.artifactTokenExpiresAt = message.expiresAt;
+        this.logger.debug({ expiresAt: message.expiresAt }, 'Artifact token refreshed');
+        return;
+      }
       case 'cancel': {
         this.cancelled.add(message.requestId);
         return;
@@ -374,9 +389,40 @@ export class AgentConnection {
       },
     );
     if (!response.ok) {
-      throw new BridgeError('INTERNAL_ERROR', `Artifact upload failed with HTTP ${response.status}.`, {
+      // Which credential or ceiling was refused is what the caller needs
+      // (2026-09-14: a 401 on an expired token read as a generic internal
+      // failure, indistinguishable from a size limit or an outage). The
+      // gateway answers 413 for its size cap and 415 for its MIME policy;
+      // everything else — 401/403 on the token, 5xx, a proxy — is the upload
+      // itself failing, retryable because the token is refreshed over the
+      // socket and the capture can be repeated.
+      const expiresAtMs = this.artifactTokenExpiresAt === null ? Number.NaN : Date.parse(this.artifactTokenExpiresAt);
+      const details = {
         artifactId,
-      });
+        httpStatus: response.status,
+        byteLength: buffer.length,
+        mimeType,
+        inlineMaxBytes: WIRE_INLINE_ARTIFACT_MAX_BYTES,
+        tokenExpiresAt: this.artifactTokenExpiresAt,
+        tokenExpired: Number.isFinite(expiresAtMs) ? expiresAtMs <= Date.now() : null,
+      };
+      if (response.status === 413) {
+        throw new BridgeError('ARTIFACT_TOO_LARGE', `Gateway refused the ${buffer.length}-byte artifact upload with HTTP 413.`, details);
+      }
+      if (response.status === 415) {
+        throw new BridgeError('DOWNLOAD_BLOCKED', `Gateway refused the ${mimeType} artifact upload with HTTP 415.`, details);
+      }
+      const why =
+        response.status === 401 || response.status === 403
+          ? details.tokenExpired === true
+            ? 'the artifact token had expired by the agent clock'
+            : 'the artifact token was rejected'
+          : 'the gateway did not accept the upload';
+      throw new BridgeError(
+        'ARTIFACT_UPLOAD_FAILED',
+        `Artifact upload failed with HTTP ${response.status}: ${why} (${buffer.length} bytes, above the ${WIRE_INLINE_ARTIFACT_MAX_BYTES}-byte inline cap). Retry the capture; the credential is refreshed over the device channel.`,
+        details,
+      );
     }
   }
 }

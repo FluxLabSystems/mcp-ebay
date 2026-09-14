@@ -78,6 +78,7 @@ const entry = (
   sourceLabel: string,
   source: string,
   needsLiveVerification?: string,
+  verifiedLive?: string,
 ): JobsSource => ({
   name,
   group,
@@ -86,7 +87,12 @@ const entry = (
   addedOn: '2026-09-13',
   source,
   ...(needsLiveVerification ? { needsLiveVerification } : {}),
+  ...(verifiedLive ? { verifiedLive } : {}),
 });
+
+/** The first jobs fire on the deployed lane (2026-09-14 22:2xZ), which read two roster hosts through the Bridge. */
+const FIRST_LANE_FIRE =
+  'jobs fire 2026-09-14 22:2xZ (jobs-run-2026-09-14T22-21Z; confirmed-live:operator+skill_gap+jobs-default-sources-and-connectors-expansion-2026-09-13)';
 
 export const JOBS_SOURCES: readonly JobsSource[] = [
   // --- job boards: their own inventory, their own posting pages ---
@@ -104,7 +110,8 @@ export const JOBS_SOURCES: readonly JobsSource[] = [
     ['indeed.com'],
     'Indeed',
     `${OPERATOR_RATIFIED_2026_09_13}; ${BACKLOG_ROW}`,
-    'ca.indeed.com answers 401/403 to plain fetch (2026-09-07, indeed+coverage_gap+ca-indeed-viewjob-401-blocks-canonical-url-verification); whether a normal browser context renders /viewjob?jk= is the first thing the lane must establish. Covers ca.indeed.com and the to.indeed.com short links the connector mints.',
+    'ca.indeed.com answers 401/403 to plain fetch (2026-09-07, indeed+coverage_gap+ca-indeed-viewjob-401-blocks-canonical-url-verification). Covers ca.indeed.com and the to.indeed.com short links the connector mints. Still to confirm: that a search page (not only a posting) renders, and that the sign-in overlay is refused rather than satisfied.',
+    `${FIRST_LANE_FIRE}: the canonical /viewjob?jk= page renders in full through the Bridge — a LIVE vacancy (jk=1850636da45bc275) stayed on ca.indeed.com with its heading, employer link, pay text and "Full job description" section; a DEAD vacancy (jk=79f6b2978c6ff335, confirmed dead in the operator's attended read the same morning) redirected off ca.indeed.com to www.indeed.com, which this roster does not carry, and was refused — the redirect-off-host is the dead-posting signal (skills/fluxology-jobs-run+skill_gap+source-strategy-marks-ca-indeed-viewjob-bridge-read-unverified-but-it-renders-and-yields-a-dead-vs-live-test). www.indeed.com stays off the roster on purpose: the refusal is what makes the test read.`,
   ),
   entry(
     'board',
@@ -128,7 +135,8 @@ export const JOBS_SOURCES: readonly JobsSource[] = [
     ['jobillico.com'],
     'Jobillico',
     OPERATOR_RATIFIED_2026_09_13,
-    'the apex redirects to /fr/ (2026-09-13); the English Ontario search lives under /en/ — confirm the search URL shape and that the region facet holds',
+    'the apex redirects to /fr/ (2026-09-13); the English Ontario search lives under /en/. The keyword-scoped search URL shape is still UNKNOWN: recover it from /en/choose-function and /en/choose-city (the apex links both) or from a manual search in an attended session, and check whether the two same-origin ACTION_BLOCKED CSS requests under /css/build/modules/register/ are what keeps the search form from navigating',
+    `${FIRST_LANE_FIRE}: /en/ renders (title "Job search: The most extensive job network | jobillico.com"); both constructed search shapes 404 (/en/job-search?skwd=welder&loc=Toronto%2C%20ON and /en/search-jobs?skwd=welder&loc=Toronto, title "Jobillico - 404"); the footer exposes a path-segment family (/search-jobs, /search-jobs/toronto/ontario, /search-jobs/<profession>) with no keyword parameter; browser_fill on both search boxes filled and browser_click on Search returned changed:false with the URL unchanged (skills/fluxology-jobs-run … gateway+coverage_gap+jobillico-documented-search-url-shapes-404-and-the-on-page-search-form-does-not-navigate). Path-browse only until the shape is recovered.`,
   ),
   entry(
     'board',
@@ -216,7 +224,8 @@ export const JOBS_SOURCES: readonly JobsSource[] = [
     ['iw721.org'],
     'union',
     `${OPERATOR_RATIFIED_2026_09_13}; source-strategy.md "Union apprenticeship intake channels" (HTTP 403 to WebFetch since 2026-09-05 — the Bridge is the only unattended pathway that can read it)`,
-    'whether the training/apprenticeship page renders in a normal browser context; if it does, the intake state becomes readable for the first time',
+    undefined,
+    `${FIRST_LANE_FIRE}: /training/apprenticeship/ironworkers/ committed with no wall (title "IRONWORKERS - Iron Workers Local 721", only static.cloudflareinsights.com blocked) and the intake state was read for the first time — open on a rolling basis (a 6000-hour registered apprenticeship, in-person application at 909 Kipling Ave. with an aptitude and math test). The page is running body text: browser_snapshot returned only headings, nav links and an empty-name image, and the text was read by browser_screenshot (confirmed-live:mcp-ebay+coverage_gap+iw721-org-403-blocks-ironworker-apprenticeship-intake-verification).`,
   ),
   entry(
     'channel',
@@ -224,7 +233,8 @@ export const JOBS_SOURCES: readonly JobsSource[] = [
     ['liunalocal183.ca'],
     'union',
     OPERATOR_RATIFIED_2026_09_13,
-    'liuna183.ca 301s to liunalocal183.ca (2026-09-13); what the training / membership pages publish about intake — lane E has no channel yet',
+    'liuna183.ca 301s to liunalocal183.ca (2026-09-13). This host is the PARENT union site only: it publishes no training page (/training/ answers HTTP 404, 2026-09-14) and links out to the LiUNA Local 183 Training Centre on 183training.com, which is on NO roster — WebFetch reads it (HTTP 200, 2026-09-14), so no Bridge read is owed today; it joins this roster only on a fire\'s filed ORIGIN_DENIED for it or on the operator\'s ratification (docs/SITE-PROFILE-BACKLOG.md, "The rule a host gets here by")',
+    'jobs fire 2026-09-14 11:2xZ (jobs-run-2026-09-14T11-25Z; skills/fluxology-jobs-run+skill_gap+liuna-183-roster-entry-names-a-host-whose-training-pages-404-the-training-centre-is-a-separate-host): the apex renders and its navigation links to 183training.com; /training/ on this host is a 404. Read over WebFetch, not through the Bridge.',
   ),
   entry(
     'channel',
@@ -240,7 +250,8 @@ export const JOBS_SOURCES: readonly JobsSource[] = [
     ['apprenticesearch.com'],
     'union',
     OPERATOR_RATIFIED_2026_09_13,
-    'HTTP 200 to plain fetch (2026-09-13); whether postings render signed out and what the search URL shape is',
+    'HTTP 200 to plain fetch (2026-09-13). Registration-walled: no posting renders signed out, so this lane\'s read-only walls (never sign in) reach the marketing pages and none of the job board — do not spend a Bridge read here expecting inventory',
+    'jobs fire 2026-09-14 11:2xZ (jobs-run-2026-09-14T11-25Z; gateway+coverage_gap+apprenticesearch-job-board-is-behind-a-registration-wall): WebFetch of the apex returned HTTP 200 and marketing content only — the board is behind "Register now"; no job listing, no intake dates, no eligibility criteria are published signed out. Read over WebFetch, not through the Bridge.',
   ),
   entry(
     'channel',

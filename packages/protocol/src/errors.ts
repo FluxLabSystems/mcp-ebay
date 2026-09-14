@@ -91,6 +91,26 @@ export const ERROR_CATALOG = {
   CONDITION_TIMEOUT: { retryable: true, message: 'Wait condition exceeded timeout.' },
   DOWNLOAD_BLOCKED: { retryable: false, message: 'Download violates site/profile policy.' },
   ARTIFACT_TOO_LARGE: { retryable: false, message: 'Artifact exceeds configured size limit.' },
+  /**
+   * The agent produced the artifact but the gateway refused the out-of-band
+   * upload (§16: anything above WIRE_INLINE_ARTIFACT_MAX_BYTES is PUT with
+   * the artifact token instead of riding inline). Its own code since
+   * 2026-09-14 (jobs fire 22:2xZ, gateway+connector_defect+
+   * browser-screenshot-full-page-mode-fails-artifact-upload-http-401-while-viewport-succeeds):
+   * an expired artifact token surfaced as INTERNAL_ERROR "Artifact upload
+   * failed with HTTP 401." while the viewport capture, small enough to go
+   * inline, succeeded seconds later — the caller could not tell an auth
+   * failure from a size ceiling from an outage. Retryable: the page and the
+   * tab are intact and the credential is refreshed over the socket
+   * (device.token). Details: artifactId, httpStatus, byteLength, mimeType,
+   * inlineMaxBytes, tokenExpiresAt and tokenExpired (by the agent's clock).
+   * A 413 keeps ARTIFACT_TOO_LARGE and a 415 keeps DOWNLOAD_BLOCKED, each
+   * with the same details.
+   */
+  ARTIFACT_UPLOAD_FAILED: {
+    retryable: true,
+    message: 'Artifact was captured but the gateway refused its upload.',
+  },
   ARTIFACT_EXPIRED: { retryable: false, message: 'Artifact TTL elapsed.' },
   REQUEST_EXPIRED: { retryable: false, message: 'Agent command expired before execution.' },
   CANCELLED: { retryable: false, message: 'Command was cancelled.' },

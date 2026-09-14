@@ -100,6 +100,28 @@ export const DeviceReadySchema = z.strictObject({
 });
 export type DeviceReady = z.infer<typeof DeviceReadySchema>;
 
+/**
+ * A fresh artifact-upload token for the same connection (§11.5/§16). The
+ * token issued at device.ready has a 15-minute TTL and, until 2026-09-14,
+ * was never re-issued for the life of the socket: a full-page screenshot
+ * above the inline cap on a session older than that uploaded with an
+ * expired credential and came back as "Artifact upload failed with HTTP
+ * 401" while a smaller viewport capture, carried inline, succeeded
+ * seconds later (jobs fire 22:2xZ, fingerprint gateway+connector_defect+
+ * browser-screenshot-full-page-mode-fails-artifact-upload-http-401-while-viewport-succeeds).
+ * The gateway now sends one of these on the heartbeat tick once
+ * ARTIFACT_TOKEN_REFRESH_AFTER_SECONDS has elapsed since the last issue;
+ * the agent replaces the token it holds. An agent built before this frame
+ * existed logs it as a malformed frame and is otherwise unaffected.
+ */
+export const DeviceTokenSchema = z.strictObject({
+  protocolVersion: z.literal(WIRE_PROTOCOL_VERSION),
+  type: z.literal('device.token'),
+  artifactToken: z.string(),
+  expiresAt: z.iso.datetime({ offset: true }),
+});
+export type DeviceToken = z.infer<typeof DeviceTokenSchema>;
+
 export const HeartbeatSchema = z.strictObject({
   protocolVersion: z.literal(WIRE_PROTOCOL_VERSION),
   type: z.literal('heartbeat'),
@@ -165,6 +187,7 @@ export type AgentToGatewayMessage = z.infer<typeof AgentToGatewayMessageSchema>;
 export const GatewayToAgentMessageSchema = z.discriminatedUnion('type', [
   DeviceChallengeSchema,
   DeviceReadySchema,
+  DeviceTokenSchema,
   HeartbeatSchema,
   CommandEnvelopeSchema,
   CancelSchema,

@@ -23,6 +23,15 @@ export const CHALLENGE_NONCE_BYTES = 32;
 export const MAX_TIMESTAMP_SKEW_SECONDS = 60;
 export const PAIRING_TOKEN_TTL_SECONDS = 600;
 export const ARTIFACT_TOKEN_TTL_SECONDS = 900;
+/**
+ * How long after issuing an artifact token the gateway re-issues it over the
+ * device channel (a `device.token` frame on the heartbeat tick) — half the
+ * TTL, so a connected agent always holds a credential with at least half its
+ * life left. Before 2026-09-14 the token from device.ready was the only one
+ * for the life of the socket, and every out-of-band upload on a session older
+ * than the TTL was refused 401.
+ */
+export const ARTIFACT_TOKEN_REFRESH_AFTER_SECONDS = ARTIFACT_TOKEN_TTL_SECONDS / 2;
 
 export function generateDeviceKeyPair(): { publicKeyPem: string; privateKeyPem: string } {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
