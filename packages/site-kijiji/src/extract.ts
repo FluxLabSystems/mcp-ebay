@@ -977,6 +977,20 @@ export function extractKijijiListing(
       // an unparseable href is no evidence; leave the fields null
     }
   }
+  // 2026-09-14 office fire (seller-name-unresolved-warning-prescribes-reading-
+  // the-name-at-sellerlistingsurl-which-is-null-on-the-same-record): four of
+  // five ads in one batch resolved the poster id from the hydration cache but
+  // rendered no /o-profile/ anchor, so the URL the unresolved-name warning
+  // sends the caller to was null on the very record that carried the warning.
+  // The profile URL is a deterministic function of the poster id (the same
+  // /o-profile/<posterId>/1 traversal.ts builds for the seller drill-down), so
+  // it is filled in here and marked computed — read off nothing, built from
+  // the id. The listing count is genuinely unknown without the anchor and
+  // stays null.
+  const sellerListingsUrlBuiltFromId = sellerListingsUrl === null && sellerId !== null;
+  if (sellerListingsUrlBuiltFromId) {
+    sellerListingsUrl = { value: `https://www.kijiji.ca/o-profile/${sellerId!.value}/1`, source: 'computed', confidence: 0.8 };
+  }
 
   // --- description excerpt (jsonld → dom) ---
   let description: KijijiExtractionRecord['description'] = null;
@@ -1126,8 +1140,14 @@ export function extractKijijiListing(
       // no name (live posterInfo: posterId, sellerType, websiteUrl,
       // phoneNumber, verified), so the name is not withheld by a selector
       // miss alone — it lives on the profile page the record already links.
+      const urlNote =
+        sellerListingsUrl === null
+          ? ''
+          : sellerListingsUrlBuiltFromId
+            ? `; sellerListingsUrl ${sellerListingsUrl.value}, built from the poster id because no "View all listings" anchor rendered, so sellerListingCount is null`
+            : `; sellerListingsUrl ${sellerListingsUrl.value}`;
       warnings.push(
-        `SELLER_NAME_UNRESOLVED_ID_KNOWN: no seller-name element matched, but the poster id ${sellerId.value} resolved (sellerId${sellerListingsUrl === null ? '' : `; sellerListingsUrl ${sellerListingsUrl.value}`}). The hydration payload the id comes from carries no name, so the name is read from the profile page at sellerListingsUrl (the same drill-down that lists the seller's other ads); until then key the roster match and any discovery note on the poster id, never on a guessed name.`,
+        `SELLER_NAME_UNRESOLVED_ID_KNOWN: no seller-name element matched, but the poster id ${sellerId.value} resolved (sellerId${urlNote}). The hydration payload the id comes from carries no name, so the name is read from the profile page at sellerListingsUrl (the same drill-down that lists the seller's other ads); until then key the roster match and any discovery note on the poster id, never on a guessed name.`,
       );
     } else {
       warnings.push('sellerName could not be resolved');
