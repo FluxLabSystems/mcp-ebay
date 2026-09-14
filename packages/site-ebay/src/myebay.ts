@@ -341,9 +341,11 @@ function durationMs(text: string): number | null {
   const days = /(\d+)\s*d(?:ays?)?\b/i.exec(text);
   const hours = /(\d+)\s*h(?:ours?|rs?)?\b/i.exec(text);
   const minutes = /(\d+)\s*m(?:in(?:ute)?s?)?\b/i.exec(text);
-  if (days === null && hours === null && minutes === null) return null;
+  // The live offers row counts seconds under an hour ("22m 10s").
+  const seconds = /(\d+)\s*s(?:ec(?:ond)?s?)?\b/i.exec(text);
+  if (days === null && hours === null && minutes === null && seconds === null) return null;
   const unit = (match: RegExpExecArray | null): number => (match === null ? 0 : Number.parseInt(match[1]!, 10));
-  return ((unit(days) * 24 + unit(hours)) * 60 + unit(minutes)) * 60_000;
+  return (((unit(days) * 24 + unit(hours)) * 60 + unit(minutes)) * 60 + unit(seconds)) * 1_000;
 }
 
 function toIso(observedAt: string, deltaMs: number | null): string | null {
@@ -1043,16 +1045,49 @@ const OFFER_AMOUNT_RE = new RegExp(
 const BEST_OFFER_CONTROL_RE = /make\s+(?:an?\s+)?(?:best\s+)?offer\b|\bor\s+best\s+offer\b|\bbest\s+offer\s+(?:available|accepted\s+here)\b/i;
 /** A row that holds an offer thread the template shows only as a link into it. */
 const OFFER_THREAD_RE = /view\s+offers?\s+details?\b|\boffer\s+details\b|view\s+offers?\b|respond\s+to\s+offer\b/i;
-const DURATION_SOURCE = String.raw`(?:\d+\s*(?:d(?:ays?)?|h(?:ours?|rs?)?|m(?:in(?:ute)?s?)?)\s*)+`;
 /**
- * "Expires in 1d 22h", "expires on Sep 5, 2026 at 3:00 pm", "1d 4h left".
- * Each form captures only its own tokens; the free-text tail a bounded
- * character class used to allow ran into the next line of the row.
+ * The day label the live offers row renders after the countdown ("Today",
+ * "Tomorrow", a weekday), followed by a clock. The two are adjacent elements,
+ * so textContent reads them with no separator: "22m 10sToday,14:28".
+ */
+const DAY_WORD_SOURCE = String.raw`(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)`;
+/**
+ * One countdown unit. The negative lookahead is what keeps "2 months" from
+ * reading as "2 m" and "10 sold" from reading as "10 s": a letter may follow a
+ * unit only when it starts the day label or "left" — the two words the live
+ * template concatenates straight onto a countdown.
+ */
+const DURATION_UNIT_SOURCE = String.raw`(?:d(?:ays?)?|h(?:ours?|rs?)?|m(?:in(?:ute)?s?)?|s(?:ec(?:ond)?s?)?)(?!(?!${DAY_WORD_SOURCE}|left)[a-z])`;
+const DURATION_SOURCE = String.raw`(?:\d+\s*${DURATION_UNIT_SOURCE}\s*)+`;
+const DAY_CLOCK_SOURCE = String.raw`${DAY_WORD_SOURCE}\s*,?\s*\d{1,2}:\d{2}(?:\s*[ap]\.?m\.?)?`;
+/**
+ * "Expires in 1d 22h", "expires on Sep 5, 2026 at 3:00 pm", "1d 4h left" —
+ * and, since the 2026-09-13 18:05Z deals fire (offers-expiry-reader-misses-
+ * the-live-relative-plus-absolute-wording-on-every-open-row), the live row's
+ * "expires in22m 10sToday,14:28C $29": no whitespace between "in" and the
+ * countdown, none between the countdown and the day label, and the truncated
+ * offer amount running straight on after the clock. The relative form
+ * therefore allows empty whitespace and takes an optional day label + clock;
+ * the amount that follows is never part of the match. Each form captures only
+ * its own tokens; the free-text tail a bounded character class used to allow
+ * ran into the next line of the row.
  */
 const EXPIRES_RE = new RegExp(
-  String.raw`((?:expires?|expiring|valid)\s+(?:in|for)\s+${DURATION_SOURCE}|(?:expires?|expiring|valid)\s+(?:on|until)\s+[A-Za-z]{3,9}\.?\s+\d{1,2}(?:,?\s*\d{4})?(?:\s+(?:at\s+)?\d{1,2}:\d{2}\s*(?:[ap]\.?m\.?)?)?|${DURATION_SOURCE}left)`,
+  String.raw`((?:expires?|expiring|valid)\s*(?:in|for)\s*${DURATION_SOURCE}(?:${DAY_CLOCK_SOURCE})?|(?:expires?|expiring|valid)\s+(?:on|until)\s+[A-Za-z]{3,9}\.?\s+\d{1,2}(?:,?\s*\d{4})?(?:\s+(?:at\s+)?\d{1,2}:\d{2}\s*(?:[ap]\.?m\.?)?)?|${DURATION_SOURCE}left)`,
   'i',
 );
+const DAY_WORD_AFTER_UNIT_RE = new RegExp(String.raw`(\d\s*[a-z]+)(?=${DAY_WORD_SOURCE})`, 'i');
+/**
+ * Re-space an expiry phrase textContent ran together, so expiresText reads as
+ * the row renders it: "expires in22m 10sToday,14:28" -> "expires in 22m 10s
+ * Today, 14:28". A phrase that was already spaced is returned unchanged.
+ */
+function tidyExpiry(text: string): string {
+  return normalizeText(text)
+    .replace(/\b(in|for)(?=\d)/i, '$1 ')
+    .replace(DAY_WORD_AFTER_UNIT_RE, '$1 ')
+    .replace(/,(?=\S)/g, ', ');
+}
 /**
  * Anything expiry-LIKE on an open row that EXPIRES_RE did not read — the
  * wording plus a short tail, quoted so the pattern can be pinned. Tested
@@ -1061,7 +1096,10 @@ const EXPIRES_RE = new RegExp(
  * row's "OFFER EXPIRED" is its status, never an expiry statement.
  */
 const EXPIRY_HINT_RE =
-  /\b(?:expir\w*|valid\s+(?:through|thru|until|till|to|for)|time\s+left|\d+\s*(?:d|h|m|days?|hours?|hrs?|min(?:ute)?s?)\s+left|ends?\s+(?:in|on)|deadline|until\s+[A-Z][a-z]{2})\b[^.|]{0,40}/i;
+  // No leading \b: the live row concatenates the amount before the wording
+  // ("C $55.00expires in…"), and a digit-then-letter join is no word
+  // boundary. A letter before "expir" (inside "unexpired") is still not it.
+  /(?<![A-Za-z])(?:expir\w*|valid\s+(?:through|thru|until|till|to|for)|time\s+left|\d+\s*(?:d|h|m|days?|hours?|hrs?|min(?:ute)?s?)\s+left|ends?\s+(?:in|on)|deadline|until\s+[A-Z][a-z]{2})\b[^.|]{0,40}/i;
 
 /**
  * Read the bids/offers page. Every row is keyed on its /itm/ link; the
@@ -1182,7 +1220,7 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
       }
     }
     const expires = EXPIRES_RE.exec(blob);
-    const expiresText = expires === null ? null : bounded(normalizeText(expires[1]!), 60);
+    const expiresText = expires === null ? null : bounded(tidyExpiry(expires[1]!), 60);
     if (offerStatus === 'open') {
       openRows += 1;
       if (expiresText === null) {
@@ -1204,7 +1242,11 @@ export function extractOffersPage(document: Document, pageUrl: string, context: 
       offerStatus,
       expiresText,
       // Only a relative expiry ("in 1d 22h", "3h left") becomes an instant; a
-      // dated one stays text, because the row states no timezone for it.
+      // dated one stays text, because the row states no timezone for it. The
+      // live template's day label + clock ("Today, 14:28") is kept in
+      // expiresText and never resolved: the extractor does not know the
+      // account's timezone and does not infer one, and the countdown beside
+      // it is timezone-free to the precision the row renders.
       expiresAt:
         expiresText === null || /\b(?:on|until)\b/i.test(expiresText) ? null : toIso(observedAt, durationMs(expiresText)),
       seller,
