@@ -65,16 +65,17 @@ export const WARDROBE_VENDORS: readonly WardrobeVendor[] = [
     // /t-shirts/ alone) and its on-site product search is Algolia
     // (hwj52h4d98-dsn.algolia.net and hwj52h4d98-{1,2,3}.algolianet.com,
     // /1/indexes/product_catalog/…). Neither is a RushOrderTees registrable
-    // domain, so neither joins this roster — the same test that keeps GS-JJ's
-    // aliyuncs.com endpoint and Spreadshirt's cdn.media.amplience.net out —
-    // and both are the operator's call. Until ruled on: product photography
-    // is blocked and on-site keyword search is unusable on this vendor;
-    // prices are unaffected.
+    // domain, so neither joins this roster ENTRY — the same test that keeps
+    // GS-JJ's aliyuncs.com endpoint and Spreadshirt's cdn.media.amplience.net
+    // out. The operator RULED on 2026-09-14 (CI board approval
+    // ci-approval-rushordertees-third-party-asset-and-search-hosts): both
+    // join the allowlist as exact-host operator exceptions
+    // (OPERATOR_HOST_EXCEPTIONS below), never as roster hosts.
     hosts: ['rushordertees.com'],
     addedOn: '2026-09-02',
     source: REPORT_2026_09_02,
     verifiedLive:
-      'asset CDN is the third-party cdn.sanity.io and the product-search backend the third-party Algolia (hwj52h4d98-dsn.algolia.net, hwj52h4d98-{1,2,3}.algolianet.com); both operator-call, deliberately not added — 2026-09-10 wardrobe fire, first live read',
+      'asset CDN is the third-party cdn.sanity.io and the product-search backend the third-party Algolia (hwj52h4d98-dsn.algolia.net, hwj52h4d98-{1,2,3}.algolianet.com); both operator-call — 2026-09-10 wardrobe fire, first live read; ruled 2026-09-14 (ci-approval-rushordertees-third-party-asset-and-search-hosts, approved): allowed as exact-host operator exceptions',
   },
   {
     vendor: 'Spreadshirt',
@@ -92,12 +93,17 @@ export const WARDROBE_VENDORS: readonly WardrobeVendor[] = [
     // product photograph on the storefront). NOT here, on the same test
     // that excluded GS-JJ's aliyuncs.com endpoint: cdn.media.amplience.net,
     // a shared third-party DAM the storefront pulls one image from, is not
-    // a Spreadshirt registrable domain and is the operator's call.
+    // a Spreadshirt registrable domain and is the operator's call (still
+    // pending). api.img.ly — the CreativeEditor design-SDK vendor's /event
+    // endpoint, ORIGIN_DENIED on the designer tab and a candidate cause of
+    // the 49-node shell — was RULED on 2026-09-14
+    // (ci-approval-spreadshirt-api-img-ly-design-sdk-host, approved) and is
+    // an exact-host operator exception below.
     hosts: ['spreadshirt.ca', 'spreadshirt.com', 'spreadshirt.net', 'spreadshirtmedia.com'],
     addedOn: '2026-09-02',
     source: `${REPORT_2026_09_02}; spreadshirt.net and spreadshirtmedia.com added 2026-09-07 on gateway+coverage_gap+spreadshirt-create-your-own-designer-never-renders (2026-09-07 wardrobe fire)`,
     needsLiveVerification:
-      'whether the create-your-own designer paints and states a personalized MOQ-1 price with create-omat.spreadshirt.net allowed (.ca prices confirmed in CAD 2026-09-07: C$39.99 catalog, C$59.99 PDP, minimum order 30 CAD)',
+      'whether the create-your-own designer paints and states a personalized MOQ-1 price with create-omat.spreadshirt.net allowed (.ca prices confirmed in CAD 2026-09-07: C$39.99 catalog, C$59.99 PDP, minimum order 30 CAD) and, since the 2026-09-14 ruling, with api.img.ly allowed — the §2(c) probe runs once more on the first fire after the agent rebuild',
   },
   {
     vendor: 'Printful',
@@ -130,5 +136,81 @@ export const WARDROBE_VENDORS: readonly WardrobeVendor[] = [
     addedOn: '2026-09-02',
     source: REPORT_2026_09_02,
     needsLiveVerification: 'bot-challenge behaviour on headless sessions; seller-shop pages under /shop/',
+  },
+];
+
+/**
+ * Operator-ratified third-party hosts (2026-09-14). A vendor's asset CDN or
+ * search backend that is NOT a registrable domain of the vendor can never
+ * join a roster entry (hard rule 2's public-registrable-vendor-domain test:
+ * GS-JJ's aliyuncs.com endpoint, Spreadshirt's cdn.media.amplience.net), so
+ * it stays ORIGIN_DENIED until the operator rules on it on the CI board
+ * through the authenticated feedback path. Each entry here IS one such
+ * ruling: an EXACT hostname — the profile derives no wildcard for it, so
+ * nothing beneath or beside it is allowed — the vendor whose pages pull
+ * from it, the approval id that carries the decision, and what it unblocks.
+ * The read-only walls apply to these hosts exactly as to the roster's.
+ */
+export interface OperatorHostException {
+  /** Exact hostname, matched exactly (never a wildcard, never an apex it sits under). */
+  host: string;
+  /** The roster vendor whose pages depend on the host. */
+  vendor: string;
+  /** ISO date of the operator's decision. */
+  approvedOn: string;
+  /** The CI board approval id (and its decidedAt) that carries the decision. */
+  source: string;
+  /** What the host serves, as the live read that filed it observed. */
+  unblocks: string;
+}
+
+const RUSHORDERTEES_RULING =
+  'ci-approval-rushordertees-third-party-asset-and-search-hosts (approved 2026-09-14T12:49:50Z; filed by the 2026-09-10 wardrobe fire, gateway+coverage_gap+rushordertees-asset-cdn-and-search-backend-are-third-party-hosts)';
+const SPREADSHIRT_RULING =
+  'ci-approval-spreadshirt-api-img-ly-design-sdk-host (approved 2026-09-14T12:50:03Z; filed by the 2026-09-10 wardrobe fire re-filing gateway+coverage_gap+spreadshirt-create-your-own-designer-never-renders)';
+
+export const OPERATOR_HOST_EXCEPTIONS: readonly OperatorHostException[] = [
+  {
+    host: 'cdn.sanity.io',
+    vendor: 'RushOrderTees',
+    approvedOn: '2026-09-14',
+    source: RUSHORDERTEES_RULING,
+    unblocks: 'every product photograph on rushordertees.com (ORIGIN_DENIED on 29 requests on /t-shirts/ alone, 2026-09-10 first live read)',
+  },
+  {
+    host: 'hwj52h4d98-dsn.algolia.net',
+    vendor: 'RushOrderTees',
+    approvedOn: '2026-09-14',
+    source: RUSHORDERTEES_RULING,
+    unblocks: 'on-site product search (/1/indexes/product_catalog/…, the Algolia DSN host for app id hwj52h4d98)',
+  },
+  {
+    host: 'hwj52h4d98-1.algolianet.com',
+    vendor: 'RushOrderTees',
+    approvedOn: '2026-09-14',
+    source: RUSHORDERTEES_RULING,
+    unblocks: 'on-site product search, Algolia fallback host 1 for app id hwj52h4d98',
+  },
+  {
+    host: 'hwj52h4d98-2.algolianet.com',
+    vendor: 'RushOrderTees',
+    approvedOn: '2026-09-14',
+    source: RUSHORDERTEES_RULING,
+    unblocks: 'on-site product search, Algolia fallback host 2 for app id hwj52h4d98',
+  },
+  {
+    host: 'hwj52h4d98-3.algolianet.com',
+    vendor: 'RushOrderTees',
+    approvedOn: '2026-09-14',
+    source: RUSHORDERTEES_RULING,
+    unblocks: 'on-site product search, Algolia fallback host 3 for app id hwj52h4d98',
+  },
+  {
+    host: 'api.img.ly',
+    vendor: 'Spreadshirt',
+    approvedOn: '2026-09-14',
+    source: SPREADSHIRT_RULING,
+    unblocks:
+      "the CreativeEditor design-SDK vendor's /event endpoint on the create-your-own designer tab — a candidate cause of the 49-node shell, not a proven one; the first fire after the agent rebuild runs the wardrobe skill's §2(c) probe once more and files the outcome",
   },
 ];

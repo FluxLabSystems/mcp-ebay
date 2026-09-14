@@ -13,6 +13,26 @@ export const ERROR_CATALOG = {
    * that is also appended to the message.
    */
   DEVICE_OFFLINE: { retryable: true, message: 'Selected Windows agent is not connected.' },
+  /**
+   * The registry held an OPEN socket to the selected agent and sent the
+   * command, and no ack came back inside the ack window (§12.4: ack within
+   * 2 s; the timer fires at ACK_TIMEOUT_MS). Its own code since 2026-09-14
+   * (deals fire 10:16–10:18Z, windows-agent+coverage_gap+agent-stops-
+   * acknowledging-commands-mid-fire-then-disconnects): three consecutive
+   * calls answered DEVICE_OFFLINE while the same payload named the device
+   * in onlineDeviceIds with online:true, and the agent's in-flight job in
+   * fact completed during the stall — two different failures under one
+   * code. Retryable: the socket is up and the agent may still be working.
+   * Details: requestId, deviceId, ackTimeoutMs, lastFrameAt (the last frame
+   * the gateway received from the agent) and silentForMs, plus the same
+   * device join DEVICE_OFFLINE carries (devices/offline.ts), so a routine
+   * can decide how long to wait. A socket that closes settles as
+   * DEVICE_OFFLINE, as before.
+   */
+  AGENT_UNRESPONSIVE: {
+    retryable: true,
+    message: 'Selected Windows agent is connected but did not acknowledge the command.',
+  },
   DEVICE_UNAUTHORIZED: { retryable: false, message: 'Device pairing/signature/revocation failed.' },
   BROWSER_UNAVAILABLE: {
     retryable: true,

@@ -8,7 +8,7 @@
  */
 import { BridgeError } from '@browser-bridge/protocol';
 import type { DeviceRow, DeviceStore } from '../store/types.js';
-import type { DeviceRegistry } from './registry.js';
+import type { DeviceLiveness, DeviceRegistry } from './registry.js';
 
 /** Cap on knownDevices in an error payload; a homelab pairs a handful. */
 export const KNOWN_DEVICES_LIMIT = 10;
@@ -25,9 +25,19 @@ export interface KnownDeviceSummary {
   lastSeenAt: string | null;
   /** Registered with an OPEN socket when the error was raised. */
   online: boolean;
+  /**
+   * The live socket's view (2026-09-14): the last frame the gateway received
+   * from the agent on its current connection, and how long ago that was.
+   * Null when the device is not registered. This is what separates a
+   * connected-but-silent agent (AGENT_UNRESPONSIVE) from an absent one —
+   * the persisted lastSeenAt above moves on heartbeats only and froze for
+   * two minutes while the socket stayed OPEN.
+   */
+  lastFrameAt: string | null;
+  silentForMs: number | null;
 }
 
-/** `details` of every DEVICE_OFFLINE the broker raises (protocol errors.ts). */
+/** `details` of every DEVICE_OFFLINE and AGENT_UNRESPONSIVE the broker raises (protocol errors.ts). */
 export interface DeviceOfflineDetails {
   /** deviceId exactly as the caller passed it — the literal "default" included. */
   deviceId: string;
@@ -59,18 +69,27 @@ function bySeenDesc(a: DeviceRow, b: DeviceRow): number {
  * rather than in the stores so the in-memory and PostgreSQL
  * implementations cannot disagree on them.
  */
-export function summarizeKnownDevices(rows: readonly DeviceRow[], onlineDeviceIds: readonly string[]): KnownDeviceSummary[] {
+export function summarizeKnownDevices(
+  rows: readonly DeviceRow[],
+  onlineDeviceIds: readonly string[],
+  liveness: ReadonlyMap<string, DeviceLiveness> = new Map(),
+): KnownDeviceSummary[] {
   const online = new Set(onlineDeviceIds);
   return [...rows]
     .sort(bySeenDesc)
     .slice(0, KNOWN_DEVICES_LIMIT)
-    .map((row) => ({
-      deviceId: row.deviceId,
-      name: row.name,
-      status: row.status,
-      lastSeenAt: row.lastSeenAt === null ? null : row.lastSeenAt.toISOString(),
-      online: online.has(row.deviceId),
-    }));
+    .map((row) => {
+      const live = liveness.get(row.deviceId);
+      return {
+        deviceId: row.deviceId,
+        name: row.name,
+        status: row.status,
+        lastSeenAt: row.lastSeenAt === null ? null : row.lastSeenAt.toISOString(),
+        online: online.has(row.deviceId),
+        lastFrameAt: live?.lastFrameAt ?? null,
+        silentForMs: live?.silentForMs ?? null,
+      };
+    });
 }
 
 function seenClause(device: KnownDeviceSummary): string {
@@ -89,7 +108,13 @@ export function deviceOfflineHint(details: Omit<DeviceOfflineDetails, 'hint'>): 
 
   // The socket was OPEN and still nothing came back — no ack within the
   // window, a failed send, or a drop mid-command — not an absent device.
+  // Say how long the socket has been silent when the registry knows: two
+  // minutes of silence is a stalled agent, two seconds is a slow one.
   if (resolved !== null && online.includes(resolved)) {
+    if (target?.silentForMs != null && target.lastFrameAt !== null) {
+      const seconds = Math.round(target.silentForMs / 1000);
+      return `${named(resolved)} is connected but did not answer the command; its last frame reached the gateway ${seconds} s ago (${target.lastFrameAt}). Retry after a pause, and check the agent console if it persists.`;
+    }
     return `${named(resolved)} is connected but did not answer the command; retry, and check the agent console if it persists.`;
   }
 
@@ -123,16 +148,21 @@ export function deviceOfflineHint(details: Omit<DeviceOfflineDetails, 'hint'>): 
 
 /** Join the live registry with the persisted device rows for one error. */
 export async function describeDeviceOffline(
-  deps: { devices: Pick<DeviceStore, 'list'>; registry: Pick<DeviceRegistry, 'onlineDeviceIds'> },
+  deps: { devices: Pick<DeviceStore, 'list'>; registry: Pick<DeviceRegistry, 'onlineDeviceIds' | 'liveness'> },
   target: DeviceOfflineTarget,
 ): Promise<DeviceOfflineDetails> {
   const onlineDeviceIds = deps.registry.onlineDeviceIds();
   const rows = await deps.devices.list();
+  const liveness = new Map<string, DeviceLiveness>();
+  for (const row of rows) {
+    const live = deps.registry.liveness(row.deviceId);
+    if (live !== null) liveness.set(row.deviceId, live);
+  }
   const facts = {
     deviceId: target.requestedDeviceId,
     resolvedDeviceId: target.resolvedDeviceId,
     onlineDeviceIds,
-    knownDevices: summarizeKnownDevices(rows, onlineDeviceIds),
+    knownDevices: summarizeKnownDevices(rows, onlineDeviceIds, liveness),
   };
   return { ...facts, hint: deviceOfflineHint(facts) };
 }
@@ -140,7 +170,8 @@ export async function describeDeviceOffline(
 /**
  * Same code, retryability and base message; the hint is appended to the
  * message so a caller that only reads `message` still learns which PC is
- * down, and whatever the registry attached (requestId on an ack timeout)
+ * down (or silent), and whatever the registry attached (requestId,
+ * ackTimeoutMs, lastFrameAt and silentForMs on an AGENT_UNRESPONSIVE)
  * survives underneath the new fields.
  */
 export function withDeviceOfflineDetails(err: BridgeError, details: DeviceOfflineDetails): BridgeError {

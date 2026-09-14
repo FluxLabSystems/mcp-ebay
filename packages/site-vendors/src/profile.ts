@@ -20,20 +20,26 @@
  * WebFetch-only by accident rather than by decision.
  */
 import type { SitePolicyProfile } from '@browser-bridge/policy';
-import { WARDROBE_VENDORS } from './vendors.js';
+import { OPERATOR_HOST_EXCEPTIONS, WARDROBE_VENDORS } from './vendors.js';
 
 export const WARDROBE_VENDORS_SITE_PROFILE_ID = 'wardrobe-vendors.v1';
 
 /** Spec P1: entripy.com is permanently excluded from the wardrobe lane; deny wins. */
 export const WARDROBE_VENDORS_DENIED_HOSTS: readonly string[] = ['entripy.com', '*.entripy.com'];
 
-/** Allowlist derived from the roster: every apex plus wildcard subdomains. */
-export const WARDROBE_VENDOR_ALLOWED_HOSTS: readonly string[] = WARDROBE_VENDORS.flatMap((vendor) =>
-  vendor.hosts.flatMap((host) => [host, `*.${host}`]),
-);
+/**
+ * Allowlist derived from the roster — every apex plus wildcard subdomains —
+ * plus the operator's exact-host exceptions (vendors.ts, 2026-09-14), which
+ * get no wildcard: cdn.sanity.io is allowed, sanity.io and *.sanity.io are
+ * not.
+ */
+export const WARDROBE_VENDOR_ALLOWED_HOSTS: readonly string[] = [
+  ...WARDROBE_VENDORS.flatMap((vendor) => vendor.hosts.flatMap((host) => [host, `*.${host}`])),
+  ...OPERATOR_HOST_EXCEPTIONS.map((exception) => exception.host),
+];
 
-/** Regex alternation of every roster host, dot-escaped, for the URL walls below. */
-const HOST_ALTERNATION = WARDROBE_VENDORS.flatMap((vendor) => vendor.hosts)
+/** Regex alternation of every roster host and exception host, dot-escaped, for the URL walls below. */
+const HOST_ALTERNATION = [...WARDROBE_VENDORS.flatMap((vendor) => vendor.hosts), ...OPERATOR_HOST_EXCEPTIONS.map((e) => e.host)]
   .map((host) => host.replace(/\./g, '\\.'))
   .join('|');
 const ANY_VENDOR_ORIGIN = `https?://(?:[a-z0-9-]+\\.)*(?:${HOST_ALTERNATION})`;
