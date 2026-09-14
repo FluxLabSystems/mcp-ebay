@@ -19,16 +19,20 @@ import {
 } from '@browser-bridge/protocol';
 
 describe('error catalog (§17)', () => {
-  it('contains exactly the 29 normative codes', () => {
+  it('contains exactly the 30 normative codes', () => {
     // 24 from SDD v0.5 §17, the three Countdown API source codes
     // (docs/COUNTDOWN-API-PLAN.md §2), CLICK_INTERCEPTED (2026-09-04:
     // a consent overlay intercepting every pointer event used to surface
-    // as a 15 s INTERNAL_ERROR timeout) and REDIRECT_BLOCKED (2026-09-10:
+    // as a 15 s INTERNAL_ERROR timeout), REDIRECT_BLOCKED (2026-09-10:
     // a site's own http:// error interstitial surfaced as a non-retryable
-    // SCHEME_DENIED on a call that succeeded thirty seconds later).
-    expect(BRIDGE_ERROR_CODES).toHaveLength(29);
+    // SCHEME_DENIED on a call that succeeded thirty seconds later) and
+    // AGENT_UNRESPONSIVE (2026-09-14: an ack timeout on an OPEN socket
+    // surfaced as DEVICE_OFFLINE while the same payload reported the device
+    // online — two failures under one code).
+    expect(BRIDGE_ERROR_CODES).toHaveLength(30);
     expect(BRIDGE_ERROR_CODES).toContain('CLICK_INTERCEPTED');
     expect(BRIDGE_ERROR_CODES).toContain('REDIRECT_BLOCKED');
+    expect(BRIDGE_ERROR_CODES).toContain('AGENT_UNRESPONSIVE');
     expect(BRIDGE_ERROR_CODES).toContain('DESTINATION_UNVERIFIED');
     expect(BRIDGE_ERROR_CODES).toContain('PROFILE_IN_USE');
     expect(BRIDGE_ERROR_CODES).toContain('SOURCE_UNAVAILABLE');
@@ -39,6 +43,9 @@ describe('error catalog (§17)', () => {
   it('matches the normative retryability table', () => {
     const retryable = [
       'DEVICE_OFFLINE',
+      // The socket is up and the agent may still be working (its job
+      // completed during the 2026-09-14 stall): worth asking again.
+      'AGENT_UNRESPONSIVE',
       'BROWSER_UNAVAILABLE',
       'TAB_NOT_FOUND',
       'STALE_ELEMENT',

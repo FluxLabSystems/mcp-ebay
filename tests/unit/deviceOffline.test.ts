@@ -6,9 +6,10 @@
  * is pinned in the contract and integration suites.
  */
 import type WebSocket from 'ws';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BridgeError, ERROR_CATALOG } from '@browser-bridge/protocol';
 import {
+  ACK_TIMEOUT_MS,
   describeDeviceOffline,
   DeviceRegistry,
   deviceOfflineHint,
@@ -46,6 +47,8 @@ function known(deviceId: string, overrides: Partial<KnownDeviceSummary> = {}): K
     status: 'active',
     lastSeenAt: '2026-09-03T02:41:12.000Z',
     online: false,
+    lastFrameAt: null,
+    silentForMs: null,
     ...overrides,
   };
 }
@@ -82,6 +85,8 @@ describe('summarizeKnownDevices', () => {
       status: 'active',
       lastSeenAt: '2026-09-03T02:41:12.000Z',
       online: false,
+      lastFrameAt: null,
+      silentForMs: null,
     });
     expect(summary[1]?.online).toBe(true);
     expect(summary[2]?.lastSeenAt).toBeNull();
@@ -208,7 +213,7 @@ describe('describeDeviceOffline + withDeviceOfflineDetails', () => {
       deviceId: 'default',
       resolvedDeviceId: null,
       onlineDeviceIds: [],
-      knownDevices: [{ deviceId: 'dev_a', name: 'PC-ETHAN', status: 'active', lastSeenAt: '2026-09-03T02:41:12.000Z', online: false }],
+      knownDevices: [{ deviceId: 'dev_a', name: 'PC-ETHAN', status: 'active', lastSeenAt: '2026-09-03T02:41:12.000Z', online: false, lastFrameAt: null, silentForMs: null }],
       hint: 'No Windows agent is connected; PC-ETHAN (dev_a) was last seen 2026-09-03T02:41:12.000Z.',
     });
   });
@@ -239,5 +244,133 @@ describe('describeDeviceOffline + withDeviceOfflineDetails', () => {
 
     // Applying it twice does not append the hint twice.
     expect(withDeviceOfflineDetails(plain, details).message).toBe(plain.message);
+  });
+});
+
+/**
+ * 2026-09-14 deals fire, 10:16–10:18Z (windows-agent+coverage_gap+agent-stops-
+ * acknowledging-commands-mid-fire-then-disconnects): three consecutive calls
+ * answered DEVICE_OFFLINE — "Agent did not acknowledge the command" — while
+ * the same payload's onlineDeviceIds named the device and knownDevices[0]
+ * .online was true, and the agent's in-flight extract_many job in fact
+ * completed during the stall. Two different failures shared one code. The
+ * ack timeout on an OPEN socket is its own retryable code now, and the
+ * payload measures the silence instead of contradicting itself.
+ */
+describe('a connected agent that does not acknowledge (AGENT_UNRESPONSIVE)', () => {
+  function sendCommand(registry: DeviceRegistry, deviceId: string) {
+    return registry.sendCommand({
+      deviceId,
+      browserSessionHandle: 'bs_test',
+      tabId: null,
+      command: 'snapshot',
+      args: {},
+      policyClass: 'read',
+      timeoutMs: 30_000,
+      traceparent: null,
+    });
+  }
+
+  it('an ack timeout on an OPEN socket settles as AGENT_UNRESPONSIVE, retryable, with the silence measured', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-14T10:16:40.000Z'));
+      const registry = new DeviceRegistry();
+      // The socket accepts the send and never answers — the 10:16Z shape.
+      registry.register({
+        connectionId: 'c1',
+        deviceId: 'dev_a',
+        socket: { readyState: 1, OPEN: 1, CLOSING: 2, close: () => undefined, send: () => undefined } as unknown as WebSocket,
+        lastSeenAt: Date.parse('2026-09-14T10:16:37.366Z'),
+        agentVersion: '0',
+      });
+      const pending = sendCommand(registry, 'dev_a');
+      const settled = pending.then(() => null, (err: BridgeError) => err);
+      await vi.advanceTimersByTimeAsync(ACK_TIMEOUT_MS);
+      const err = await settled;
+      expect(err).toBeInstanceOf(BridgeError);
+      expect(err?.code).toBe('AGENT_UNRESPONSIVE');
+      expect(err?.retryable).toBe(true);
+      expect(err?.details).toMatchObject({
+        deviceId: 'dev_a',
+        ackTimeoutMs: ACK_TIMEOUT_MS,
+        lastFrameAt: '2026-09-14T10:16:37.366Z',
+      });
+      expect(typeof err?.details?.requestId).toBe('string');
+      // 2 634 ms of silence before the send, plus the whole ack window.
+      expect(err?.details?.silentForMs).toBe(2634 + ACK_TIMEOUT_MS);
+      expect(ERROR_CATALOG.AGENT_UNRESPONSIVE.retryable).toBe(true);
+      expect(err?.message).toBe(ERROR_CATALOG.AGENT_UNRESPONSIVE.message);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a socket that is not OPEN is still DEVICE_OFFLINE — an absent agent, not a silent one', async () => {
+    const registry = new DeviceRegistry();
+    registry.register({ connectionId: 'c2', deviceId: 'dev_closing', socket: fakeSocket(2), lastSeenAt: Date.now(), agentVersion: '0' });
+    await expect(sendCommand(registry, 'dev_closing')).rejects.toMatchObject({ code: 'DEVICE_OFFLINE' });
+    await expect(sendCommand(registry, 'dev_never')).rejects.toMatchObject({ code: 'DEVICE_OFFLINE' });
+  });
+
+  it('the registry reports how long a live socket has been silent', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-14T10:18:00.000Z'));
+      const registry = new DeviceRegistry();
+      registry.register({ connectionId: 'c1', deviceId: 'dev_a', socket: fakeSocket(1), lastSeenAt: Date.parse('2026-09-14T10:16:37.366Z'), agentVersion: '0' });
+      expect(registry.liveness('dev_a')).toEqual({ lastFrameAt: '2026-09-14T10:16:37.366Z', silentForMs: 82_634 });
+      expect(registry.liveness('dev_unknown')).toBeNull();
+      registry.touch('dev_a');
+      expect(registry.liveness('dev_a')).toEqual({ lastFrameAt: '2026-09-14T10:18:00.000Z', silentForMs: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('summarizeKnownDevices carries the live socket\'s last frame and silence, null when not connected', () => {
+    const liveness = new Map([['dev_a', { lastFrameAt: '2026-09-14T10:16:37.366Z', silentForMs: 82_634 }]]);
+    expect(summarizeKnownDevices([row('dev_a'), row('dev_b')], ['dev_a'], liveness)).toEqual([
+      { deviceId: 'dev_a', name: 'pc-dev_a', status: 'active', lastSeenAt: null, online: true, lastFrameAt: '2026-09-14T10:16:37.366Z', silentForMs: 82_634 },
+      { deviceId: 'dev_b', name: 'pc-dev_b', status: 'active', lastSeenAt: null, online: false, lastFrameAt: null, silentForMs: null },
+    ]);
+  });
+
+  it('the hint names the silence when the socket is up and the agent is not answering', () => {
+    expect(
+      deviceOfflineHint({
+        deviceId: 'default',
+        resolvedDeviceId: 'dev_a',
+        onlineDeviceIds: ['dev_a'],
+        knownDevices: [known('dev_a', { online: true, lastFrameAt: '2026-09-14T10:16:37.366Z', silentForMs: 82_634 })],
+      }),
+    ).toBe(
+      'pc-dev_a (dev_a) is connected but did not answer the command; its last frame reached the gateway 83 s ago (2026-09-14T10:16:37.366Z). Retry after a pause, and check the agent console if it persists.',
+    );
+  });
+
+  it('describeDeviceOffline joins the live registry silence into the payload and the hint', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-14T10:18:00.000Z'));
+      const store = new MemoryStore();
+      await store.devices.insert(row('dev_a', { name: 'desktop', lastSeenAt: new Date('2026-09-14T10:16:37.366Z') }));
+      const registry = new DeviceRegistry();
+      registry.register({ connectionId: 'c1', deviceId: 'dev_a', socket: fakeSocket(1), lastSeenAt: Date.parse('2026-09-14T10:16:37.366Z'), agentVersion: '0' });
+      const details = await describeDeviceOffline({ devices: store.devices, registry }, { requestedDeviceId: 'dev_a', resolvedDeviceId: 'dev_a' });
+      expect(details.onlineDeviceIds).toEqual(['dev_a']);
+      expect(details.knownDevices[0]).toMatchObject({ deviceId: 'dev_a', online: true, lastFrameAt: '2026-09-14T10:16:37.366Z', silentForMs: 82_634 });
+      expect(details.hint).toContain('its last frame reached the gateway 83 s ago');
+      const err = withDeviceOfflineDetails(
+        new BridgeError('AGENT_UNRESPONSIVE', undefined, { requestId: 'req_1', deviceId: 'dev_a', ackTimeoutMs: ACK_TIMEOUT_MS, lastFrameAt: '2026-09-14T10:16:37.366Z', silentForMs: 82_634 }),
+        details,
+      );
+      expect(err.code).toBe('AGENT_UNRESPONSIVE');
+      expect(err.retryable).toBe(true);
+      expect(err.message).toBe(`${ERROR_CATALOG.AGENT_UNRESPONSIVE.message} ${details.hint}`);
+      expect(err.details).toMatchObject({ requestId: 'req_1', ackTimeoutMs: ACK_TIMEOUT_MS, onlineDeviceIds: ['dev_a'] });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

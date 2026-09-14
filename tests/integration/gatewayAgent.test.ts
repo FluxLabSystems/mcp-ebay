@@ -355,7 +355,7 @@ describe('DEVICE_OFFLINE names what the gateway knows (2026-09-03 deals-routine 
       resolvedDeviceId: null,
       onlineDeviceIds: [],
       knownDevices: [
-        { deviceId: pcId, name: 'PC-ETHAN', status: 'active', lastSeenAt: '2026-09-03T02:41:12.000Z', online: false },
+        { deviceId: pcId, name: 'PC-ETHAN', status: 'active', lastSeenAt: '2026-09-03T02:41:12.000Z', online: false, lastFrameAt: null, silentForMs: null },
       ],
       hint: `No Windows agent is connected; PC-ETHAN (${pcId}) was last seen 2026-09-03T02:41:12.000Z.`,
     });

@@ -48,6 +48,23 @@ export function timeoutErrorCodeFor(command: string): 'NAVIGATION_TIMEOUT' | 'CO
   return command === 'navigate' ? 'NAVIGATION_TIMEOUT' : 'CONDITION_TIMEOUT';
 }
 
+/**
+ * §12.4: the agent acks within 2 s of queueing a command; the gateway gives
+ * it twice that. A command unacked at this point settles as
+ * AGENT_UNRESPONSIVE (the socket is OPEN — that is how the command was
+ * sent — so it is not DEVICE_OFFLINE), with the silence measured from the
+ * last frame the agent sent.
+ */
+export const ACK_TIMEOUT_MS = 4000;
+
+/** What the live socket says about an agent's recent activity. */
+export interface DeviceLiveness {
+  /** ISO 8601 of the last frame the gateway received on the socket (hello, heartbeat, ack, result, state report). */
+  lastFrameAt: string;
+  /** Milliseconds since that frame, at the moment of asking. */
+  silentForMs: number;
+}
+
 export interface SendCommandOptions {
   deviceId: string;
   browserSessionHandle: string;
@@ -110,6 +127,21 @@ export class DeviceRegistry {
   touch(deviceId: string): void {
     const connection = this.connections.get(deviceId);
     if (connection !== undefined) connection.lastSeenAt = Date.now();
+  }
+
+  /**
+   * How long a registered device's socket has been silent — the observable
+   * that separates a stalled agent from an absent one (2026-09-14: the
+   * persisted last_seen_at froze at 10:16:37Z for two minutes while the
+   * socket stayed OPEN). Null when the device is not registered at all.
+   */
+  liveness(deviceId: string): DeviceLiveness | null {
+    const connection = this.connections.get(deviceId);
+    if (connection === undefined) return null;
+    return {
+      lastFrameAt: new Date(connection.lastSeenAt).toISOString(),
+      silentForMs: Math.max(0, Date.now() - connection.lastSeenAt),
+    };
   }
 
   /**
@@ -197,16 +229,26 @@ export class DeviceRegistry {
         );
         this.cancel(requestId, 'deadline exceeded', options.deviceId);
       }, options.timeoutMs + 2000);
-      // §12.4: ack expected within 2 s; a silent agent is treated as offline.
+      // §12.4: ack expected within 2 s. The socket was OPEN when the command
+      // went out, so a missing ack is a SILENT agent, not an absent one —
+      // AGENT_UNRESPONSIVE, with the silence measured, never DEVICE_OFFLINE
+      // (whose payload would report the device online and contradict it).
       const ackTimer = setTimeout(() => {
         const request = this.pending.get(requestId);
         if (request !== undefined && !request.acked) {
+          const liveness = this.liveness(options.deviceId);
           this.settleError(
             requestId,
-            new BridgeError('DEVICE_OFFLINE', 'Agent did not acknowledge the command.', { requestId }),
+            new BridgeError('AGENT_UNRESPONSIVE', undefined, {
+              requestId,
+              deviceId: options.deviceId,
+              ackTimeoutMs: ACK_TIMEOUT_MS,
+              lastFrameAt: liveness?.lastFrameAt ?? null,
+              silentForMs: liveness?.silentForMs ?? null,
+            }),
           );
         }
-      }, 4000);
+      }, ACK_TIMEOUT_MS);
       this.pending.set(requestId, {
         requestId,
         deviceId: options.deviceId,

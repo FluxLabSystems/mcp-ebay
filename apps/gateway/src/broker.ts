@@ -227,19 +227,20 @@ export class CommandBroker {
 
   /**
    * A DEVICE_OFFLINE out of the registry says only that no OPEN socket
-   * answered; the caller needs to know which PC that was, when it was last
-   * seen and whether another one is up. The registry is store-free by
-   * design, so the join happens here (devices/offline.ts). Every other
-   * error passes through untouched, and a failing device lookup must not
-   * mask the real error: the payload then carries what the registry alone
-   * knows, and says so.
+   * answered, and an AGENT_UNRESPONSIVE only that the socket was up and
+   * no ack came; the caller needs to know which PC that was, when it was
+   * last seen or last heard from, and whether another one is up. The
+   * registry is store-free by design, so the join happens here
+   * (devices/offline.ts). Every other error passes through untouched, and
+   * a failing device lookup must not mask the real error: the payload then
+   * carries what the registry alone knows, and says so.
    */
   private async describeIfDeviceOffline(
     err: BridgeError,
     requestedDeviceId: string,
     targetDeviceId: string,
   ): Promise<BridgeError> {
-    if (err.code !== 'DEVICE_OFFLINE') return err;
+    if (err.code !== 'DEVICE_OFFLINE' && err.code !== 'AGENT_UNRESPONSIVE') return err;
     // resolveDeviceId echoes an unresolvable "default" back unchanged, and
     // no paired device can be named "default" (ids are dev_…, §14).
     const resolvedDeviceId = targetDeviceId === 'default' ? null : targetDeviceId;
