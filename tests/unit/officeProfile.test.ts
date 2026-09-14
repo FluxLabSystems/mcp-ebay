@@ -57,8 +57,62 @@ describe('office-sources.v1 roster', () => {
     }
   });
 
+  // 2026-09-14 00:0xZ office fire (mcp-ebay+coverage_gap+craigslist-org-is-not-
+  // in-the-office-sources-v1-allowlist-so-the-area-search-can-never-be-paged-
+  // or-projected): the ONE Bridge probe the office SKILL.md bullet (5) owed
+  // returned the verbatim ORIGIN_DENIED for www.craigslist.org. craigslist.org
+  // is a listing source the committed SKILL.md names (its pathway table), so
+  // the roster rule's precondition holds and the entry ships with its walls.
+  it('covers craigslist.org and its city hosts (roster 2026-09-14), and walls the reply, flag, post and account surfaces', async () => {
+    const hosts = officeSourcesSiteProfile.allowedHosts;
+    for (const host of ['craigslist.org', 'www.craigslist.org', 'toronto.craigslist.org']) {
+      expect(hostMatchesAllowlist(host, hosts), host).toBe(true);
+      expect(isOfficeSourceHost(host), host).toBe(true);
+    }
+    const entry = OFFICE_SOURCES.find((source) => source.name === 'craigslist');
+    expect(entry).toBeDefined();
+    expect(entry?.group).toBe('listing');
+    expect(entry?.hosts).toEqual(['craigslist.org']);
+    expect(entry?.addedOn).toBe('2026-09-14');
+    expect(entry?.source).toContain('craigslist-org-is-not-in-the-office-sources-v1-allowlist-so-the-area-search-can-never-be-paged-or-projected');
+    expect(entry?.needsLiveVerification).toBeDefined();
+
+    // Read surfaces: the area search the routine pages, its offset form, a post page.
+    for (const url of [
+      'https://www.craigslist.org/search/area/toronto?cat=off',
+      'https://www.craigslist.org/search/area/toronto?cat=off&s=120',
+      'https://toronto.craigslist.org/tor/off/d/toronto-new-and-modern-psychotherapy/7954187123.html',
+      // A slug is poster-written text: an endpoint word inside it is not an endpoint.
+      'https://toronto.craigslist.org/tor/off/d/toronto-reply-street-office-for-lease/7954187124.html',
+    ]) {
+      const decision = await checkUrl(url, officeSourcesSiteProfile, 'navigation', { resolve: publicResolve });
+      expect(decision.allowed, url).toBe(true);
+      expect(isProtectedEndpoint(url, officeSourcesSiteProfile), url).toBe(false);
+      expect(isAuthPathBlocked(url, officeSourcesSiteProfile), url).toBe(false);
+    }
+    // Write surfaces: reply-to-poster, flagging, the posting flow, the account host.
+    for (const url of [
+      'https://toronto.craigslist.org/reply/tor/off/7954187123',
+      'https://toronto.craigslist.org/flag/?flagCode=28&postingID=7954187123',
+      'https://post.craigslist.org/c/tor',
+      'https://post.craigslist.org/',
+      'https://accounts.craigslist.org/login/home',
+      'https://accounts.craigslist.org/',
+    ]) {
+      expect(isProtectedEndpoint(url, officeSourcesSiteProfile), url).toBe(true);
+    }
+    for (const url of ['https://accounts.craigslist.org/login', 'https://accounts.craigslist.org/login/home']) {
+      expect(isAuthPathBlocked(url, officeSourcesSiteProfile), url).toBe(true);
+      const decision = await checkUrl(url, officeSourcesSiteProfile, 'navigation', { resolve: publicResolve });
+      expect(decision.allowed, url).toBe(false);
+    }
+    for (const name of ['reply', 'post to classifieds', 'flag', 'my account']) {
+      expect(officeSourcesSiteProfile.blockedActionPatterns, name).toContain(name);
+    }
+  });
+
   it('every roster entry names a public registrable domain (or a narrower host), a group and a source', () => {
-    expect(OFFICE_SOURCES.length).toBeGreaterThanOrEqual(26);
+    expect(OFFICE_SOURCES.length).toBeGreaterThanOrEqual(27);
     for (const source of OFFICE_SOURCES) {
       expect(['provider', 'listing']).toContain(source.group);
       expect(source.hosts.length).toBeGreaterThan(0);

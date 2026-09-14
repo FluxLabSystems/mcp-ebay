@@ -112,4 +112,26 @@ export const OFFICE_SOURCES: readonly OfficeSource[] = [
   listing('CoworkingCafe', ['coworkingcafe.com']),
   listing('CommercialCafe', ['commercialcafe.com']),
   listing('LoopNet Canada', ['loopnet.ca']),
+  {
+    // The office SKILL.md names craigslist.org as a listing source (its
+    // pathway table row and the craigslist WebFetch bullet), and its bullet
+    // (5) owed the Bridge exactly one probe so the ORIGIN_DENIED the backlog
+    // rule requires could exist at all. The 2026-09-14 00:0xZ office fire
+    // spent it: `Host www.craigslist.org is not in the ebay.ca.v1+kijiji.ca.v1
+    // +zazzle.com.v1+wardrobe-vendors.v1+office-sources.v1 allowlist`, one
+    // navigation, none retried, the same session reading kijiji.ca and
+    // regus.com normally. Search and post pages are server-rendered, so the
+    // lane needs no extractor: browser_open_and_extract pages and projects
+    // the Toronto area search (`/search/area/toronto?cat=off`, `?s=120`
+    // offsets) where WebFetch returned a summarised subset with no paging.
+    // The reply, flag, post and account surfaces are walled in profile.ts.
+    name: 'craigslist',
+    group: 'listing',
+    hosts: ['craigslist.org'],
+    addedOn: '2026-09-14',
+    source:
+      'mcp-ebay+coverage_gap+craigslist-org-is-not-in-the-office-sources-v1-allowlist-so-the-area-search-can-never-be-paged-or-projected (office fire 2026-09-14 00:0xZ: ORIGIN_DENIED on www.craigslist.org; craigslist.org named in the committed office SKILL.md pathway table)',
+    needsLiveVerification:
+      'whether toronto.craigslist.org post pages render headlessly; that the "reply" control is refused by accessible name; that the www area-search URL commits rather than 301-ing to a city host the walls treat differently',
+  },
 ];

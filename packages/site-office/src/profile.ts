@@ -41,12 +41,34 @@ export const OFFICE_SOURCES_EXTRA_BLOCKED_ACTION_PATTERNS: readonly string[] = [
   'call now',
   'get in touch',
   'start booking',
+  // craigslist (roster 2026-09-14): the reply-to-poster control, the flag
+  // controls and the posting flow are the write surfaces on a classifieds
+  // site; every one is an outreach or state action the lane never takes.
+  'reply',
+  'post to classifieds',
+  'flag',
+  'my account',
+];
+
+/**
+ * craigslist's write surfaces live on their own hosts and path segments:
+ * `accounts.craigslist.org` (sign-in, saved searches, posting management),
+ * `post.craigslist.org` (the posting flow) and the per-city `/reply/…`,
+ * `/flag/…` and `/edit/…` paths. The generic walls cover `account` and
+ * `login` as path segments only, so the hosts and the classifieds-specific
+ * segments are added here. Full-URL regex sources, segment-anchored like the
+ * generic ones so a listing slug containing "reply" never matches.
+ */
+export const OFFICE_SOURCES_EXTRA_TRANSACTION_ENDPOINT_PATTERNS: readonly string[] = [
+  'https?://(?:accounts|post)\\.craigslist\\.org(?:/|$)',
+  'https?://(?:[a-z0-9-]+\\.)*craigslist\\.org/(?:.*/)?(?:reply|flag|edit|manage|post)(?:/|\\?|#|$)',
 ];
 
 export const officeSourcesSiteProfile: SitePolicyProfile = createResearchProfile({
   id: OFFICE_SOURCES_SITE_PROFILE_ID,
   hosts: OFFICE_SOURCES.flatMap((source) => source.hosts),
   extraBlockedActionPatterns: OFFICE_SOURCES_EXTRA_BLOCKED_ACTION_PATTERNS,
+  extraTransactionEndpointPatterns: OFFICE_SOURCES_EXTRA_TRANSACTION_ENDPOINT_PATTERNS,
 });
 
 /**

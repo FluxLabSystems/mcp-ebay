@@ -232,7 +232,14 @@ function matchesFilter(
  * Only counts the upstream actually sent appear: zero-filling would make
  * "nothing changed" indistinguishable from "the API did not say".
  */
-const SUMMARY_FIELDS = ['upserted', 'unchanged', 'created', 'updated', 'skipped', 'removed', 'total'] as const;
+const SUMMARY_FIELDS = [
+  'upserted', 'unchanged', 'created', 'updated', 'skipped', 'removed', 'total',
+  // dashboard-api ≥ 2026-09-14: how many records in this batch landed with a
+  // deals subcategory or category outside public/deals/data/taxonomy.json
+  // (fluxlab-boards+ops_note+check-subcategories-and-check-target-ids-run-
+  // only-on-repo-files…). Absent from an older API, so absent here too.
+  'taxonomyViolations',
+] as const;
 
 function toSummary(result: Record<string, unknown>, sent: number, touched: number): Record<string, unknown> {
   const summary: Record<string, unknown> = { sent, touched };
