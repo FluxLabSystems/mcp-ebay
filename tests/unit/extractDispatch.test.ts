@@ -417,6 +417,29 @@ describe('browser_extract dispatches by page kind instead of refusing', () => {
     expect('itemId' in record).toBe(false);
   });
 
+  // jobs-sources.v1 (2026-09-13) is policy-only too: a Job Bank posting, an
+  // Indeed viewjob page or an ATS career page says so under its own id
+  // instead of coming back as an eBay-shaped null record.
+  it('a jobs-source page reports that no extractor exists, under jobs-sources.v1, with the reading hint that refuses apply controls', async () => {
+    const outcome = await runExtract(
+      'https://www.jobbank.gc.ca/jobsearch/jobposting/50193006?source=searchresults',
+      '<html><head><title>Welder helper - Toronto, ON - Job posting - Job Bank</title></head><body><a href="/jobsearch/jobposting/50193006">Welder helper</a><button>Apply now</button></body></html>',
+      'ebay.ca.v1',
+    );
+    const parsed = ExtractOutput.parse(outcome.result);
+    expect(parsed.siteProfile).toBe('jobs-sources.v1');
+    const record = parsed.record as { pageKind: string; pageTitle: string; pageUrl: string };
+    expect(record.pageKind).toBe('other');
+    expect(record.pageTitle).toBe('Welder helper - Toronto, ON - Job posting - Job Bank');
+    const noExtractor = parsed.warnings.find((warning) => warning.startsWith('NO_EXTRACTOR_FOR_HOST'));
+    expect(noExtractor).toBeDefined();
+    expect(noExtractor).toContain('jobs-sources.v1');
+    expect(noExtractor).toMatch(/required kept apart from preferred/);
+    expect(noExtractor).toMatch(/never click an apply/);
+    expect(parsed.warnings.some((warning) => warning.startsWith('DECLARED_SITE_PROFILE_MISMATCH'))).toBe(true);
+    expect('itemId' in record).toBe(false);
+  });
+
   it('an unclassified Kijiji page still extracts rather than refusing', async () => {
     const outcome = await runExtract(
       'https://www.kijiji.ca/',
