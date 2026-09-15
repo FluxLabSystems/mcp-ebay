@@ -106,6 +106,58 @@ export function readSoldFilterChips(document: Document): SoldFilterChips {
   return { soldFilterActive: sold ? true : null, completedFilterActive: completed ? true : null };
 }
 
+/**
+ * eBay's bare "Error Page | eBay" shell, served with status 200 at an
+ * UNCHANGED /sch/ URL. The deals routine's bounded snapshot of it
+ * (2026-09-04, fingerprint sold-completed-search-returns-error-page) is one
+ * accessible node — a "Go to homepage" link to https://www.ebay.com/ — with
+ * no sign-in prompt, no bot check and no retired-feature notice. On
+ * 2026-09-15 04:1xZ the same stub answered two plain LIVE searches (no
+ * LH_Sold / LH_Complete) that rendered 274 and 248 rows on an immediate
+ * retry of the identical URL (fingerprint live-sch-search-returns-error-
+ * page-stub-with-zero-candidates-and-renders-on-immediate-retry). Until
+ * then a stub and a genuinely empty result set were the same record:
+ * candidateCount 0 + NO_LISTING_CANDIDATES.
+ *
+ * The signature is the <title> alone — the one thing every capture agreed
+ * on — corroborated by the homepage link when it renders. It is never
+ * declared over rendered rows: a page with cards is a results page whatever
+ * it titles itself. NEEDS-LIVE-VERIFICATION for the link's markup; the
+ * title text and the link's name and href are the snapshot's own.
+ */
+const ERROR_PAGE_TITLE_RE = /^error\s+page\s*\|\s*ebay$/i;
+const HOMEPAGE_LINK_RE = /^go\s+to\s+homepage$/i;
+
+export interface SearchErrorStubRead {
+  /** True only when the title is the error shell's AND no candidate rendered. */
+  isStub: boolean;
+  /** The rendered <title>, whitespace-normalised. */
+  pageTitle: string;
+  /** The "Go to homepage" link's href when it rendered; null when it did not (the title still decides). */
+  homepageLinkHref: string | null;
+}
+
+export function readSearchErrorStub(document: Document, candidateCount: number): SearchErrorStubRead {
+  const pageTitle = normalizeText(document.querySelector('title')?.textContent ?? '');
+  let homepageLinkHref: string | null = null;
+  let anchors: Element[] = [];
+  try {
+    anchors = Array.from(document.querySelectorAll('a[href]'));
+  } catch {
+    anchors = [];
+  }
+  for (const anchor of anchors) {
+    if (!HOMEPAGE_LINK_RE.test(normalizeText(anchor.textContent))) continue;
+    const href = anchor.getAttribute('href');
+    if (href !== null && href.trim().length > 0) {
+      homepageLinkHref = href.trim();
+      break;
+    }
+  }
+  const isStub = candidateCount === 0 && ERROR_PAGE_TITLE_RE.test(pageTitle);
+  return { isStub, pageTitle, homepageLinkHref };
+}
+
 /** The `_ssn=` value of a seller search URL, decoded; null on any other search. */
 export function sellerQueryOf(pageUrl: string): string | null {
   try {
@@ -144,6 +196,14 @@ export interface SearchPageMetaInput {
   /** 'search' for /sch/, 'store' for /str/ and /usr/: the warning text names the page kind. */
   pageKind: 'search' | 'store';
   warnings: string[];
+  /**
+   * True when the page is eBay's bare error shell (readSearchErrorStub). The
+   * fields still read as null — the page stated nothing — but the two
+   * "capture the element and file it so the selector can be pinned" prompts
+   * are withheld: the stub has no count heading and no pagination widget to
+   * capture, and SEARCH_ERROR_PAGE_STUB already says why they are null.
+   */
+  errorPageStub?: boolean;
 }
 
 /**
@@ -154,6 +214,7 @@ export interface SearchPageMetaInput {
  */
 export function extractSearchPageMeta(input: SearchPageMetaInput): SearchPageMeta {
   const { document, pageUrl, candidates, pageKind, warnings } = input;
+  const errorPageStub = input.errorPageStub === true;
   const kindLabel = pageKind === 'search' ? 'search page' : 'store page';
   const rendered = candidates.length;
 
@@ -164,7 +225,10 @@ export function extractSearchPageMeta(input: SearchPageMetaInput): SearchPageMet
     'SEARCH_TOTAL_REJECTED',
     warnings,
   );
-  if (read.count === null) {
+  if (read.count === null && errorPageStub) {
+    // The stub renders no count heading; SEARCH_ERROR_PAGE_STUB names the
+    // reason and there is nothing on the page to capture.
+  } else if (read.count === null) {
     warnings.push(
       `SEARCH_TOTAL_UNSTATED: no result-count heading was found on this ${kindLabel}, so totalResults is null; audit the walk by unique item ids across pages, never against a total the page has not stated. Capture the count element (browser_snapshot, maxNodes 40, the top of the page) and file it through the improvement queue so the selector can be pinned.`,
     );
@@ -208,6 +272,9 @@ export function extractSearchPageMeta(input: SearchPageMetaInput): SearchPageMet
     );
     hasNextPage = false;
     nextPageUrl = null;
+  } else if (hasNextPage === null && errorPageStub) {
+    // No pagination widget on the stub either; the retry, not a next page,
+    // is what SEARCH_ERROR_PAGE_STUB asks for.
   } else if (hasNextPage === null) {
     const next = withPage(pageUrl, (currentPage ?? 1) + 1);
     warnings.push(

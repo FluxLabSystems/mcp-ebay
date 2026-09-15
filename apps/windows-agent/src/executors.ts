@@ -64,6 +64,7 @@ import {
   extractWatchlistPage,
   isListingPage,
   normalizeEbayImageUrl,
+  readSearchErrorStub,
   readSoldFilterChips,
   EBAY_SITE_PROFILE_ID,
 } from '@browser-bridge/site-ebay';
@@ -1016,6 +1017,25 @@ async function executeExtract(
       );
     }
     const pageTitle = normalizeTitle(document.querySelector('title')?.textContent);
+    // 2026-09-15 04:1xZ deals fire: two plain LIVE /sch/ searches (no
+    // LH_Sold / LH_Complete) answered as eBay's bare "Error Page | eBay"
+    // shell — candidateCount 0, NO_LISTING_CANDIDATES — and the identical
+    // URL rendered 274 and 248 rows on an immediate retry. A stub and a
+    // genuinely empty result set were the same record, so a sweep that did
+    // not retry recorded a false zero. The shell is named first, by the
+    // page's own title (and its one "Go to homepage" link when it renders),
+    // never over rendered rows.
+    const errorStub = kind === 'search' ? readSearchErrorStub(document, candidates.length) : null;
+    const errorPageStub = errorStub?.isStub === true;
+    if (errorPageStub) {
+      warnings.push(
+        `SEARCH_ERROR_PAGE_STUB: ${pageUrl} answered with eBay's bare error shell — the page titles itself "${errorStub!.pageTitle}"${
+          errorStub!.homepageLinkHref === null
+            ? ' and renders no listing card'
+            : ` and renders nothing but a "Go to homepage" link (${errorStub!.homepageLinkHref})`
+        } — NOT an empty result set: on 2026-09-15 the identical URL rendered a full results page on an immediate retry, twice. candidateCount 0 here is the stub's, not the query's. Retry the SAME URL once with the same arguments before counting this query; a second stub is recorded as "stubbed, not swept" in the sweep's limitations, never as zero candidates (and on a sold/completed form the comps rules for a stub apply as before).`,
+      );
+    }
     if (candidates.length === 0 && kind === 'store') {
       // A seller page with nothing to list is two different things: a live
       // store with no active listings (the seller header still renders and
@@ -1115,6 +1135,12 @@ async function executeExtract(
       completedFilterActive: chips.completedFilterActive,
       note: 'Candidate snippets are traversal hints; open each /itm/ URL and extract it for canonical evidence.',
     };
+    if (kind === 'search') {
+      // Whether this /sch/ read is eBay's error shell rather than a result
+      // set (2026-09-15). Page-level, so a caller's field projection keeps
+      // it beside candidateCount; false on every rendered results page.
+      record.errorPageStub = errorPageStub;
+    }
     if (kind === 'search' || kind === 'store') {
       // 2026-09-07 deals fire (first full seller drill-down): an _ssn= page
       // reported only the page-local counts — no total, no next page — so
@@ -1122,7 +1148,7 @@ async function executeExtract(
       // page twice. The page states a total and a next control; read them,
       // and say whose rows these are (the query's, not the seller's, until
       // a card or the item page says otherwise).
-      const meta = extractSearchPageMeta({ document, pageUrl, candidates, pageKind: kind, warnings });
+      const meta = extractSearchPageMeta({ document, pageUrl, candidates, pageKind: kind, warnings, errorPageStub });
       Object.assign(record, meta);
     }
     const ebayPage = applySearchCompaction(record, searchOptions, warnings);
