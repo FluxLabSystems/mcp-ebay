@@ -236,6 +236,17 @@ export const JOBS_SOURCES: readonly JobsSource[] = [
     'liuna183.ca 301s to liunalocal183.ca (2026-09-13). This host is the PARENT union site only: it publishes no training page (/training/ answers HTTP 404, 2026-09-14) and links out to the LiUNA Local 183 Training Centre on 183training.com, which is on NO roster — WebFetch reads it (HTTP 200, 2026-09-14), so no Bridge read is owed today; it joins this roster only on a fire\'s filed ORIGIN_DENIED for it or on the operator\'s ratification (docs/SITE-PROFILE-BACKLOG.md, "The rule a host gets here by")',
     'jobs fire 2026-09-14 11:2xZ (jobs-run-2026-09-14T11-25Z; skills/fluxology-jobs-run+skill_gap+liuna-183-roster-entry-names-a-host-whose-training-pages-404-the-training-centre-is-a-separate-host): the apex renders and its navigation links to 183training.com; /training/ on this host is a 404. Read over WebFetch, not through the Bridge.',
   ),
+  {
+    group: 'channel',
+    name: 'LiUNA Local 183 Training Centre',
+    hosts: ['183training.com'],
+    sourceLabel: 'union',
+    addedOn: '2026-09-15',
+    source:
+      'ci-approval-183training-com-liuna-training-centre-host (operator ratification through the CI board feedback path, approved 2026-09-15T10:50:43Z by admin@fluxlab.systems; fingerprint skills/fluxology-jobs-run+skill_gap+liuna-183-roster-entry-names-a-host-whose-training-pages-404-the-training-centre-is-a-separate-host, jobs fire 2026-09-14 11:2xZ); the parent union entry above records why the training pages live here and not on liunalocal183.ca. The read-only walls are unchanged.',
+    needsLiveVerification:
+      'WebFetch reads the apex (HTTP 200, 2026-09-14) and no fire has filed an ORIGIN_DENIED for it, so the Bridge read is a second pathway, not a replacement: confirm the training-programme and intake pages render signed out, and that any member portal or registration form is refused by the walls rather than filled.',
+  },
   entry(
     'channel',
     'Skilled Trades Ontario',

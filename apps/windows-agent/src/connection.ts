@@ -49,6 +49,24 @@ interface RecentResult {
   frame: string;
 }
 
+export interface AcceptedCommand {
+  requestId: string;
+  command: string;
+  browserSessionHandle: string;
+  tabId: string | null;
+  /** The command's URL argument when it has one, bounded; never the whole argument object (no fill values). */
+  url: string | null;
+  acceptedAt: string;
+}
+
+const LOGGED_URL_MAX_CHARS = 300;
+
+function urlArgumentOf(args: Record<string, unknown>): string | null {
+  const url = args.url;
+  if (typeof url !== 'string' || url.length === 0) return null;
+  return url.length > LOGGED_URL_MAX_CHARS ? `${url.slice(0, LOGGED_URL_MAX_CHARS)}…` : url;
+}
+
 export class AgentConnection {
   private readonly options: ConnectionOptions;
   private readonly logger: Logger;
@@ -66,6 +84,12 @@ export class AgentConnection {
   private readonly recentResults = new Map<string, RecentResult>();
   /** Guards against double-execution of retransmitted in-flight requests (audit F-16). */
   private readonly inFlight = new Set<string>();
+  /**
+   * The last command this connection accepted (2026-09-15, the agent-stall
+   * re-file): logged at acceptance and reported by the stall watch, so a
+   * silence in the log says what the agent was executing when it began.
+   */
+  private lastAccepted: AcceptedCommand | null = null;
 
   constructor(options: ConnectionOptions) {
     this.options = options;
@@ -88,6 +112,11 @@ export class AgentConnection {
 
   get isConnected(): boolean {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN && this.connectionId !== null;
+  }
+
+  /** The last command accepted on this connection, or null before the first. */
+  get lastAcceptedCommand(): AcceptedCommand | null {
+    return this.lastAccepted;
   }
 
   private connect(): void {
@@ -276,13 +305,25 @@ export class AgentConnection {
     }
     this.inFlight.add(envelope.requestId);
     this.options.monitor?.commandStarted(envelope.requestId, envelope.command);
+    const acceptedAt = new Date().toISOString();
+    this.lastAccepted = {
+      requestId: envelope.requestId,
+      command: envelope.command,
+      browserSessionHandle: envelope.browserSessionHandle,
+      tabId: envelope.tabId,
+      url: urlArgumentOf(envelope.arguments as Record<string, unknown>),
+      acceptedAt,
+    };
+    // Logged at acceptance, not only on failure: the 2026-09-15 stall left
+    // no line saying which command the agent was inside when it went silent.
+    this.logger.info(this.lastAccepted, 'Command accepted');
     // §12.4: ack within 2 s of queueing.
     this.send(
       AckSchema.parse({
         protocolVersion: WIRE_PROTOCOL_VERSION,
         type: 'ack',
         requestId: envelope.requestId,
-        acceptedAt: new Date().toISOString(),
+        acceptedAt,
       }),
     );
 

@@ -54,6 +54,7 @@ describe('jobs-sources.v1 roster', () => {
       'www.adzuna.ca', 'ca.jooble.org', 'www.careerbeacon.com',
       // channels
       'www.ualocal46.org', 'ualocal46.org', 'smwia-l30.com', 'iw721.org', 'liunalocal183.ca',
+      '183training.com', 'www.183training.com',
       'www.skilledtradesontario.ca', 'www.apprenticesearch.com', 'www.ontario.ca', 'www.georgebrown.ca',
       // ATS hosts
       'canam.wd3.myworkdayjobs.com', 'jobs.smartrecruiters.com', 'boards.greenhouse.io', 'jobs.lever.co',
@@ -77,7 +78,13 @@ describe('jobs-sources.v1 roster', () => {
         expect(host, host).not.toMatch(/^\*/);
       }
       expect(source.addedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      expect(source.source).toContain('jobs-default-sources-and-connectors-expansion-2026-09-13');
+      // Every entry is auditable to a decision: the 2026-09-13 ratification,
+      // or a later CI-board approval named by its record id.
+      expect(
+        source.source.includes('jobs-default-sources-and-connectors-expansion-2026-09-13') ||
+          /ci-approval-[a-z0-9-]+/.test(source.source),
+        source.name,
+      ).toBe(true);
       expect(source.sourceLabel.length).toBeGreaterThan(0);
       labels.add(source.sourceLabel);
       if (source.group === 'ats') expect(source.sourceLabel).toBe('employer-direct');
@@ -100,6 +107,19 @@ describe('jobs-sources.v1 roster', () => {
     expect(jobsSourceLabelForHost('https://jobs.smartrecruiters.com/Canam/743999')).toBe('employer-direct');
     expect(jobsSourceLabelForHost('https://www.ualocal46.org/training/application-process')).toBe('union');
     expect(jobsSourceLabelForHost('https://www.kijiji.ca/b-jobs/gta')).toBeNull();
+  });
+
+  it('183training.com (LiUNA Local 183 Training Centre) joined on the operator\'s 2026-09-15 ratification, as a union channel', () => {
+    const entry = JOBS_SOURCES.find((source) => source.hosts.includes('183training.com'));
+    expect(entry).toBeDefined();
+    expect(entry!.group).toBe('channel');
+    expect(entry!.sourceLabel).toBe('union');
+    expect(entry!.addedOn).toBe('2026-09-15');
+    expect(entry!.source).toContain('ci-approval-183training-com-liuna-training-centre-host');
+    expect(entry!.hosts).toEqual(['183training.com']);
+    expect(jobsSourceLabelForHost('https://www.183training.com/')).toBe('union');
+    // The parent union site keeps its own entry; the training centre is a second host, not a rename.
+    expect(JOBS_SOURCES.some((source) => source.hosts.includes('liunalocal183.ca'))).toBe(true);
   });
 
   it('the ADP and UKG entries are the recruiting hosts only: the payroll apexes stay out', () => {

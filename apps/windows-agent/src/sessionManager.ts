@@ -15,15 +15,21 @@
  * AGENT_PROFILE_DIR (the logged-in eBay research profile); any other name
  * lives in a sibling directory `<profileDir>.<profileName>`.
  */
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import {
   acquireProfileLock,
   BrowserSessionRuntime,
   buildChromeLaunchPlan,
   launchPersistent,
+  sweepStaleProfileLocks,
   type BrowserLaunchPlan,
   type PagePolicy,
   type PersistentContextLauncher,
   type ProfileLock,
+  type ProfileLockInspection,
+  type ProfileLockOptions,
+  type ProfileLockSweepEntry,
   defaultLauncher,
 } from '@browser-bridge/browser-core';
 import { BridgeError, DEFAULT_PROFILE_NAME, PROFILE_NAME_RE, type Tab } from '@browser-bridge/protocol';
@@ -59,6 +65,80 @@ export interface SessionManagerOptions {
 export function profileDirectoryFor(baseDir: string, profileName: string): string {
   if (profileName === DEFAULT_PROFILE_NAME) return baseDir;
   return `${baseDir.replace(/[\\/]+$/, '')}.${profileName}`;
+}
+
+/**
+ * Every profile directory this agent could own that exists on disk: the
+ * configured default plus each sibling `<base>.<profileName>` — the layout
+ * profileDirectoryFor() produces (the dedicated profiles are SIBLINGS of the
+ * default, named with a dot, not children of it).
+ */
+export function listProfileDirectories(baseDir: string): string[] {
+  const base = baseDir.replace(/[\\/]+$/, '');
+  const out: string[] = [];
+  if (existsSync(base)) out.push(base);
+  const parent = dirname(base);
+  const prefix = `${basename(base)}.`;
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(parent);
+  } catch {
+    return out;
+  }
+  for (const entry of entries.sort()) {
+    if (!entry.startsWith(prefix)) continue;
+    const suffix = entry.slice(prefix.length);
+    if (!PROFILE_NAME_RE.test(suffix)) continue;
+    const dir = join(parent, entry);
+    try {
+      if (statSync(dir).isDirectory()) out.push(dir);
+    } catch {
+      // vanished between readdir and stat
+    }
+  }
+  return out;
+}
+
+/**
+ * Startup sweep (2026-09-15, windows-agent+connector_defect+agent-death-
+ * leaves-stale-profile-lock-so-browser-session-open-fails-profile-in-use):
+ * one agent death left a `.browser-bridge.lock` in EVERY profile that had a
+ * live session, and none was reclaimed for four hours because the dead pid
+ * was alive again as something else. Now the agent walks every profile
+ * directory it could open before it connects, removes the locks whose owner
+ * is dead, recycled or silent, and logs each one — so restarting the agent
+ * is a sufficient recovery. Live, heartbeating owners (a second agent
+ * instance) and foreign-host locks are kept and logged as kept.
+ */
+export function sweepProfileLocksAtStartup(
+  baseDir: string,
+  logger: Logger,
+  options: ProfileLockOptions = {},
+): ProfileLockSweepEntry[] {
+  const entries = sweepStaleProfileLocks(listProfileDirectories(baseDir), options);
+  for (const entry of entries) {
+    if (entry.action === 'none') continue;
+    const facts = lockFacts(entry.inspection);
+    if (entry.action === 'removed') {
+      logger.warn({ ...facts, profileDir: entry.profileDir }, 'Removed a stale profile lock at startup');
+    } else {
+      logger.warn({ ...facts, profileDir: entry.profileDir }, 'Kept a profile lock at startup: its owner is live or on another host');
+    }
+  }
+  return entries;
+}
+
+function lockFacts(inspection: ProfileLockInspection): Record<string, unknown> {
+  return {
+    lockFilePath: inspection.lockFilePath,
+    reason: inspection.verdict,
+    lockOwnerPid: inspection.lockOwnerPid,
+    lockOwnerHostname: inspection.lockOwnerHostname,
+    lockAcquiredAt: inspection.lockAcquiredAt,
+    lockHeartbeatAt: inspection.lockHeartbeatAt,
+    lockHeartbeatAgeMs: inspection.lockHeartbeatAgeMs,
+    lockOwnerAlive: inspection.lockOwnerAlive,
+  };
 }
 
 interface ProfileSlot {
@@ -228,7 +308,14 @@ export class SessionManager {
         { ...this.degradedDetails(), profileName },
       );
     }
-    const lock = acquireProfileLock(profileDirectoryFor(this.options.profileDir, profileName));
+    const lock = acquireProfileLock(profileDirectoryFor(this.options.profileDir, profileName), {
+      onReclaim: (inspection) => {
+        this.options.logger.warn(
+          { ...lockFacts(inspection), profileName },
+          'Reclaimed a stale profile lock on open: its owner is dead, recycled or silent',
+        );
+      },
+    });
     try {
       this.recordLaunch(profileName);
       const context = await launchPersistent(this.planFor(profileName), this.options.launcher ?? defaultLauncher);

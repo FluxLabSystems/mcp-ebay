@@ -36,7 +36,8 @@ import { queryLogonTask } from './logonTask.js';
 import { AgentStatusStore, buildConfigEntries, type LaunchedBy } from './monitor.js';
 import { pairDevice } from './pairing.js';
 import { createPagePolicy } from './policyEngine.js';
-import { SessionManager } from './sessionManager.js';
+import { SessionManager, sweepProfileLocksAtStartup } from './sessionManager.js';
+import { startEventLoopStallWatch } from './stallWatch.js';
 import { AgentTui, detectCharset, queryDefaultTerminal, resolveUiMode } from './tui.js';
 import { AGENT_VERSION } from './version.js';
 
@@ -225,6 +226,9 @@ async function main(): Promise<number> {
       const policy = createPagePolicy(
         mergeSiteProfiles(config.siteProfileIds.map((id) => SITE_PROFILES.get(id)!)),
       );
+      // A crashed agent never released its profile locks; clear the ones
+      // whose owner is gone before this instance connects (2026-09-15).
+      sweepProfileLocksAtStartup(config.profileDir, runLogger);
       const sessions = new SessionManager({
         profileDir: config.profileDir,
         policy,
@@ -246,6 +250,10 @@ async function main(): Promise<number> {
         ...(dashboard === null ? {} : { monitor: dashboard.store }),
       });
       connection.start();
+      const stallWatch = startEventLoopStallWatch({
+        logger: runLogger,
+        context: () => connection.lastAcceptedCommand,
+      });
       runLogger.info(
         { agentVersion: AGENT_VERSION, deviceId: identity.deviceId, siteProfiles: config.siteProfileIds },
         'Agent running',
@@ -257,6 +265,7 @@ async function main(): Promise<number> {
           if (shuttingDown) return;
           shuttingDown = true;
           runLogger.info({}, 'Shutting down');
+          stallWatch.stop();
           void connection.stop().then(() => sessions.close()).then(resolve);
         };
         process.on('SIGINT', shutdown);

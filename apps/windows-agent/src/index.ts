@@ -12,5 +12,6 @@ export * from './monitor.js';
 export * from './pairing.js';
 export * from './policyEngine.js';
 export * from './sessionManager.js';
+export * from './stallWatch.js';
 export * from './tui.js';
 export * from './version.js';
