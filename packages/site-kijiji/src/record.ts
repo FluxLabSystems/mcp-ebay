@@ -12,6 +12,12 @@ export const KIJIJI_DESCRIPTION_EXCERPT_CHARS = 500;
 export const KIJIJI_DESCRIPTION_MAX_CHARS = 6000;
 /** The most amounts read out of an ad body under bodyPriceFigures — the body is untrusted text. */
 export const KIJIJI_BODY_PRICE_FIGURES_MAX = 24;
+/** The most rows read out of the VIP attribute table under attributes — the table is untrusted text. */
+export const KIJIJI_ATTRIBUTES_MAX = 40;
+/** The most characters kept of one attribute label or value. */
+export const KIJIJI_ATTRIBUTE_TEXT_MAX_CHARS = 300;
+/** A stated floor area below this many square feet is surfaced under sizeSqft but named implausible. */
+export const KIJIJI_SIZE_SQFT_PLAUSIBLE_MIN = 20;
 
 export const KijijiFieldSourceSchema = z.enum(['dom', 'jsonld', 'meta', 'computed']);
 export type KijijiFieldSource = z.infer<typeof KijijiFieldSourceSchema>;
@@ -124,12 +130,41 @@ export const KijijiExtractionRecordSchema = z.strictObject({
    * body names none or no body was read.
    */
   bodyPriceFigures: z.array(z.number().positive()).max(KIJIJI_BODY_PRICE_FIGURES_MAX),
-  attributes: z.array(
-    z.strictObject({
-      label: z.string(),
-      value: z.string(),
-    }),
-  ),
+  /**
+   * The ad's attribute table as the page renders it, label/value rows in
+   * document order (live VIP: vip-attributes-section, each row two <p>
+   * siblings — "Condition" / "Used - Like new"). Bounded: at most
+   * KIJIJI_ATTRIBUTES_MAX rows, each string cut at
+   * KIJIJI_ATTRIBUTE_TEXT_MAX_CHARS. Empty when the page renders no table.
+   */
+  attributes: z
+    .array(
+      z.strictObject({
+        label: z.string().max(KIJIJI_ATTRIBUTE_TEXT_MAX_CHARS),
+        value: z.string().max(KIJIJI_ATTRIBUTE_TEXT_MAX_CHARS),
+      }),
+    )
+    .max(KIJIJI_ATTRIBUTES_MAX),
+  /**
+   * The floor area the attribute table states (2026-09-15 office fire: at
+   * least 12 office ads stored with square footage unset while the page's
+   * "Size (sqft)" row stated it). Read from that row ONLY — never inferred
+   * from the description body — as the number the advertiser entered:
+   * sometimes the whole unit rather than the advertised room, sometimes a
+   * data-entry value such as "1 sqft" (surfaced at reduced confidence with
+   * SIZE_SQFT_IMPLAUSIBLE, never dropped). The room-vs-unit judgement stays
+   * with the routine; `rawText` is the row's value verbatim. Null when the
+   * table has no size row, or when its value does not parse
+   * (SIZE_SQFT_UNPARSEABLE names it; the row stays under `attributes`).
+   */
+  sizeSqft: z
+    .strictObject({
+      value: z.number().positive(),
+      rawText: z.string().max(KIJIJI_ATTRIBUTE_TEXT_MAX_CHARS),
+      source: KijijiFieldSourceSchema,
+      confidence: z.number().min(0).max(1),
+    })
+    .nullable(),
   imageCount: z.int().nullable(),
   listingStatus: KijijiListingStatusSchema,
   observedAt: z.iso.datetime({ offset: true }),

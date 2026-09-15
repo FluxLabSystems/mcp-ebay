@@ -157,6 +157,14 @@ export interface CompactKijijiAd {
   descriptionTotalChars: number | null;
   /** Every amount the body states, in order (2026-09-09); [] when none — the listed price is never one of these by itself. */
   bodyPriceFigures: number[];
+  /**
+   * The floor area the ad's attribute table states, in square feet
+   * (2026-09-15: the "Size (sqft)" row); null when the table has no size row
+   * or it does not parse. The number is the advertiser's entry — whole unit
+   * or room, plausible or not (SIZE_SQFT_IMPLAUSIBLE on the same response
+   * names a value under 20) — never a figure read out of the body.
+   */
+  sizeSqft: number | null;
   imageCount: number | null;
   listingStatus: string | null;
 }
@@ -188,6 +196,7 @@ export function compactKijijiAd(record: unknown): CompactKijijiAd {
     bodyPriceFigures: Array.isArray(ad.bodyPriceFigures)
       ? ad.bodyPriceFigures.filter((figure): figure is number => typeof figure === 'number' && Number.isFinite(figure))
       : [],
+    sizeSqft: readNumber(ad.sizeSqft),
     imageCount: readNumber(ad.imageCount),
     listingStatus: readString(ad.listingStatus),
   };
