@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type WebSocket from 'ws';
 import {
   AgentToGatewayMessageSchema,
+  ARTIFACT_TOKEN_REFRESH_AFTER_SECONDS,
   newChallengeNonce,
   parseWireMessage,
   timestampWithinSkew,
@@ -42,6 +43,31 @@ export function handleAgentSocket(socket: WebSocket, deps: WsHandlerDeps): void 
   let authenticatedDeviceId: string | null = null;
   let connectionId: string | null = null;
   let lastActivity = Date.now();
+  /** When the artifact token the agent holds was issued (§11.5); refreshed below. */
+  let artifactTokenIssuedAt = 0;
+
+  // §16: artifacts above the inline cap upload with a 15-minute HMAC token.
+  // Issued once at device.ready and never again, a session older than the
+  // TTL held an expired credential — 2026-09-14 jobs fire: a full-page
+  // screenshot upload was refused 401 while the inline viewport capture
+  // seconds later succeeded. Re-issue over the socket once half the TTL has
+  // elapsed, checked on the heartbeat tick, so the agent always holds a
+  // token with at least half its life left.
+  const refreshArtifactTokenIfDue = (): void => {
+    if (authenticatedDeviceId === null) return;
+    if (Date.now() - artifactTokenIssuedAt < ARTIFACT_TOKEN_REFRESH_AFTER_SECONDS * 1000) return;
+    const artifactToken = deps.artifactTokens.issue(authenticatedDeviceId);
+    artifactTokenIssuedAt = Date.now();
+    socket.send(
+      JSON.stringify({
+        protocolVersion: WIRE_PROTOCOL_VERSION,
+        type: 'device.token',
+        artifactToken: artifactToken.token,
+        expiresAt: artifactToken.expiresAt.toISOString(),
+      }),
+    );
+    deps.logger.debug({ deviceId: authenticatedDeviceId }, 'Artifact token refreshed');
+  };
 
   socket.send(
     JSON.stringify({
@@ -70,7 +96,9 @@ export function handleAgentSocket(socket: WebSocket, deps: WsHandlerDeps): void 
     if (Date.now() - lastActivity > deps.heartbeatSeconds * 3 * 1000) {
       deps.logger.warn({ deviceId: authenticatedDeviceId }, 'Device heartbeat lost; terminating');
       socket.terminate();
+      return;
     }
+    refreshArtifactTokenIfDue();
   }, deps.heartbeatSeconds * 1000);
   heartbeatInterval.unref?.();
 
@@ -126,6 +154,7 @@ export function handleAgentSocket(socket: WebSocket, deps: WsHandlerDeps): void 
         });
         await deps.store.devices.touchLastSeen(message.deviceId, new Date(), message.agentVersion);
         const artifactToken = deps.artifactTokens.issue(message.deviceId);
+        artifactTokenIssuedAt = Date.now();
         socket.send(
           JSON.stringify({
             protocolVersion: WIRE_PROTOCOL_VERSION,

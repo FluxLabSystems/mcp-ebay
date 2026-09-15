@@ -50,4 +50,10 @@ describe('dashboard catalog is complete for every id', () => {
     // notice a roster entry that was dropped.
     expect(DASHBOARD_IDS).toContain('ci');
   });
+
+  it('includes shop', () => {
+    // The industrial / workshop space board (2026-09-14). Same reasoning.
+    expect(DASHBOARD_IDS).toContain('shop');
+    expect(DASHBOARD_WRITE_SCOPES.shop).toBe('shop:write');
+  });
 });

@@ -19,7 +19,7 @@ import {
 } from '@browser-bridge/protocol';
 
 describe('error catalog (§17)', () => {
-  it('contains exactly the 30 normative codes', () => {
+  it('contains exactly the 31 normative codes', () => {
     // 24 from SDD v0.5 §17, the three Countdown API source codes
     // (docs/COUNTDOWN-API-PLAN.md §2), CLICK_INTERCEPTED (2026-09-04:
     // a consent overlay intercepting every pointer event used to surface
@@ -28,8 +28,12 @@ describe('error catalog (§17)', () => {
     // SCHEME_DENIED on a call that succeeded thirty seconds later) and
     // AGENT_UNRESPONSIVE (2026-09-14: an ack timeout on an OPEN socket
     // surfaced as DEVICE_OFFLINE while the same payload reported the device
-    // online — two failures under one code).
-    expect(BRIDGE_ERROR_CODES).toHaveLength(30);
+    // online — two failures under one code) and ARTIFACT_UPLOAD_FAILED
+    // (2026-09-14: an expired artifact token on a full-page screenshot
+    // upload surfaced as INTERNAL_ERROR "HTTP 401" while the inline
+    // viewport capture succeeded seconds later).
+    expect(BRIDGE_ERROR_CODES).toHaveLength(31);
+    expect(BRIDGE_ERROR_CODES).toContain('ARTIFACT_UPLOAD_FAILED');
     expect(BRIDGE_ERROR_CODES).toContain('CLICK_INTERCEPTED');
     expect(BRIDGE_ERROR_CODES).toContain('REDIRECT_BLOCKED');
     expect(BRIDGE_ERROR_CODES).toContain('AGENT_UNRESPONSIVE');
@@ -60,6 +64,9 @@ describe('error catalog (§17)', () => {
       // A vendor incident, 5xx or timeout clears on its own; exhausted
       // credits and a rejected request do not, so only this one retries.
       'SOURCE_UNAVAILABLE',
+      // The capture succeeded and the credential is refreshed over the
+      // device channel, so the same command is worth issuing again.
+      'ARTIFACT_UPLOAD_FAILED',
       'INTERNAL_ERROR',
     ];
     for (const code of BRIDGE_ERROR_CODES) {
