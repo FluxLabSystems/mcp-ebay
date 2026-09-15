@@ -225,9 +225,23 @@ describe('compact item records tolerate the record shape they are given', () => 
       descriptionTotalChars: null,
       // The amounts the body states (2026-09-09); [] when it names none.
       bodyPriceFigures: [],
+      // The attribute table's "Size (sqft)" row (2026-09-15); null when the
+      // record carries none, as this pre-2026-09-15 shape does.
+      sizeSqft: null,
       imageCount: 6,
       listingStatus: 'active',
     });
+  });
+
+  it('carries the Kijiji ad\'s stated floor area as a bare number', () => {
+    const compact = compactKijijiAd({
+      siteProfile: 'kijiji.ca.v1',
+      adId: field('1750000001'),
+      sizeSqft: { value: 150, rawText: '150 sqft', source: 'dom', confidence: 0.95 },
+    });
+    expect(compact.sizeSqft).toBe(150);
+    expect(compactKijijiAd({ sizeSqft: null }).sizeSqft).toBeNull();
+    expect(compactKijijiAd({ sizeSqft: { value: 'wide', source: 'dom', confidence: 1 } }).sizeSqft).toBeNull();
   });
 
   it('dispatches by site profile and leaves an unknown profile alone', () => {

@@ -12,9 +12,12 @@
 import { isKijijiAdImageUrl, KIJIJI_GALLERY_SELECTORS, normalizeKijijiImageUrl } from './gallery.js';
 import { adIdFromUrl, canonicalAdUrl, parseKijijiPrice } from './normalize.js';
 import {
+  KIJIJI_ATTRIBUTE_TEXT_MAX_CHARS,
+  KIJIJI_ATTRIBUTES_MAX,
   KIJIJI_BODY_PRICE_FIGURES_MAX,
   KIJIJI_DESCRIPTION_EXCERPT_CHARS,
   KIJIJI_DESCRIPTION_MAX_CHARS,
+  KIJIJI_SIZE_SQFT_PLAUSIBLE_MIN,
   type KijijiExtractionRecord,
   type KijijiFieldSource,
   type KijijiListingStatus,
@@ -369,7 +372,23 @@ const DESCRIPTION_SELECTORS = [
   '#vip-body',
   '[class*="descriptionContainer"]',
 ];
+/**
+ * The live VIP's attribute table (read off live-vip-contact-1730433251,
+ * captured 2026-08-29; defect filed 2026-09-15, kijiji-vip-attribute-table-
+ * never-read): vip-attributes-section > vip-attributes-body >
+ * vip-attributes-generic, each row a <div> whose text cell holds exactly two
+ * <p> siblings — the label, then the value ("Condition" / "Used - Like new").
+ * None of the three earlier selectors matched it, so attributes was [] on
+ * every real ad and the office routine stored square footage unset while the
+ * page's "Size (sqft)" row stated it. The innermost group leads; the section
+ * and body wrappers follow for a page that renders rows outside the generic
+ * group. The remaining names are the pre-live guesses, kept as fallbacks
+ * for the synthetic fixtures' dt/dd and li shapes.
+ */
 const ATTRIBUTE_GROUP_SELECTORS = [
+  '[data-testid="vip-attributes-generic"]',
+  '[data-testid="vip-attributes-body"]',
+  '[data-testid="vip-attributes-section"]',
   '[data-testid="attribute-list"]',
   'dl[data-testid="attributes"]',
   '[class*="attributeList"]',
@@ -469,7 +488,58 @@ function detectKijijiListingStatus(document: Document): KijijiListingStatus {
   return 'unknown';
 }
 
-function extractAttributes(document: Document): { label: string; value: string }[] {
+type KijijiAttribute = { label: string; value: string };
+
+/** One attribute string: whitespace-collapsed and cut at the record's bound — the table is untrusted text. */
+function attributeText(raw: string | null | undefined): string {
+  return (raw ?? '').replace(/\s+/g, ' ').trim().slice(0, KIJIJI_ATTRIBUTE_TEXT_MAX_CHARS);
+}
+
+function pushAttribute(attributes: KijijiAttribute[], label: string, value: string): boolean {
+  if (attributes.length >= KIJIJI_ATTRIBUTES_MAX) return false;
+  if (label.length > 0 && value.length > 0) attributes.push({ label, value });
+  return true;
+}
+
+/**
+ * The live row shape: an element whose children are exactly two <p>
+ * elements, label then value. Matched on that shape rather than on the row
+ * div's generated class names, which Kijiji churns. A cell with one <p> (a
+ * heading) or three (prose) is not a row.
+ */
+function readParagraphPairRows(group: Element, attributes: KijijiAttribute[]): void {
+  let cells: Element[];
+  try {
+    cells = Array.from(group.querySelectorAll('*'));
+  } catch {
+    return;
+  }
+  for (const cell of cells) {
+    const children = Array.from(cell.children ?? []);
+    if (children.length !== 2 || !children.every((child) => /^p$/i.test(child.tagName))) continue;
+    if (!pushAttribute(attributes, attributeText(children[0]!.textContent), attributeText(children[1]!.textContent))) return;
+  }
+}
+
+function readDefinitionRows(group: Element, attributes: KijijiAttribute[]): void {
+  for (const term of Array.from(group.querySelectorAll('dt'))) {
+    const sibling = term.nextElementSibling;
+    const value = sibling && /^dd$/i.test(sibling.tagName) ? attributeText(sibling.textContent) : '';
+    if (!pushAttribute(attributes, attributeText(term.textContent), value)) return;
+  }
+}
+
+/** List-style attributes render as "Label: Value" items. */
+function readListRows(group: Element, attributes: KijijiAttribute[]): void {
+  for (const item of Array.from(group.querySelectorAll('li'))) {
+    const text = attributeText(item.textContent);
+    const separator = text.indexOf(':');
+    if (separator <= 0) continue;
+    if (!pushAttribute(attributes, text.slice(0, separator).trim(), text.slice(separator + 1).trim())) return;
+  }
+}
+
+function extractAttributes(document: Document): KijijiAttribute[] {
   for (const selector of ATTRIBUTE_GROUP_SELECTORS) {
     let group: Element | null;
     try {
@@ -478,30 +548,77 @@ function extractAttributes(document: Document): { label: string; value: string }
       continue;
     }
     if (!group) continue;
-    const attributes: { label: string; value: string }[] = [];
-    const terms = Array.from(group.querySelectorAll('dt'));
-    if (terms.length > 0) {
-      for (const term of terms) {
-        const label = term.textContent?.replace(/\s+/g, ' ').trim() ?? '';
-        const sibling = term.nextElementSibling;
-        const value =
-          sibling && /^dd$/i.test(sibling.tagName) ? (sibling.textContent?.replace(/\s+/g, ' ').trim() ?? '') : '';
-        if (label.length > 0 && value.length > 0) attributes.push({ label, value });
-      }
-    } else {
-      // List-style attributes render as "Label: Value" items.
-      for (const item of Array.from(group.querySelectorAll('li'))) {
-        const text = item.textContent?.replace(/\s+/g, ' ').trim() ?? '';
-        const separator = text.indexOf(':');
-        if (separator <= 0) continue;
-        const label = text.slice(0, separator).trim();
-        const value = text.slice(separator + 1).trim();
-        if (label.length > 0 && value.length > 0) attributes.push({ label, value });
-      }
-    }
+    const attributes: KijijiAttribute[] = [];
+    readParagraphPairRows(group, attributes);
+    if (attributes.length === 0) readDefinitionRows(group, attributes);
+    if (attributes.length === 0) readListRows(group, attributes);
     if (attributes.length > 0) return attributes;
   }
   return [];
+}
+
+/**
+ * The label the attribute table renders for floor area. Kijiji's inline i18n
+ * bundle (live-search-lego-toronto capture) states it once, as
+ * "listing.realestate.size.label":"Size (sqft)", with the unit alone under
+ * "listing.attributes.square_feet":"sqft" and "attribute.areainfeet.unit":
+ * "sqft"; no other label spelling is in any capture. The spacing/punctuation
+ * variants and the "Square feet"/"Square footage" wording are accepted as
+ * guesses against a copy change, not as observed labels
+ * (NEEDS-LIVE-VERIFICATION).
+ */
+const SIZE_SQFT_LABEL_RE = /^(?:size\s*\(\s*sq\.?\s*ft\.?\s*\)|square\s*(?:feet|footage)|sq\.?\s*ft\.?)$/i;
+/**
+ * The value as the row renders it ("150 sqft" — the bundle's
+ * "attribute.label_override.sqft":"{{value}} sqft"), with or without the
+ * unit, thousands separators allowed. A range, a word or a prefix is not
+ * parsed: the raw row stays under attributes and SIZE_SQFT_UNPARSEABLE
+ * names it.
+ */
+const SIZE_SQFT_VALUE_RE = /^(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?\s*(?:sq\.?\s*ft\.?|sqft|square\s*feet|ft²|pi²)?$/i;
+
+/** True when an attribute label is the table's floor-area row. */
+export function isKijijiSizeSqftLabel(label: string): boolean {
+  return SIZE_SQFT_LABEL_RE.test(label.replace(/\s+/g, ' ').trim());
+}
+
+/** The square-foot figure a size row's value states, or null when it does not parse to a positive number. */
+export function parseKijijiSizeSqft(rawText: string): number | null {
+  const match = SIZE_SQFT_VALUE_RE.exec(rawText.replace(/\s+/g, ' ').trim());
+  if (match === null) return null;
+  const whole = Number.parseInt(match[1]!.replace(/,/g, ''), 10);
+  const fraction = match[2] === undefined ? 0 : Number.parseFloat(`0.${match[2]}`);
+  const value = whole + fraction;
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/**
+ * sizeSqft from the attribute table only: the first row whose label is the
+ * size label. Never read from the description body — a body figure is the
+ * routine's to weigh (it already has descriptionFull), and an extractor
+ * that guessed floor area out of prose would put a number on records the
+ * page never stated one for.
+ */
+function sizeSqftFromAttributes(
+  attributes: readonly KijijiAttribute[],
+  warnings: string[],
+): KijijiExtractionRecord['sizeSqft'] {
+  const sizeRow = attributes.find((attribute) => isKijijiSizeSqftLabel(attribute.label));
+  if (sizeRow === undefined) return null;
+  const value = parseKijijiSizeSqft(sizeRow.value);
+  if (value === null) {
+    warnings.push(
+      `SIZE_SQFT_UNPARSEABLE: the attribute table carries a ${sizeRow.label} row reading "${sizeRow.value}", which does not parse as a positive number of square feet, so sizeSqft is null — the row stays under attributes; read it there rather than treating the ad as unsized.`,
+    );
+    return null;
+  }
+  if (value < KIJIJI_SIZE_SQFT_PLAUSIBLE_MIN) {
+    warnings.push(
+      `SIZE_SQFT_IMPLAUSIBLE: ${sizeRow.label} reads "${sizeRow.value}" — advertiser data-entry values under ${KIJIJI_SIZE_SQFT_PLAUSIBLE_MIN} sqft are surfaced, not trusted: sizeSqft carries ${value} at reduced confidence. Read the body (description, or descriptionFull) for the area the ad actually describes before ranking on it, and keep the room-vs-unit judgement with the routine.`,
+    );
+    return { value, rawText: sizeRow.value, source: 'dom', confidence: 0.5 };
+  }
+  return { value, rawText: sizeRow.value, source: 'dom', confidence: 0.95 };
 }
 
 const ABOUT_SELLER_SELECTORS = [
@@ -1154,11 +1271,15 @@ export function extractKijijiListing(
     }
   }
 
-  // --- attributes + seller type ---
+  // --- attributes, seller type, floor area ---
   const attributes = extractAttributes(document);
   const attributeSellerType = sellerTypeFromAttributes(attributes);
   const sellerType =
     attributeSellerType === 'unknown' ? sellerTypeFromAboutBlock(document) : attributeSellerType;
+  // 2026-09-15 office fire: the "Size (sqft)" row is the one structured
+  // statement of floor area an office ad makes, and it was never read. The
+  // raw value is surfaced as stated — whole-unit or room, the routine judges.
+  const sizeSqft = sizeSqftFromAttributes(attributes, warnings);
 
   // --- image count (apollo imageUrls → jsonld image array → dom gallery) ---
   // The cache leads because it is the only complete statement: the
@@ -1213,6 +1334,7 @@ export function extractKijijiListing(
     descriptionFull,
     bodyPriceFigures: figures,
     attributes,
+    sizeSqft,
     imageCount,
     listingStatus: detectKijijiListingStatus(document),
     observedAt,
