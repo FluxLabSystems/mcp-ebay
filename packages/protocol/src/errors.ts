@@ -39,6 +39,17 @@ export const ERROR_CATALOG = {
     message:
       'Google Chrome context could not be launched/recovered, or the required branded Chrome installation/channel is unavailable.',
   },
+  /**
+   * Since 2026-09-15 (deals / wardrobe / office fires: three routine
+   * profiles refused for four hours after one agent death, with only a
+   * lockFilePath to show for it) the details say WHO owns the lock:
+   * lockOwnerPid, lockOwnerHostname, lockAcquiredAt, lockHeartbeatAt,
+   * lockHeartbeatAgeMs, lockOwnerAlive (alive | unknown), reason
+   * (owner_live | foreign_host), staleAfterMs and a hint. Still not
+   * retryable: it is raised only for an owner that is alive AND refreshing
+   * the lock — a dead, recycled or silent owner is reclaimed by the agent
+   * instead (packages/browser-core/src/launcher.ts).
+   */
   PROFILE_IN_USE: { retryable: false, message: 'Dedicated browser profile is owned by another process.' },
   SESSION_NOT_FOUND: { retryable: false, message: 'browserSessionHandle is unknown or not owned by device.' },
   TAB_NOT_FOUND: { retryable: true, message: 'tabId no longer exists.' },
