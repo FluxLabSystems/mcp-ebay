@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<!--
+  Synthetic fixture: eBay's bare "Error Page | eBay" shell served at an
+  unchanged www.ebay.ca /sch/ URL.
+
+  What is known from live captures (www.ebay.ca 403s dev boxes, so the page
+  cannot be fetched here): the deals routine's bounded browser_snapshot of
+  the stub on 2026-09-04 (fingerprint site-ebay+coverage_gap+
+  sold-completed-search-returns-error-page) recorded pageTitle
+  "Error Page | eBay" and an accessible tree of exactly ONE node —
+  {role: "link", name: "Go to homepage", href: "https://www.ebay.com/"} —
+  with no sign-in prompt, no bot check and no retired-feature notice. On
+  2026-09-15 04:1xZ the same stub answered two plain LIVE /sch/ searches
+  (no LH_Sold / LH_Complete) that rendered in full on an immediate retry
+  (fingerprint site-ebay+coverage_gap+live-sch-search-returns-error-page-
+  stub-with-zero-candidates-and-renders-on-immediate-retry).
+
+  The <title> text and the link's accessible name and href are the
+  snapshot's own. The element wrapping is NEEDS-LIVE-VERIFICATION: the
+  detector keys on the title and the link, never on this markup.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Error Page | eBay</title>
+</head>
+<body>
+  <div id="error-page">
+    <a href="https://www.ebay.com/">Go to homepage</a>
+  </div>
+</body>
+</html>

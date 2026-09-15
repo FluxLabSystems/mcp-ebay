@@ -451,6 +451,11 @@ const PRESERVED_ROOT_FIELDS = [
   // under the filter" — the distinction SOLD_FILTER_ROWS_UNMARKED turns on.
   'soldFilterActive',
   'completedFilterActive',
+  // The eBay /sch/ page's error-shell flag (2026-09-15): true when the read
+  // landed on the bare "Error Page | eBay" stub that renders on an
+  // immediate retry, false on a rendered result set. Compacting it away
+  // would turn "the site stubbed this query" back into "zero results".
+  'errorPageStub',
   // The eBay search page (2026-09-08): which page the site says it served
   // and where that was read, which page the URL asked for (the two differ
   // on eBay's silent last-page clamp), and the _ssn= seller the query was
